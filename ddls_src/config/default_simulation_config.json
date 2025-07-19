@@ -1,0 +1,21 @@
+{
+    "initial_time": 0.0,
+    "main_timestep_duration": 300.0,  // 300 seconds = 5 minutes per main timestep
+    "simulation_end_time": 3600.0,     // 3600 seconds = 1 hour total simulation time
+    "new_order_config": {
+        "arrival_rate_per_hour": 5.0,
+        "customer_node_ids": [1, 2, 3, 4, 5, 6, 7],
+        "sla_min_hours": 0.5,
+        "sla_max_hours": 2.0,
+        "priority_distribution": {"1": 0.7, "2": 0.2, "3": 0.1},
+        "max_orders_per_step": 2
+    },
+    "vehicle_failure_config": {
+        "truck_failure_rate_per_hour": 0.01,
+        "drone_failure_rate_per_hour": 0.02
+    },
+    "environmental_dynamics_config": {
+        "traffic_update_interval_minutes": 15,
+        "weather_update_interval_minutes": 30
+    }
+}
