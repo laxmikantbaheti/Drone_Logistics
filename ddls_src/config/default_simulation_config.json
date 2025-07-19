@@ -1,7 +1,38 @@
 {
     "initial_time": 0.0,
-    "main_timestep_duration": 300.0,  // 300 seconds = 5 minutes per main timestep
-    "simulation_end_time": 3600.0,     // 3600 seconds = 1 hour total simulation time
+    "main_timestep_duration": 300.0,
+    "simulation_end_time": 3600.0,
+
+    "data_loader_config": {
+        "generator_type": "json_file",
+        "generator_config": {
+            "file_path": "config/initial_entity_data.json",
+
+            "base_scale_factor": 10,
+            "scaling_factors": {
+                "nodes": 2.0,
+                "depots": 0.1,
+                "customers": 1.5,
+                "micro_hubs": 0.2,
+                "trucks": 0.1,
+                "drones": 0.4,
+                "initial_orders": 1.0
+            },
+            "grid_size": [100.0, 100.0],
+            "max_edges_per_node": 3,
+            "max_travel_time_per_unit_length": 60.0,
+            "truck_payload_range": [3, 10],
+            "drone_payload_range": [1, 2],
+            "truck_speed_range": [40.0, 80.0],
+            "drone_speed_range": [20.0, 40.0],
+            "initial_fuel_range": [80.0, 120.0],
+            "initial_battery_range": [0.8, 1.0],
+            "sla_min_hours": 0.5,
+            "sla_max_hours": 2.0,
+            "priority_distribution": {"1": 0.7, "2": 0.2, "3": 0.1}
+        }
+    },
+
     "new_order_config": {
         "arrival_rate_per_hour": 5.0,
         "customer_node_ids": [1, 2, 3, 4, 5, 6, 7],

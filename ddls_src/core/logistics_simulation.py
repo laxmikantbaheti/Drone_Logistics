@@ -21,7 +21,7 @@ class TimeManager:  # Placeholder for type hinting if not imported
 
 # Import manager classes
 from ..managers.action_manager import ActionManager
-from ..managers.action_masker import ActionMasker
+from ..managers.action_masking.action_masker import ActionMasker
 from ..managers.supply_chain_manager import SupplyChainManager
 from ..managers.resource_manager.base import ResourceManager  # Assuming resource_manager/base.py for ResourceManager
 from ..managers.resource_manager.fleet_manager import FleetManager  # Sub-manager, instantiated by ResourceManager
@@ -34,8 +34,8 @@ from ..actions.action_enums import SimulationAction
 from ..actions.action_mapping import ACTION_MAP, ACTION_SPACE_SIZE
 
 # Import DataLoader and ScenarioGenerator (UPDATED IMPORT PATH)
-from ..data_resources.data_loader import DataLoader
-from ..scenario.scenario_generator import ScenarioGenerator  # UPDATED: Corrected import path and class name
+from ..scenarios.generators.data_loader import DataLoader
+from ..scenarios.generators.scenario_generator import ScenarioGenerator  # UPDATED: Corrected import path and class name
 
 # NO_OPERATION is now part of the SimulationAction enum
 NO_OPERATION = SimulationAction.NO_OPERATION

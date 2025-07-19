@@ -2,13 +2,13 @@ from typing import Dict, Any, List, Tuple, Optional
 
 # Import entity classes
 # Assuming these are available from ddls_src/entities/ and its subdirectories
-from ..entities.node import Node
-from ..entities.edge import Edge
-from ..entities.order import Order
-from ..entities.vehicles.base import Vehicle # Base class, though we'll instantiate Truck/Drone
-from ..entities.vehicles.truck import Truck
-from ..entities.vehicles.drone import Drone
-from ..entities.micro_hub import MicroHub
+from ...entities.node import Node
+from ...entities.edge import Edge
+from ...entities.order import Order
+from ...entities.vehicles.base import Vehicle # Base class, though we'll instantiate Truck/Drone
+from ...entities.vehicles.truck import Truck
+from ...entities.vehicles.drone import Drone
+from ...entities.micro_hub import MicroHub
 
 class ScenarioGenerator: # Renamed from SimulationBuilder
     """
@@ -110,12 +110,34 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
         """
         print("ScenarioGenerator: Building entities from raw data...") # Updated print
 
-        # Instantiate Nodes
+        # Instantiate Nodes and MicroHubs based on their type
+        # Iterate through the 'nodes' list from raw_entity_data
         for node_data in self._raw_entity_data.get('nodes', []):
-            self.add_node(**node_data) # Uses dictionary unpacking for arguments
+            node_type = node_data.get('type')
+            if node_type == 'micro_hub':
+                # Extract specific arguments for MicroHub
+                micro_hub_args = {
+                    'id': node_data['id'],
+                    'coords': tuple(node_data['coords']),
+                    'num_charging_slots': node_data['num_charging_slots'],
+                    'type': node_type
+                }
+                # Pass other optional args if they exist and are relevant to MicroHub
+                # (e.g., is_loadable, is_unloadable, is_charging_station if not defaulted in MicroHub)
+                self.add_micro_hub(**micro_hub_args)
+            else:
+                # For generic nodes, ensure only Node.__init__ arguments are passed
+                # Filter out 'num_charging_slots' if it somehow appears in non-micro_hub node data
+                node_args = {k: v for k, v in node_data.items() if k != 'num_charging_slots'}
+                # Ensure coords is a tuple if it's a list from JSON
+                if 'coords' in node_args and isinstance(node_args['coords'], list):
+                    node_args['coords'] = tuple(node_args['coords'])
+                self.add_node(**node_args)
 
         # Instantiate Edges
         for edge_data in self._raw_entity_data.get('edges', []):
+            # Ensure coords are tuples if they are lists from JSON for start/end nodes
+            # (though Edge itself takes node IDs, not coords directly)
             self.add_edge(**edge_data)
 
         # Instantiate Trucks
@@ -126,12 +148,12 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
         for drone_data in self._raw_entity_data.get('drones', []):
             self.add_drone(**drone_data)
 
-        # Instantiate MicroHubs (ensure they are created after general Nodes if MicroHub inherits Node)
-        # Assuming MicroHub data is distinct from general nodes, or handled by add_node with type 'micro_hub'
-        # If MicroHubs are also in 'nodes' list, ensure no ID collision.
-        # For now, assuming distinct data lists as per initial_entity_data.json
-        for micro_hub_data in self._raw_entity_data.get('micro_hubs', []):
-            self.add_micro_hub(**micro_hub_data)
+        # NOTE: The 'micro_hubs' list in _raw_entity_data (if separate from 'nodes')
+        # is now ignored here, as micro-hubs are handled within the 'nodes' loop above.
+        # This prevents duplicate processing or type errors if they were defined in both.
+        # If your JSON has a separate 'micro_hubs' list with unique data,
+        # you'd need to decide which list is authoritative or merge them.
+        # For now, we assume 'nodes' is the primary source for all node types.
 
         # Instantiate Orders
         for order_data in self._raw_entity_data.get('orders', []):
@@ -144,7 +166,7 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
             'edges': self.edges,
             'trucks': self.trucks,
             'drones': self.drones,
-            'micro_hubs': self.micro_hubs,
+            'micro_hubs': self.micro_hubs, # This will now contain only MicroHub objects created from 'nodes' list
             'orders': self.orders,
             'initial_time': self.initial_time # Pass initial time from raw data
         }

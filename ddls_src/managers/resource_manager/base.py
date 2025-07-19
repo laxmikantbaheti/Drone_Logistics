@@ -1,4 +1,6 @@
 from typing import List, Dict, Any, Optional
+from ...managers.resource_manager.fleet_manager import FleetManager
+from ...managers.resource_manager.micro_hub_manager import MicroHubsManager
 
 
 # Forward declaration for GlobalState to avoid circular dependency
@@ -6,14 +8,14 @@ class GlobalState:
     pass
 
 
-# Forward declarations for FleetManager and MicroHubsManager, which will be
-# instantiated and managed by ResourceManager
-class FleetManager:
-    pass
-
-
-class MicroHubsManager:
-    pass
+# # Forward declarations for FleetManager and MicroHubsManager, which will be
+# # instantiated and managed by ResourceManager
+# class FleetManager:
+#     pass
+#
+#
+# class MicroHubsManager:
+#     pass
 
 
 class ResourceManager:

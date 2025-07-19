@@ -2,9 +2,9 @@ from typing import Dict, Any, List, Type
 import os  # Import os for path manipulation
 
 # Import the base data generator and its concrete implementations
-from .generators.base_data_generator import BaseDataGenerator
-from .generators.random_data_generator import RandomDataGenerator
-from .generators.json_file_data_generator import JsonFileDataGenerator
+from ..generators.data_generator import BaseDataGenerator
+from ..generators.random_generator import RandomDataGenerator
+from ..generators.json_file_data_generator import JsonFileDataGenerator
 
 
 class DataLoader:

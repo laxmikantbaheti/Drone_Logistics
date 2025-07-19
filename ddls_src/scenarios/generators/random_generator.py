@@ -1,6 +1,6 @@
 import random
 from typing import Dict, Any, List, Tuple
-from .base_data_generator import BaseDataGenerator  # Import the base class
+from .data_generator import BaseDataGenerator  # Import the base class
 
 
 class RandomDataGenerator(BaseDataGenerator):
