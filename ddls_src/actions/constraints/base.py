@@ -2,7 +2,7 @@ import numpy as np
 from typing import Dict, Any, List, Tuple, Callable
 
 # Import the SimulationAction enum
-from ..actions.action_enums import SimulationAction
+from ddls_src.actions.action_enums import SimulationAction
 
 
 # Forward declaration for LogisticsSimulation to avoid circular dependency
@@ -89,7 +89,7 @@ class ActionMasker:
         """
         self.constraint_rules.append(constraint_func)
 
-    def _get_action_index(self, action_tuple: Tuple) -> Optional[int]:
+    def _get_action_index(self, action_tuple: Tuple) -> int:
         """Helper to get the flattened index for an action tuple."""
         return self.action_map.get(action_tuple)
 

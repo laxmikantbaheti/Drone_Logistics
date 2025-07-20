@@ -5,17 +5,19 @@ from typing import Dict, Any, List, Tuple, Optional
 from ...entities.node import Node
 from ...entities.edge import Edge
 from ...entities.order import Order
-from ...entities.vehicles.base import Vehicle # Base class, though we'll instantiate Truck/Drone
+from ...entities.vehicles.base import Vehicle  # Base class, though we'll instantiate Truck/Drone
 from ...entities.vehicles.truck import Truck
 from ...entities.vehicles.drone import Drone
 from ...entities.micro_hub import MicroHub
 
-class ScenarioGenerator: # Renamed from SimulationBuilder
+
+class ScenarioGenerator:  # Renamed from SimulationBuilder
     """
     Provides a standard API to construct and populate simulation entities (Nodes, Edges,
     Vehicles, Orders, MicroHubs) from raw configuration data or programmatic calls.
     It instantiates the actual entity objects from dictionaries to form a complete scenario.
     """
+
     def __init__(self, raw_entity_data: Optional[Dict[str, Any]] = None):
         """
         Initializes the ScenarioGenerator.
@@ -39,7 +41,7 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
         # Store initial time if present in raw data, otherwise default
         self.initial_time: float = self._raw_entity_data.get('initial_time', 0.0)
 
-        print("ScenarioGenerator initialized.") # Updated print
+        print("ScenarioGenerator initialized.")  # Updated print
 
     def add_node(self, id: int, coords: Tuple[float, float], type: str,
                  is_loadable: bool = False, is_unloadable: bool = False,
@@ -81,12 +83,15 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
         return drone
 
     def add_micro_hub(self, id: int, coords: Tuple[float, float], num_charging_slots: int,
-                      type: str = 'micro_hub') -> MicroHub:
+                      type: str = 'micro_hub', operational_status: str = "inactive",  # Added default status
+                      is_blocked_for_launches: bool = False, is_blocked_for_recoveries: bool = False,
+                      is_package_transfer_unavailable: bool = False) -> MicroHub:  # Added default flags
         """Programmatic API to add a MicroHub entity."""
-        micro_hub = MicroHub(id, coords, num_charging_slots, type)
+        micro_hub = MicroHub(id, coords, num_charging_slots, type)  # Pass all args
         if micro_hub.id in self.micro_hubs:
             raise ValueError(f"MicroHub with ID {micro_hub.id} already exists.")
         self.micro_hubs[micro_hub.id] = micro_hub
+        self.nodes[micro_hub.id] = micro_hub  # Also add to the general nodes dictionary
         return micro_hub
 
     def add_order(self, id: int, customer_node_id: int, time_received: float,
@@ -108,23 +113,23 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
                                        instantiated entity objects, ready for GlobalState.
                                        Keys: 'nodes', 'edges', 'trucks', 'drones', 'micro_hubs', 'orders'.
         """
-        print("ScenarioGenerator: Building entities from raw data...") # Updated print
+        print("ScenarioGenerator: Building entities from raw data...")  # Updated print
 
         # Instantiate Nodes and MicroHubs based on their type
-        # Iterate through the 'nodes' list from raw_entity_data
         for node_data in self._raw_entity_data.get('nodes', []):
             node_type = node_data.get('type')
+            packages_held_at_node = node_data.pop('packages_held', [])  # Extract and remove packages_held
+
             if node_type == 'micro_hub':
-                # Extract specific arguments for MicroHub
+                # Extract specific arguments for MicroHub, including default optional ones
                 micro_hub_args = {
                     'id': node_data['id'],
                     'coords': tuple(node_data['coords']),
                     'num_charging_slots': node_data['num_charging_slots'],
-                    'type': node_type
+                    'type': node_type,
+
                 }
-                # Pass other optional args if they exist and are relevant to MicroHub
-                # (e.g., is_loadable, is_unloadable, is_charging_station if not defaulted in MicroHub)
-                self.add_micro_hub(**micro_hub_args)
+                instantiated_node = self.add_micro_hub(**micro_hub_args)
             else:
                 # For generic nodes, ensure only Node.__init__ arguments are passed
                 # Filter out 'num_charging_slots' if it somehow appears in non-micro_hub node data
@@ -132,12 +137,14 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
                 # Ensure coords is a tuple if it's a list from JSON
                 if 'coords' in node_args and isinstance(node_args['coords'], list):
                     node_args['coords'] = tuple(node_args['coords'])
-                self.add_node(**node_args)
+                instantiated_node = self.add_node(**node_args)
+
+            # Add packages to the instantiated node after creation
+            for order_id in packages_held_at_node:
+                instantiated_node.add_package(order_id)
 
         # Instantiate Edges
         for edge_data in self._raw_entity_data.get('edges', []):
-            # Ensure coords are tuples if they are lists from JSON for start/end nodes
-            # (though Edge itself takes node IDs, not coords directly)
             self.add_edge(**edge_data)
 
         # Instantiate Trucks
@@ -148,27 +155,20 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
         for drone_data in self._raw_entity_data.get('drones', []):
             self.add_drone(**drone_data)
 
-        # NOTE: The 'micro_hubs' list in _raw_entity_data (if separate from 'nodes')
-        # is now ignored here, as micro-hubs are handled within the 'nodes' loop above.
-        # This prevents duplicate processing or type errors if they were defined in both.
-        # If your JSON has a separate 'micro_hubs' list with unique data,
-        # you'd need to decide which list is authoritative or merge them.
-        # For now, we assume 'nodes' is the primary source for all node types.
-
         # Instantiate Orders
         for order_data in self._raw_entity_data.get('orders', []):
             self.add_order(**order_data)
 
-        print("ScenarioGenerator: All entities instantiated.") # Updated print
+        print("ScenarioGenerator: All entities instantiated.")  # Updated print
 
         return {
             'nodes': self.nodes,
             'edges': self.edges,
             'trucks': self.trucks,
             'drones': self.drones,
-            'micro_hubs': self.micro_hubs, # This will now contain only MicroHub objects created from 'nodes' list
+            'micro_hubs': self.micro_hubs,  # This will now contain only MicroHub objects created from 'nodes' list
             'orders': self.orders,
-            'initial_time': self.initial_time # Pass initial time from raw data
+            'initial_time': self.initial_time  # Pass initial time from raw data
         }
 
     # --- Plotting Methods (Placeholder) ---
@@ -177,7 +177,7 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
         Initializes plot data related to the scenario setup, if any.
         (e.g., indicating the number of entities created).
         """
-        print("ScenarioGenerator: Initializing plot data.") # Updated print
+        print("ScenarioGenerator: Initializing plot data.")  # Updated print
         if 'scenario_setup_info' not in figure_data:
             figure_data['scenario_setup_info'] = {}
         figure_data['scenario_setup_info']['num_nodes'] = len(self.nodes)
@@ -187,10 +187,9 @@ class ScenarioGenerator: # Renamed from SimulationBuilder
         figure_data['scenario_setup_info']['num_micro_hubs'] = len(self.micro_hubs)
         figure_data['scenario_setup_info']['num_orders'] = len(self.orders)
 
-
     def update_plot_data(self, figure_data: Dict[str, Any]) -> None:
         """
         Updates plot data related to the scenario setup. (Less dynamic for a generator).
         """
-        print("ScenarioGenerator: Updating plot data (no dynamic changes expected).") # Updated print
+        print("ScenarioGenerator: Updating plot data (no dynamic changes expected).")  # Updated print
         # No dynamic updates typically for a builder once entities are built.

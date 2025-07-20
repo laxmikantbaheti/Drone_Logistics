@@ -21,7 +21,7 @@ class Order:
         """
         self.id: int = id
         self.customer_node_id: int = customer_node_id
-        self.status: str = "pending"  # e.g., "pending", "assigned", "in_transit", "delivered", "cancelled", "flagged_re_delivery"
+        self.status: str = "pending"  # e.g., "pending", "accepted", "assigned", "in_transit", "delivered", "cancelled", "flagged_re_delivery", "at_micro_hub"
         self.assigned_vehicle_id: Optional[int] = None  # ID of the truck or drone assigned
         self.assigned_micro_hub_id: Optional[int] = None  # ID of the micro-hub assigned for consolidation/transfer
         self.time_received: float = time_received
@@ -39,7 +39,9 @@ class Order:
         Args:
             new_status (str): The new status for the order.
         """
-        valid_statuses = ["pending", "assigned", "in_transit", "delivered", "cancelled", "flagged_re_delivery"]
+        # UPDATED: Added "accepted" and "at_micro_hub" to valid_statuses
+        valid_statuses = ["pending", "accepted", "assigned", "in_transit", "delivered", "cancelled",
+                          "flagged_re_delivery", "at_micro_hub", "at_node"]
         if new_status not in valid_statuses:
             raise ValueError(f"Invalid order status: {new_status}. Must be one of {valid_statuses}")
         self.status = new_status
@@ -58,6 +60,7 @@ class Order:
             vehicle_id (int): The ID of the vehicle being assigned.
         """
         self.assigned_vehicle_id = vehicle_id
+        # When assigned to a vehicle, status should be "assigned"
         self.status = "assigned"
         # print(f"Order {self.id}: Assigned to vehicle {vehicle_id}.")
 
@@ -66,8 +69,9 @@ class Order:
         Unassigns any vehicle from this order.
         """
         self.assigned_vehicle_id = None
-        if self.status == "assigned":  # Revert status if it was only assigned to a vehicle
-            self.status = "pending"  # Or "flagged_re_delivery" if it was en-route and failed
+        # If it was assigned, revert to a state that allows re-assignment or re-delivery
+        if self.status == "assigned" or self.status == "in_transit":
+            self.status = "flagged_re_delivery"  # Or "pending" if it was never picked up
         # print(f"Order {self.id}: Vehicle unassigned.")
 
     def assign_micro_hub(self, micro_hub_id: int) -> None:
@@ -78,7 +82,8 @@ class Order:
             micro_hub_id (int): The ID of the micro-hub being assigned.
         """
         self.assigned_micro_hub_id = micro_hub_id
-        # Status might change to 'at_micro_hub' or similar, depending on detailed workflow
+        # Status change to 'at_micro_hub' is typically handled by SupplyChainManager
+        # or FleetManager when the package is physically moved.
         # print(f"Order {self.id}: Assigned to micro-hub {micro_hub_id}.")
 
     def get_SLA_remaining(self, current_time: float) -> float:

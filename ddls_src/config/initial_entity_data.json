@@ -1,39 +1,100 @@
 {
     "nodes": [
-        {"id": 0, "coords": [0.0, 0.0], "type": "depot", "is_loadable": true, "is_unloadable": true, "is_charging_station": true},
-        {"id": 1, "coords": [10.0, 5.0], "type": "customer", "is_loadable": false, "is_unloadable": true, "is_charging_station": false},
-        {"id": 2, "coords": [15.0, 15.0], "type": "customer", "is_loadable": false, "is_unloadable": true, "is_charging_station": false},
-        {"id": 3, "coords": [5.0, 20.0], "type": "micro_hub", "is_loadable": true, "is_unloadable": true, "is_charging_station": true, "num_charging_slots": 2},
-        {"id": 4, "coords": [25.0, 10.0], "type": "customer", "is_loadable": false, "is_unloadable": true, "is_charging_station": false},
-        {"id": 5, "coords": [30.0, 25.0], "type": "customer", "is_loadable": false, "is_unloadable": true, "is_charging_station": false},
-        {"id": 6, "coords": [20.0, 0.0], "type": "customer", "is_loadable": false, "is_unloadable": true, "is_charging_station": false},
-        {"id": 7, "coords": [35.0, 15.0], "type": "micro_hub", "is_loadable": true, "is_unloadable": true, "is_charging_station": true, "num_charging_slots": 1}
+        {
+            "id": 0,
+            "coords": [
+                0.0,
+                0.0
+            ],
+            "type": "depot",
+            "is_loadable": true,
+            "is_unloadable": true,
+            "is_charging_station": true,
+            "packages_held": [
+                1001
+            ]
+        },
+        {
+            "id": 1,
+            "coords": [
+                10.0,
+                5.0
+            ],
+            "type": "customer",
+            "is_loadable": false,
+            "is_unloadable": true,
+            "is_charging_station": false
+        },
+        {
+            "id": 3,
+            "coords": [
+                5.0,
+                20.0
+            ],
+            "type": "micro_hub",
+            "is_loadable": true,
+            "is_unloadable": true,
+            "is_charging_station": true,
+            "num_charging_slots": 2,
+            "packages_held": [
+                1002
+            ]
+        }
     ],
     "edges": [
-        {"id": 0, "start_node_id": 0, "end_node_id": 1, "length": 11.18, "base_travel_time": 670.8},
-        {"id": 1, "start_node_id": 1, "end_node_id": 0, "length": 11.18, "base_travel_time": 670.8},
-        {"id": 2, "start_node_id": 0, "end_node_id": 3, "length": 20.62, "base_travel_time": 1237.2},
-        {"id": 3, "start_node_id": 3, "end_node_id": 0, "length": 20.62, "base_travel_time": 1237.2},
-        {"id": 4, "start_node_id": 1, "end_node_id": 2, "length": 11.18, "base_travel_time": 670.8},
-        {"id": 5, "start_node_id": 2, "end_node_id": 1, "length": 11.18, "base_travel_time": 670.8},
-        {"id": 6, "start_node_id": 2, "end_node_id": 3, "length": 11.18, "base_travel_time": 670.8},
-        {"id": 7, "start_node_id": 3, "end_node_id": 2, "length": 11.18, "base_travel_time": 670.8},
-        {"id": 8, "start_node_id": 0, "end_node_id": 6, "length": 20.0, "base_travel_time": 1200.0},
-        {"id": 9, "start_node_id": 6, "end_node_id": 0, "length": 20.0, "base_travel_time": 1200.0},
-        {"id": 10, "start_node_id": 4, "end_node_id": 7, "length": 11.18, "base_travel_time": 670.8},
-        {"id": 11, "start_node_id": 7, "end_node_id": 4, "length": 11.18, "base_travel_time": 670.8},
-        {"id": 12, "start_node_id": 5, "end_node_id": 7, "length": 11.18, "base_travel_time": 670.8},
-        {"id": 13, "start_node_id": 7, "end_node_id": 5, "length": 11.18, "base_travel_time": 670.8}
+        {
+            "id": 0,
+            "start_node_id": 0,
+            "end_node_id": 1,
+            "length": 11.18,
+            "base_travel_time": 670.8
+        },
+        {
+            "id": 1,
+            "start_node_id": 1,
+            "end_node_id": 0,
+            "length": 11.18,
+            "base_travel_time": 670.8
+        }
     ],
     "trucks": [
-        {"id": 101, "start_node_id": 0, "max_payload_capacity": 5, "max_speed": 60.0, "initial_fuel": 100.0, "fuel_consumption_rate": 0.1}
+        {
+            "id": 101,
+            "start_node_id": 0,
+            "max_payload_capacity": 5,
+            "max_speed": 60.0,
+            "initial_fuel": 100.0,
+            "fuel_consumption_rate": 0.1
+        }
     ],
     "drones": [
-        {"id": 201, "start_node_id": 0, "max_payload_capacity": 1, "max_speed": 30.0, "initial_battery": 1.0, "battery_drain_rate_flying": 0.005, "battery_drain_rate_idle": 0.001, "battery_charge_rate": 0.01},
-        {"id": 202, "start_node_id": 3, "max_payload_capacity": 1, "max_speed": 30.0, "initial_battery": 0.8, "battery_drain_rate_flying": 0.005, "battery_drain_rate_idle": 0.001, "battery_charge_rate": 0.01}
+        {
+            "id": 201,
+            "start_node_id": 0,
+            "max_payload_capacity": 1,
+            "max_speed": 30.0,
+            "initial_battery": 1.0,
+            "battery_drain_rate_flying": 0.005,
+            "battery_drain_rate_idle": 0.001,
+            "battery_charge_rate": 0.01
+        }
     ],
+    "micro_hubs": [],
     "orders": [
-        {"id": 1001, "customer_node_id": 1, "time_received": 0.0, "SLA_deadline": 1800.0, "priority": 1},
-        {"id": 1002, "customer_node_id": 2, "time_received": 0.0, "SLA_deadline": 2400.0, "priority": 2}
-    ]
+        {
+            "id": 1001,
+            "customer_node_id": 1,
+            "time_received": 0.0,
+            "SLA_deadline": 1800.0,
+            "priority": 1
+        },
+        {
+            "id": 1002,
+            "customer_node_id": 3,
+            "time_received": 0.0,
+            "SLA_deadline": 2400.0,
+            "priority": 2
+        }
+    ],
+    "initial_time": 0.0
 }
