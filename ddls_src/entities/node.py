@@ -1,144 +1,113 @@
 from typing import List, Tuple, Any, Dict
+from datetime import timedelta
+
+# MLPro Imports - Assuming mlpro is in the python path
+from mlpro.bf.systems import System, State, Action
+from mlpro.bf.math import MSpace, Dimension
 
 
-class Node:
+class Node(System):
     """
-    Represents a location in the simulation network. Nodes can be various types
-    like depots, customer locations, micro-hubs, or charging stations.
+    Represents a location in the simulation network as an MLPro System.
+    Nodes can be various types like depots, customer locations, or junctions.
+    Inherits from the MLPro System class to standardize its behavior.
     """
 
-    def __init__(self, id: int, coords: Tuple[float, float], type: str,
-                 is_loadable: bool = False, is_unloadable: bool = False,
-                 is_charging_station: bool = False):
+    C_TYPE = 'Node'
+    C_NAME = 'Node'
+
+    def __init__(self,
+                 p_id: int,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=True,
+                 **p_kwargs):
         """
-        Initializes a Node.
+        Initializes a Node system.
 
-        Args:
-            id (int): Unique identifier for the node.
-            coords (Tuple[float, float]): (x, y) coordinates of the node in the simulation space.
-            type (str): The type of the node (e.g., 'depot', 'customer', 'micro_hub', 'charging_station').
-            is_loadable (bool): True if vehicles can load packages at this node.
-            is_unloadable (bool): True if vehicles can unload packages at this node.
-            is_charging_station (bool): True if drones can charge at this node.
+        Parameters:
+            p_id (int): Unique identifier for the node.
+            p_name (str): Name of the node.
+            p_visualize (bool): Visualization flag.
+            p_logging: Logging level.
+            p_kwargs: Additional keyword arguments for node properties. Expected keys:
+                'coords': Tuple[float, float]
+                'is_loadable': bool
+                'is_unloadable': bool
+                'is_charging_station': bool
         """
-        self.id: int = id
-        self.coords: Tuple[float, float] = coords
-        self.type: str = type
-        self.packages_held: List[int] = []  # List of order IDs currently at this node
-        self.is_loadable: bool = is_loadable
-        self.is_unloadable: bool = is_unloadable
-        self.is_charging_station: bool = is_charging_station
+        # Call the parent System's constructor
+        super().__init__(p_id=p_id,
+                         p_name=p_name,
+                         p_visualize=p_visualize,
+                         p_logging=p_logging,
+                         p_mode=System.C_MODE_SIM,
+                         p_latency=timedelta(0, 0, 0))  # Nodes react instantly
 
-        print(f"Node {self.id} (Type: {self.type}) initialized at {self.coords}.")
+        # Store node-specific attributes
+        self.coords: Tuple[float, float] = p_kwargs.get('coords', (0.0, 0.0))
+        self.packages_held: List[int] = []
+        self.is_loadable: bool = p_kwargs.get('is_loadable', False)
+        self.is_unloadable: bool = p_kwargs.get('is_unloadable', False)
+        self.is_charging_station: bool = p_kwargs.get('is_charging_station', False)
 
-    def add_package(self, order_id: int) -> None:
+        # Initialize the formal state object
+        self._state = State(self._state_space)
+        self.reset()
+
+    @staticmethod
+    def setup_spaces():
         """
-        Adds a package (order ID) to the node's held packages.
+        Defines the state and action spaces for a Node system.
+        A node's state is simply the number of packages it holds.
+        A node is passive, so its action space is empty.
+        """
+        state_space = MSpace()
+        state_space.add_dim(Dimension('num_packages', 'Z', 'Number of packages', p_boundaries=[0, 9999]))
 
-        Args:
-            order_id (int): The ID of the order/package to add.
+        action_space = MSpace()
+
+        return state_space, action_space
+
+    def _reset(self, p_seed=None):
+        """
+        Resets the node's internal state (clears held packages) and updates the formal state object.
+        """
+        self.packages_held = []
+        self._state.set_value('num_packages', 0)
+
+    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+        """
+        Simulates the node's reaction. As nodes are passive, this method primarily ensures
+        the formal MLPro state object is synchronized with the node's internal attributes.
+        """
+        # The node's state is changed by external managers calling add/remove_package.
+        # This method ensures the formal _state object reflects those changes.
+        self._update_state()
+        return self._state
+
+    def add_package(self, order_id: int):
+        """
+        Adds a package to the node and updates its state. Called by external managers.
         """
         if order_id not in self.packages_held:
             self.packages_held.append(order_id)
-            # print(f"Node {self.id}: Added package {order_id}. Packages held: {self.packages_held}")
-        # else:
-        # print(f"Node {self.id}: Package {order_id} already exists.")
+        self._update_state()
 
-    def remove_package(self, order_id: int) -> None:
+    def remove_package(self, order_id: int):
         """
-        Removes a package (order ID) from the node's held packages.
-
-        Args:
-            order_id (int): The ID of the order/package to remove.
+        Removes a package from the node and updates its state. Called by external managers.
         """
         if order_id in self.packages_held:
             self.packages_held.remove(order_id)
-            # print(f"Node {self.id}: Removed package {order_id}. Packages held: {self.packages_held}")
-        # else:
-        # print(f"Node {self.id}: Package {order_id} not found to remove.")
+        self._update_state()
+
+    def _update_state(self):
+        """Helper method to synchronize the internal list of packages with the formal MLPro state object."""
+        self._state.set_value('num_packages', len(self.packages_held))
 
     def get_packages(self) -> List[int]:
         """
-        Returns a list of order IDs currently held at this node.
-
-        Returns:
-            List[int]: A list of integer order IDs.
+        Returns a copy of the list of order IDs currently held at this node.
         """
-        return list(self.packages_held)  # Return a copy to prevent external modification
-
-    def set_loadable(self, status: bool) -> None:
-        """
-        Sets whether this node is a valid loading point.
-
-        Args:
-            status (bool): True to make it loadable, False otherwise.
-        """
-        self.is_loadable = status
-        # print(f"Node {self.id}: Set is_loadable to {status}.")
-
-    def set_unloadable(self, status: bool) -> None:
-        """
-        Sets whether this node is a valid unloading point.
-
-        Args:
-            status (bool): True to make it unloadable, False otherwise.
-        """
-        self.is_unloadable = status
-        # print(f"Node {self.id}: Set is_unloadable to {status}.")
-
-    def set_charging_station(self, status: bool) -> None:
-        """
-        Sets whether this node is a drone charging station.
-
-        Args:
-            status (bool): True to make it a charging station, False otherwise.
-        """
-        self.is_charging_station = status
-        # print(f"Node {self.id}: Set is_charging_station to {status}.")
-
-    # --- Plotting Methods ---
-    def initialize_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Initializes the plotting data for this specific node within the shared figure_data.
-        This method is called once at the start of the simulation.
-        It contributes to the 'network_nodes' layer managed by GlobalState or Network.
-        """
-        # Node-specific initial plot data can be added here if needed,
-        # but often, static node data is handled by the overall Network/GlobalState
-        # to draw the base graph.
-        # This method might be more relevant for dynamic node properties like color based on status.
-
-        # For now, print a message. The actual data population for nodes
-        # is primarily handled by GlobalState's initialize_plot_data.
-        print(f"Node {self.id}: Initializing plot data (often handled by GlobalState/Network).")
-
-        # Example: If a node needs a specific static symbol or label
-        if 'node_details' not in figure_data:
-            figure_data['node_details'] = {}
-        figure_data['node_details'][self.id] = {
-            'coords': self.coords,
-            'type': self.type,
-            'initial_packages_count': len(self.packages_held)
-        }
-
-    def update_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Updates the plotting data for this specific node, reflecting its current state.
-        This method is called at each simulation timestep.
-        It modifies the shared figure_data dictionary.
-        """
-        # Update dynamic properties like the number of packages held, or change color based on status
-        # For example, if a node has packages, its visual representation might change.
-
-        # Ensure the 'node_dynamic_data' key exists
-        if 'node_dynamic_data' not in figure_data:
-            figure_data['node_dynamic_data'] = {}
-
-        # Update current packages held at this node
-        figure_data['node_dynamic_data'][self.id] = {
-            'packages_held_count': len(self.packages_held),
-            'has_packages': bool(self.packages_held)
-            # Add other dynamic attributes like current status, if applicable
-        }
-        # print(f"Node {self.id}: Updating plot data. Packages: {len(self.packages_held)}")
-
+        return list(self.packages_held)

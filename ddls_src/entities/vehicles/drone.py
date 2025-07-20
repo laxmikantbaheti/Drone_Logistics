@@ -1,159 +1,182 @@
 from typing import List, Tuple, Any, Dict, Optional
-from .base import Vehicle  # Import the base Vehicle class
+from datetime import timedelta
+
+# Refactored local imports
+from .base import Vehicle
+
+# MLPro Imports
+from mlpro.bf.systems import System, State, Action
+from mlpro.bf.math import MSpace, Dimension
 
 
-# Forward declaration for NetworkManager to avoid circular dependency
-class NetworkManager:
-    pass
+# Forward declarations
+class GlobalState: pass
+
+
+class Order: pass
+
+
+class Node: pass
 
 
 class Drone(Vehicle):
     """
-    Represents a drone vehicle in the simulation.
-    Inherits from Vehicle and manages its battery level.
+    Represents a drone vehicle, refactored as a concrete MLPro System.
+    It now processes its own load/unload actions and manages its battery.
     """
 
-    def __init__(self, id: int, start_node_id: int, max_payload_capacity: float,
-                 max_speed: float, initial_battery: float, battery_drain_rate_flying: float,
-                 battery_drain_rate_idle: float, battery_charge_rate: float):
+    C_TYPE = 'Drone'
+    C_NAME = 'Drone'
+
+    def __init__(self,
+                 p_id: int,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=True,
+                 **p_kwargs):
         """
-        Initializes a Drone.
-
-        Args:
-            id (int): Unique identifier for the drone.
-            start_node_id (int): The ID of the node where the drone starts.
-            max_payload_capacity (float): Maximum weight/volume of cargo the drone can carry.
-            max_speed (float): Maximum speed of the drone.
-            initial_battery (float): The starting battery level of the drone (0.0 to 1.0, or percentage).
-            battery_drain_rate_flying (float): Rate of battery drain per unit of time when flying.
-            battery_drain_rate_idle (float): Rate of battery drain per unit of time when idle/at rest.
-            battery_charge_rate (float): Rate of battery charge per unit of time.
+        Initializes a Drone system.
         """
-        super().__init__(id, 'drone', start_node_id, max_payload_capacity, max_speed)
-        self.battery_level: float = initial_battery
-        self.battery_drain_rate_flying: float = battery_drain_rate_flying
-        self.battery_drain_rate_idle: float = battery_drain_rate_idle
-        self.battery_charge_rate: float = battery_charge_rate
-        self.max_battery_capacity: float = 1.0  # Assuming battery level is normalized 0.0 to 1.0
+        super().__init__(p_id=p_id,
+                         p_name=p_name,
+                         p_visualize=p_visualize,
+                         p_logging=p_logging,
+                         **p_kwargs)
 
-        # Additional drone-specific states
-        self.max_flight_time: float = (
-                    initial_battery / battery_drain_rate_flying) if battery_drain_rate_flying > 0 else float('inf')
+        self.global_state: 'GlobalState' = p_kwargs.get('global_state')
+        if self.global_state is None:
+            raise ValueError("Drone requires a reference to GlobalState.")
 
-        print(f"Drone {self.id} initialized with {self.battery_level * 100:.1f}% battery.")
+        self.initial_battery: float = p_kwargs.get('initial_battery', 1.0)
+        self.battery_drain_rate_flying: float = p_kwargs.get('battery_drain_rate_flying', 0.005)
+        self.battery_drain_rate_idle: float = p_kwargs.get('battery_drain_rate_idle', 0.001)
+        self.battery_charge_rate: float = p_kwargs.get('battery_charge_rate', 0.01)
+        self.max_battery_capacity: float = 1.0
+        self.battery_level: float = self.initial_battery
 
-    def update_energy(self, delta_amount: float) -> None:
+        self._state = State(self._state_space)
+        self.reset()
+
+    @staticmethod
+    def setup_spaces():
         """
-        Updates the drone's battery level. Positive delta_amount for charging,
-        negative for draining.
-
-        Args:
-            delta_amount (float): The amount to change the battery level by.
+        Extends the Vehicle's state and action spaces with drone-specific dimensions.
         """
-        self.battery_level += delta_amount
-        # Ensure battery level does not go below zero or exceed max capacity
-        self.battery_level = max(0.0, min(self.battery_level, self.max_battery_capacity))
+        state_space, _ = Vehicle.setup_spaces()
 
-        if self.battery_level <= 0.0 and self.status == "en_route":
-            self.status = "broken_down"  # Or "out_of_battery"
-            print(f"Drone {self.id} ran out of battery and is now {self.status}.")
+        state_space.add_dim(Dimension('battery_level', 'R', 'Current Battery Level (0.0-1.0)', p_boundaries=[0, 1]))
 
-    def drain_battery(self, delta_time: float) -> None:
+        action_space = MSpace()
+        action_space.add_dim(Dimension(p_name_short='drone_action',
+                                       p_base_set='Z',
+                                       p_name_long='Drone Action',
+                                       p_boundaries=[0, 2]))
+        # 0: GO_TO_NODE (handled by base class)
+        # 1: LOAD_ORDER
+        # 2: UNLOAD_ORDER
+
+        return state_space, action_space
+
+    def _reset(self, p_seed=None):
+        super()._reset(p_seed)
+        self.battery_level = self.initial_battery
+        self._update_state()
+
+    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
         """
-        Drains the battery based on the drone's current status (flying or idle).
-
-        Args:
-            delta_time (float): The time duration over which battery is drained.
+        Processes actions for the drone, including loading and unloading.
         """
+        action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        action_kwargs = p_action.get_kwargs()
+
+        if action_value == 0:  # GO_TO_NODE
+            return super()._process_action(p_action, p_t_step)
+
+        try:
+            order_id = action_kwargs['order_id']
+            if action_value == 1:  # LOAD_ORDER
+                return self._load_order(order_id)
+            elif action_value == 2:  # UNLOAD_ORDER
+                return self._unload_order(order_id)
+        except KeyError:
+            self.log(self.C_LOG_TYPE_E, "Action requires 'order_id' in kwargs.")
+            return False
+
+        return False
+
+    def update_energy(self, p_time_passed: float):
         if self.status == "en_route":
             drain_rate = self.battery_drain_rate_flying
-        else:  # idle, loading, unloading, etc.
+        elif self.status == "charging":
+            return
+        else:
             drain_rate = self.battery_drain_rate_idle
 
-        battery_consumed = drain_rate * delta_time
-        self.update_energy(-battery_consumed)
-        # print(f"Drone {self.id}: Drained {battery_consumed*100:.1f}% battery. Remaining: {self.battery_level*100:.1f}%")
+        battery_consumed = drain_rate * p_time_passed
+        self.battery_level -= battery_consumed
+        self.battery_level = max(0.0, self.battery_level)
 
-    def charge_battery(self, delta_time: float) -> None:
-        """
-        Charges the battery based on the drone's battery_charge_rate and delta_time.
-        This method will be called during continuous dynamics in LogisticsSimulation
-        when the drone is in a 'charging' status.
+        if self.battery_level <= 0.0 and self.status != "broken_down":
+            self.status = "broken_down"
 
-        Args:
-            delta_time (float): The time duration over which battery is charged.
-        """
-        if self.status != "charging":
-            # print(f"Drone {self.id}: Not in 'charging' status, cannot charge.")
-            return
+    def charge(self, p_time_passed: float):
+        if self.status == "charging":
+            battery_charged = self.battery_charge_rate * p_time_passed
+            self.battery_level += battery_charged
+            self.battery_level = min(self.battery_level, self.max_battery_capacity)
 
-        battery_charged = self.battery_charge_rate * delta_time
-        self.update_energy(battery_charged)
-        # print(f"Drone {self.id}: Charged {battery_charged*100:.1f}% battery. Remaining: {self.battery_level*100:.1f}%")
-
-    # Override move_along_route to include battery consumption
-    def move_along_route(self, delta_time: float, network_manager: 'NetworkManager') -> None:
-        """
-        Advances the drone along its current route, consuming battery.
-        """
-        if self.status != "en_route" or not self.current_route or len(self.current_route) < 2:
-            return
-
-        # Get current segment travel time (before movement)
-        start_node_id = self.current_route[0]
-        end_node_id = self.current_route[1]
-        global_state = network_manager.global_state
-        network = global_state.network
-        edge = network.get_edge_between_nodes(start_node_id, end_node_id)
-
-        if not edge:
-            super().move_along_route(delta_time, network_manager)  # Let base class handle stopping
-            return
-
-        segment_travel_time = edge.get_drone_flight_time()
-        if segment_travel_time == float('inf') or segment_travel_time <= 0:
-            super().move_along_route(delta_time, network_manager)  # Let base class handle stopping
-            return
-
-        # Calculate actual time that will be spent moving in this step
-        time_to_cover_remaining_segment = (1.0 - self.route_progress) * segment_travel_time
-        time_to_move = min(delta_time, time_to_cover_remaining_segment)
-
-        # Consume battery for the time spent moving (flying drain rate)
-        self.drain_battery(time_to_move)
-
-        # Only move if there's still battery
-        if self.battery_level > 0:
-            super().move_along_route(delta_time, network_manager)
+    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+        time_seconds = p_t_step.total_seconds()
+        if self.status == "charging":
+            self.charge(time_seconds)
         else:
-            self.status = "broken_down"  # Or "out_of_battery"
-            print(f"Drone {self.id} ran out of battery during movement and is now {self.status}.")
-            self.current_route = []  # Stop movement
+            super()._simulate_reaction(p_state, p_action, p_t_step)
+        self._update_state()
+        return self._state
 
-    # --- Plotting Methods ---
-    def initialize_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Initializes the plotting data for this specific drone.
-        Calls the base class method and adds drone-specific initial data.
-        """
-        super().initialize_plot_data(figure_data)  # Call base Vehicle's initializer
-        print(f"Drone {self.id}: Initializing drone-specific plot data.")
+    def _update_state(self):
+        super()._update_state()
+        self._state.set_value('battery_level', self.battery_level)
 
-        # Add drone-specific initial data to the existing vehicle entry
-        if 'vehicles' in figure_data and self.id in figure_data['vehicles']:
-            figure_data['vehicles'][self.id]['initial_battery_level'] = self.battery_level
-            figure_data['vehicles'][self.id]['max_battery_capacity'] = self.max_battery_capacity
-            figure_data['vehicles'][self.id]['max_flight_time'] = self.max_flight_time
+    def _load_order(self, order_id: int) -> bool:
+        """Internal logic to load an order."""
+        try:
+            order: 'Order' = self.global_state.get_entity("order", order_id)
+            if self.current_node_id is None: return False
+            current_node: 'Node' = self.global_state.get_entity("node", self.current_node_id)
 
-    def update_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Updates the plotting data for this specific drone, reflecting its current state
-        (position, status, cargo, and battery level).
-        Calls the base class method and adds drone-specific dynamic data.
-        """
-        super().update_plot_data(figure_data)  # Call base Vehicle's updater
-        print(f"Drone {self.id}: Updating drone-specific plot data. Battery: {self.battery_level * 100:.1f}%")
+            if not current_node.is_loadable: return False
+            if order_id not in current_node.get_packages(): return False
+            if len(self.cargo_manifest) >= self.max_payload_capacity: return False
 
-        # Update drone-specific dynamic data
-        if 'vehicles' in figure_data and self.id in figure_data['vehicles']:
-            figure_data['vehicles'][self.id]['current_battery_level'] = self.battery_level
+            current_node.remove_package(order_id)
+            self.add_cargo(order_id)
+            order.update_status("in_transit")
+            self.set_status("loading")
+            return True
+        except KeyError:
+            return False
+
+    def _unload_order(self, order_id: int) -> bool:
+        """Internal logic to unload an order."""
+        try:
+            order: 'Order' = self.global_state.get_entity("order", order_id)
+            if self.current_node_id is None: return False
+            current_node: 'Node' = self.global_state.get_entity("node", self.current_node_id)
+
+            if not current_node.is_unloadable: return False
+            if order_id not in self.get_cargo(): return False
+
+            self.remove_cargo(order_id)
+            current_node.add_package(order_id)
+
+            if order.customer_node_id == current_node.id:
+                order.update_status("delivered")
+                order.delivery_time = self.global_state.current_time
+            else:
+                order.update_status("at_node")
+
+            self.set_status("unloading")
+            return True
+        except KeyError:
+            return False

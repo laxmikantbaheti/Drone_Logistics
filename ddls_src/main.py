@@ -87,9 +87,9 @@ if __name__ == "__main__":
         # --- Decision Loop Phase (Agent's turn to act) ---
         simulation.start_decision_loop()
         micro_action_count = 0
-        max_micro_actions_per_step = 5  # Limit micro-actions to prevent infinite loops for dummy agent
+        # max_micro_actions_per_step = 5  # Limit micro-actions to prevent infinite loops for dummy agent
 
-        while simulation.is_decision_loop_active() and micro_action_count < max_micro_actions_per_step:
+        while simulation.is_decision_loop_active():
             micro_action_count += 1
 
             # --- Dummy Agent Logic ---
@@ -113,13 +113,13 @@ if __name__ == "__main__":
 
             # Optionally, force NO_OPERATION after a few actions to terminate the loop
             # This makes the decision loop finite for the dummy agent.
-            if micro_action_count >= max_micro_actions_per_step:
-                no_op_index = simulation.action_map.get((SimulationAction.NO_OPERATION,))
-                if no_op_index is not None:
-                    chosen_action_index = no_op_index
-                else:
-                    print("Warning: NO_OPERATION not found in action map, cannot force end decision loop.")
-                    simulation._decision_loop_active = False  # Force end
+            # if micro_action_count >= max_micro_actions_per_step:
+            #     no_op_index = simulation.action_map.get((SimulationAction.NO_OPERATION,))
+            #     if no_op_index is not None:
+            #         chosen_action_index = no_op_index
+            #     else:
+            #         print("Warning: NO_OPERATION not found in action map, cannot force end decision loop.")
+            #         simulation._decision_loop_active = False  # Force end
 
             action_executed = simulation.process_agent_micro_action(chosen_action_index)
             print(

@@ -1,289 +1,194 @@
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Any, Dict, Optional
+from datetime import timedelta
+
+# MLPro Imports
+from mlpro.bf.systems import System, State, Action
+from mlpro.bf.math import MSpace, Dimension
 
 
-# Forward declaration for NetworkManager to avoid circular dependency
+# Forward declaration for NetworkManager
 class NetworkManager:
     pass
 
 
-class Vehicle(ABC):
+class Vehicle(System, ABC):
     """
-    Abstract base class for all vehicles in the simulation (e.g., Trucks, Drones).
-    Defines common attributes and abstract methods that concrete vehicle types must implement.
+    Abstract base class for all vehicles, refactored as an MLPro System.
+    Defines common state, actions, and the core movement simulation logic.
     """
 
-    def __init__(self, id: int, type: str, start_node_id: int,
-                 max_payload_capacity: float, max_speed: float):
+    C_TYPE = 'Vehicle'
+    C_NAME = 'Vehicle'
+
+    def __init__(self,
+                 p_id: int,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=True,
+                 **p_kwargs):
         """
-        Initializes a Vehicle.
+        Initializes a Vehicle system.
 
-        Args:
-            id (int): Unique identifier for the vehicle.
-            type (str): The type of the vehicle (e.g., 'truck', 'drone').
-            start_node_id (int): The ID of the node where the vehicle starts.
-            max_payload_capacity (float): Maximum weight/volume of cargo the vehicle can carry.
-            max_speed (float): Maximum speed of the vehicle (e.g., in km/h or units/minute).
+        Parameters:
+            p_id (int): Unique identifier for the vehicle.
+            p_name (str): Name of the vehicle.
+            p_visualize (bool): Visualization flag.
+            p_logging: Logging level.
+            p_kwargs: Additional keyword arguments. Expected keys:
+                'start_node_id': int
+                'max_payload_capacity': float
+                'max_speed': float
+                'network_manager': NetworkManager
         """
-        self.id: int = id
-        self.type: str = type
-        self.current_node_id: Optional[int] = start_node_id  # Current node if at a node, None if en-route
-        self.current_location_coords: Tuple[float, float] = (0.0, 0.0)  # Will be updated by NetworkManager
-        self.status: str = "idle"  # e.g., "idle", "en_route", "loading", "unloading", "charging", "maintenance"
-        self.cargo_manifest: List[int] = []  # List of order IDs currently carried by the vehicle
-        self.max_payload_capacity: float = max_payload_capacity
-        self.max_speed: float = max_speed
-        self.current_route: List[int] = []  # List of node IDs representing the planned route
-        self.route_progress: float = 0.0  # Progress along the current segment (0.0 to 1.0)
-        self.distance_traveled_current_segment: float = 0.0  # Distance covered on current segment
+        super().__init__(p_id=p_id,
+                         p_name=p_name,
+                         p_visualize=p_visualize,
+                         p_logging=p_logging,
+                         p_mode=System.C_MODE_SIM,
+                         p_latency=timedelta(0, 0, 0))
 
-        print(f"Vehicle {self.id} (Type: {self.type}) initialized at node {self.current_node_id}.")
+        # Vehicle-specific attributes
+        self.start_node_id: int = p_kwargs.get('start_node_id')
+        self.max_payload_capacity: float = p_kwargs.get('max_payload_capacity', 0)
+        self.max_speed: float = p_kwargs.get('max_speed', 0)
+        self.network_manager: 'NetworkManager' = p_kwargs.get('network_manager')
 
-    @abstractmethod
-    def update_energy(self, delta_amount: float) -> None:
+        # Internal dynamic attributes
+        self.status: str = "idle"
+        self.current_node_id: Optional[int] = self.start_node_id
+        self.current_location_coords: Tuple[float, float] = (0.0, 0.0)
+        self.cargo_manifest: List[int] = []
+        self.current_route: List[int] = []
+        self.route_progress: float = 0.0
+
+        self._state = State(self._state_space)
+        self.reset()
+
+    @staticmethod
+    def setup_spaces():
         """
-        Abstract method to update the vehicle's energy level (fuel or battery).
-        Must be implemented by concrete vehicle types.
-
-        Args:
-            delta_amount (float): The amount to change the energy level by.
-                                  Positive for gain (e.g., charging), negative for consumption.
+        Defines the state and action spaces for a generic Vehicle system.
         """
-        pass
+        state_space = MSpace()
+        # Status: 0=idle, 1=en_route, 2=loading, 3=unloading, 4=charging, 5=maintenance, 6=broken_down
+        state_space.add_dim(Dimension('status', 'Z', 'Vehicle Status', p_boundaries=[0, 6]))
+        state_space.add_dim(
+            Dimension('current_node_id', 'Z', 'Current Node ID (-1 for en-route)', p_boundaries=[-1, 999]))
+        state_space.add_dim(Dimension('cargo_count', 'Z', 'Number of packages in cargo', p_boundaries=[0, 99]))
 
-    def move_along_route(self, delta_time: float, network_manager: 'NetworkManager') -> None:
+        action_space = MSpace()
+        action_space.add_dim(
+            Dimension(p_name_short='target_node', p_base_set='Z', p_name_long='Target Node ID', p_boundaries=[0, 999]))
+
+        return state_space, action_space
+
+    def _reset(self, p_seed=None):
         """
-        Advances the vehicle along its current route based on delta_time.
-        Updates current_location_coords and current_node_id if an arrival occurs.
-        This method relies on NetworkManager for route segment details and node coordinates.
-
-        Args:
-            delta_time (float): The time duration to simulate movement for.
-            network_manager (NetworkManager): Reference to the NetworkManager for route calculations.
+        Resets the vehicle to its initial state at its starting node.
         """
-        if self.status != "en_route" or not self.current_route or len(self.current_route) < 2:
-            return  # Vehicle not en-route or no valid route
+        self.status = "idle"
+        self.current_node_id = self.start_node_id
+        self.cargo_manifest = []
+        self.current_route = []
+        self.route_progress = 0.0
+        # In a full implementation, coords would be set from the start node's coords
+        # self.current_location_coords = self.network_manager.global_state.get_entity("node", self.start_node_id).coords
+        self._update_state()
 
-        # Get current segment
-        start_node_id = self.current_route[0]
-        end_node_id = self.current_route[1]
+    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+        """
+        Processes a "go to node" action. Calculates and sets the vehicle's route.
+        """
+        if self.status not in ["idle", "loading", "unloading"]:
+            self.log(self.C_LOG_TYPE_W,
+                     f'Vehicle {self.id} is busy (status: {self.status}) and cannot start a new route.')
+            return False
 
-        # Get edge information from NetworkManager (which uses the Network graph)
-        # Assuming NetworkManager has a method to get edge details or calculate segment time
-        # For now, we'll directly use the Network class (via GlobalState's Network reference)
-        # This will require GlobalState to have a Network instance, and Network to have get_edge_between_nodes
-        global_state = network_manager.global_state  # NetworkManager has global_state
-        network = global_state.network  # GlobalState has network
+        target_node_id = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
 
-        edge = network.get_edge_between_nodes(start_node_id, end_node_id)
+        if self.current_node_id is None:
+            self.log(self.C_LOG_TYPE_E, f'Vehicle {self.id} is en-route and cannot start a new route this way.')
+            return False
+
+        path = self.network_manager.network.calculate_shortest_path(self.current_node_id, target_node_id,
+                                                                    self.C_NAME.lower())
+
+        if not path:
+            self.log(self.C_LOG_TYPE_W, f'No path found from {self.current_node_id} to {target_node_id}.')
+            return False
+
+        self.set_route(path)
+        return True
+
+    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+        """
+        Simulates the vehicle's movement over a given time step.
+        """
+        if self.status == "en_route" and self.current_route and len(self.current_route) >= 2:
+            self._move_along_route(p_t_step.total_seconds())
+
+        self._update_state()
+        return self._state
+
+    def _move_along_route(self, delta_time: float):
+        """
+        Internal logic to advance the vehicle along its route.
+        """
+        # This logic is adapted from the original move_along_route method
+        start_node_id, end_node_id = self.current_route[0], self.current_route[1]
+        edge = self.network_manager.network.get_edge_between_nodes(start_node_id, end_node_id)
+
         if not edge:
-            print(f"Vehicle {self.id}: No edge found between {start_node_id} and {end_node_id}. Stopping movement.")
-            self.status = "idle"  # Or "stuck"
-            self.current_route = []
-            return
-
-        # Calculate travel time for this segment based on vehicle type
-        if self.type == 'truck':
-            segment_travel_time = edge.get_current_travel_time()
-        elif self.type == 'drone':
-            segment_travel_time = edge.get_drone_flight_time()
-        else:
-            print(f"Vehicle {self.id}: Unknown vehicle type '{self.type}' for movement calculation.")
-            return
-
-        if segment_travel_time == float('inf') or segment_travel_time <= 0:
-            print(
-                f"Vehicle {self.id}: Segment {start_node_id}-{end_node_id} is impassable or has zero travel time. Stopping movement.")
-            self.status = "idle"  # Or "stuck"
-            self.current_route = []
-            return
-
-        # Calculate how much of the segment can be covered in delta_time
-        time_to_cover_remaining_segment = (1.0 - self.route_progress) * segment_travel_time
-        time_to_move = min(delta_time, time_to_cover_remaining_segment)
-
-        # Update route progress
-        progress_increment = time_to_move / segment_travel_time
-        self.route_progress += progress_increment
-
-        # Update energy based on movement
-        # Assuming energy consumption rate is per unit of time or distance
-        # For now, we'll assume consumption is proportional to time spent moving.
-        # Concrete classes will implement update_energy
-        # self.update_energy(-self.energy_consumption_rate * time_to_move) # Example
-
-        # Update current location coordinates
-        start_coords = global_state.get_entity("node", start_node_id).coords
-        end_coords = global_state.get_entity("node", end_node_id).coords
-
-        # Linear interpolation for coordinates
-        self.current_location_coords = (
-            start_coords[0] + (end_coords[0] - start_coords[0]) * self.route_progress,
-            start_coords[1] + (end_coords[1] - start_coords[1]) * self.route_progress
-        )
-
-        # Check for arrival at the next node
-        if self.route_progress >= 1.0:
-            self.current_node_id = end_node_id  # Vehicle has arrived at the next node
-            self.current_route.pop(0)  # Remove the node just arrived at
-
-            if not self.current_route:  # Route completed
-                self.status = "idle"
-                self.route_progress = 0.0
-                self.distance_traveled_current_segment = 0.0
-                # print(f"Vehicle {self.id} arrived at final destination node {self.current_node_id}.")
-            else:  # Move to the next segment
-                self.route_progress = 0.0  # Reset progress for the new segment
-                self.distance_traveled_current_segment = 0.0
-                # print(f"Vehicle {self.id} arrived at intermediate node {self.current_node_id}. Continuing to {self.current_route[1]}.")
-
-            # Any arrival events (e.g., package delivery) would be triggered here or by NetworkManager
-            # For now, NetworkManager is responsible for this.
-            network_manager.handle_vehicle_arrival(self.id, self.current_node_id)
-
-    def set_status(self, new_status: str) -> None:
-        """
-        Sets the current status of the vehicle.
-
-        Args:
-            new_status (str): The new status (e.g., "idle", "en_route", "loading").
-        """
-        valid_statuses = ["idle", "en_route", "loading", "unloading", "charging", "maintenance", "broken_down"]
-        if new_status not in valid_statuses:
-            raise ValueError(f"Invalid vehicle status: {new_status}. Must be one of {valid_statuses}")
-        self.status = new_status
-        # print(f"Vehicle {self.id}: Status set to {new_status}.")
-
-    def add_cargo(self, order_id: int) -> None:
-        """
-        Adds an order ID to the vehicle's cargo manifest.
-
-        Args:
-            order_id (int): The ID of the order to add.
-        """
-        if len(self.cargo_manifest) >= self.max_payload_capacity:  # Simple count-based capacity
-            print(f"Vehicle {self.id}: Cannot add cargo {order_id}, payload capacity full.")
-            return
-        if order_id not in self.cargo_manifest:
-            self.cargo_manifest.append(order_id)
-            # print(f"Vehicle {self.id}: Added cargo {order_id}. Manifest: {self.cargo_manifest}")
-
-    def remove_cargo(self, order_id: int) -> None:
-        """
-        Removes an order ID from the vehicle's cargo manifest.
-
-        Args:
-            order_id (int): The ID of the order to remove.
-        """
-        if order_id in self.cargo_manifest:
-            self.cargo_manifest.remove(order_id)
-            # print(f"Vehicle {self.id}: Removed cargo {order_id}. Manifest: {self.cargo_manifest}")
-        # else:
-        # print(f"Vehicle {self.id}: Cargo {order_id} not found to remove.")
-
-    def get_cargo(self) -> List[int]:
-        """
-        Returns a list of order IDs currently in the vehicle's cargo manifest.
-
-        Returns:
-            List[int]: A list of integer order IDs.
-        """
-        return list(self.cargo_manifest)  # Return a copy
-
-    def set_route(self, route_nodes: List[int]) -> None:
-        """
-        Sets the planned route for the vehicle as a list of node IDs.
-        Resets route progress and sets status to 'en_route'.
-
-        Args:
-            route_nodes (List[int]): A list of node IDs representing the route.
-                                     Must contain at least two nodes (start and end).
-        """
-        if not route_nodes or len(route_nodes) < 2:
-            print(f"Vehicle {self.id}: Invalid route provided. Must have at least two nodes.")
-            self.current_route = []
             self.status = "idle"
             return
 
-        if self.current_node_id != route_nodes[0]:
-            # This can happen if vehicle is already en-route and re-routing,
-            # or if it's idle at a different node.
-            # For simplicity, we assume the first node in the route is the current location.
-            # More complex logic would involve pathfinding from current coords to route_nodes[0]
-            print(
-                f"Vehicle {self.id}: Warning - Route starts at {route_nodes[0]} but vehicle is at {self.current_node_id}.")
-            # For now, we'll force the vehicle to the start of the new route if it's idle.
-            if self.status == "idle":
-                self.current_node_id = route_nodes[0]
-                # Update current_location_coords based on the node's coordinates
-                # This requires access to GlobalState, which is typically via NetworkManager or LogisticsSimulation
-                # For now, assume it's handled by the calling manager.
-                # self.current_location_coords = global_state.get_entity("node", self.current_node_id).coords
+        travel_time = edge.get_current_travel_time() if self.C_NAME == 'Truck' else edge.get_drone_flight_time()
 
-        self.current_route = list(route_nodes)
-        self.route_progress = 0.0
-        self.distance_traveled_current_segment = 0.0
+        if travel_time <= 0 or travel_time == float('inf'):
+            self.status = "idle"
+            return
+
+        time_needed = (1.0 - self.route_progress) * travel_time
+        time_to_move = min(delta_time, time_needed)
+
+        self.route_progress += time_to_move / travel_time
+
+        # Update energy (to be implemented by child classes)
+        self.update_energy(-time_to_move)
+
+        if self.route_progress >= 1.0:
+            self.current_node_id = end_node_id
+            self.current_route.pop(0)
+            self.route_progress = 0.0
+            if not self.current_route or len(self.current_route) < 2:
+                self.status = "idle"
+            # Here you would also update coordinates to the node's exact location
+        else:
+            self.current_node_id = None  # En-route
+            # Here you would interpolate coordinates based on route_progress
+
+    @abstractmethod
+    def update_energy(self, p_time_passed: float):
+        """
+        Abstract method for energy consumption.
+        """
+        pass
+
+    def _update_state(self):
+        """
+        Synchronizes internal attributes with the formal MLPro state object.
+        """
+        status_map = {"idle": 0, "en_route": 1, "loading": 2, "unloading": 3, "charging": 4, "maintenance": 5,
+                      "broken_down": 6}
+        self._state.set_value('status', status_map.get(self.status, 0))
+        self._state.set_value('current_node_id', self.current_node_id if self.current_node_id is not None else -1)
+        self._state.set_value('cargo_count', len(self.cargo_manifest))
+
+    # Public methods for managers to call
+    def set_route(self, route: List[int]):
+        self.current_route = route
         self.status = "en_route"
-        # print(f"Vehicle {self.id}: Route set to {self.current_route}. Status: {self.status}")
-
-    def get_current_route_segment(self) -> Optional[Tuple[int, int]]:
-        """
-        Returns the current segment of the route (start_node_id, end_node_id).
-
-        Returns:
-            Optional[Tuple[int, int]]: A tuple of (start_node_id, end_node_id) or None if no active route.
-        """
-        if self.current_route and len(self.current_route) >= 2:
-            return (self.current_route[0], self.current_route[1])
-        return None
-
-    def is_at_node(self, node_id: int) -> bool:
-        """
-        Checks if the vehicle is currently located at a specific node.
-
-        Args:
-            node_id (int): The ID of the node to check against.
-
-        Returns:
-            bool: True if the vehicle's current_node_id matches the given node_id.
-        """
-        return self.current_node_id == node_id
-
-    # --- Plotting Methods ---
-    def initialize_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Initializes the plotting data for this specific vehicle.
-        This is typically called once at the start of the simulation.
-        """
-        print(f"Vehicle {self.id}: Initializing plot data.")
-        # This will contribute to a 'vehicles' layer in figure_data
-        if 'vehicles' not in figure_data:
-            figure_data['vehicles'] = {}
-
-        figure_data['vehicles'][self.id] = {
-            'type': self.type,
-            'initial_coords': self.current_location_coords,  # Or lookup from start_node_id
-            'status': self.status,
-            'cargo_count': len(self.cargo_manifest)
-        }
-
-    def update_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Updates the plotting data for this specific vehicle, reflecting its current state
-        (position, status, cargo).
-        This method is called at each simulation timestep.
-        """
-        print(f"Vehicle {self.id}: Updating plot data. Status: {self.status}, Coords: {self.current_location_coords}")
-        if 'vehicles' not in figure_data:
-            figure_data['vehicles'] = {}  # Defensive check
-
-        # Update dynamic properties
-        vehicle_data = figure_data['vehicles'].get(self.id, {})
-        vehicle_data['current_coords'] = self.current_location_coords
-        vehicle_data['status'] = self.status
-        vehicle_data['cargo_count'] = len(self.cargo_manifest)
-        vehicle_data['current_node_id'] = self.current_node_id  # Useful for snapping to node if arrived
-
-        # Specific energy level update will be handled by Truck/Drone update_plot_data
-
-        figure_data['vehicles'][self.id] = vehicle_data
+        self.route_progress = 0.0
+        self.current_node_id = None
+        self._update_state()

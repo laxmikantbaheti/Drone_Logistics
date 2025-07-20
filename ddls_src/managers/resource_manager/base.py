@@ -1,206 +1,124 @@
 from typing import List, Dict, Any, Optional
-from ...managers.resource_manager.fleet_manager import FleetManager
-from ...managers.resource_manager.micro_hub_manager import MicroHubsManager
+from datetime import timedelta
+
+# Refactored local imports
+from .fleet_manager import FleetManager
+from .micro_hub_manager import MicroHubsManager
+
+# MLPro Imports
+from mlpro.bf.systems import System, State, Action
+from mlpro.bf.math import MSpace, Dimension
 
 
-# Forward declaration for GlobalState to avoid circular dependency
-class GlobalState:
-    pass
+# Forward declarations
+class GlobalState: pass
 
 
-# # Forward declarations for FleetManager and MicroHubsManager, which will be
-# # instantiated and managed by ResourceManager
-# class FleetManager:
-#     pass
-#
-#
-# class MicroHubsManager:
-#     pass
-
-
-class ResourceManager:
+class ResourceManager(System):
     """
-    Manages various resources within the simulation, including vehicle maintenance
-    and the availability of services at micro-hubs. It orchestrates actions
-    related to fleet and micro-hub resources.
+    Top-level manager for all physical resources (vehicles and micro-hubs).
+    As an MLPro System, it aggregates state data from its sub-managers and
+    dispatches high-level resource commands down the chain.
     """
 
-    def __init__(self, global_state: 'GlobalState'):
+    C_TYPE = 'Resource Manager'
+    C_NAME = 'Resource Manager'
+
+    def __init__(self,
+                 p_id=None,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=True,
+                 **p_kwargs):
         """
-        Initializes the ResourceManager.
-
-        Args:
-            global_state (GlobalState): Reference to the central GlobalState.
+        Initializes the ResourceManager system.
         """
-        self.global_state = global_state
+        super().__init__(p_id=p_id,
+                         p_name=p_name,
+                         p_visualize=p_visualize,
+                         p_logging=p_logging,
+                         p_mode=System.C_MODE_SIM,
+                         p_latency=timedelta(0, 0, 0))
 
-        # Instantiate sub-managers. These will handle more granular resource operations.
-        # They are initialized here, but their methods will be called by ResourceManager
-        # or directly by ActionManager if the action dispatch is granular enough.
-        self.fleet_manager: FleetManager = FleetManager(global_state)
-        self.micro_hubs_manager: MicroHubsManager = MicroHubsManager(global_state)
+        self.global_state: 'GlobalState' = p_kwargs.get('global_state')
+        if self.global_state is None:
+            raise ValueError("ResourceManager requires a reference to GlobalState.")
 
-        print("ResourceManager initialized.")
+        # Instantiate sub-managers
+        self.fleet_manager = FleetManager(p_id=self.get_id() + '.fleet', global_state=self.global_state)
+        self.micro_hubs_manager = MicroHubsManager(p_id=self.get_id() + '.micro_hubs', global_state=self.global_state)
 
-    def flag_vehicle_for_maintenance(self, vehicle_id: int) -> bool:
+        self._state = State(self._state_space)
+        self.reset()
+
+    @staticmethod
+    def setup_spaces():
         """
-        Flags a vehicle for maintenance, changing its status.
-
-        Args:
-            vehicle_id (int): The ID of the vehicle to flag.
-
-        Returns:
-            bool: True if the vehicle was found and flagged, False otherwise.
+        Defines the state and action spaces for the ResourceManager.
         """
-        try:
-            vehicle = self.global_state.get_vehicle_status(vehicle_id)  # Use generic getter for vehicle status
+        state_space = MSpace()
+        state_space.add_dim(Dimension('num_vehicles', 'Z', 'Total Vehicles', p_boundaries=[0, 999]))
+        state_space.add_dim(Dimension('num_hubs', 'Z', 'Total Hubs', p_boundaries=[0, 999]))
+        state_space.add_dim(Dimension('vehicles_in_maintenance', 'Z', 'Vehicles in Maintenance', p_boundaries=[0, 999]))
 
-            # Determine if it's a truck or drone to get the actual object
-            if vehicle_id in self.global_state.trucks:
-                vehicle_obj = self.global_state.get_entity("truck", vehicle_id)
-            elif vehicle_id in self.global_state.drones:
-                vehicle_obj = self.global_state.get_entity("drone", vehicle_id)
-            else:
-                print(f"ResourceManager: Vehicle {vehicle_id} not found for maintenance flagging.")
-                return False
+        action_space = MSpace()
+        action_space.add_dim(Dimension(p_name_short='rm_action',
+                                       p_base_set='Z',
+                                       p_name_long='Resource Manager Action',
+                                       p_boundaries=[0, 5]))
+        # 0: LOAD_TRUCK, 1: UNLOAD_TRUCK, 2: LOAD_DRONE, 3: UNLOAD_DRONE (to FleetManager)
+        # 4: ACTIVATE_HUB, 5: DEACTIVATE_HUB (to MicroHubsManager)
 
-            if vehicle_obj.status not in ["maintenance", "broken_down"]:
-                vehicle_obj.set_status("maintenance")
-                # If vehicle was en-route, it should stop movement. This is handled by set_status.
-                # Any cargo should be handled (e.g., dropped at current node or transferred).
-                # For now, just status change.
-                print(f"ResourceManager: Vehicle {vehicle_id} flagged for maintenance.")
-                return True
-            else:
-                print(f"ResourceManager: Vehicle {vehicle_id} is already in maintenance or broken down.")
-                return False
-        except KeyError as e:
-            print(f"ResourceManager: Failed to flag vehicle {vehicle_id} for maintenance - {e}.")
-            return False
+        return state_space, action_space
 
-    def release_vehicle_from_maintenance(self, vehicle_id: int) -> bool:
+    def _reset(self, p_seed=None):
+        self.fleet_manager.reset(p_seed)
+        self.micro_hubs_manager.reset(p_seed)
+        self._update_state()
+
+    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
-        Releases a vehicle from maintenance, changing its status back to 'idle'.
-
-        Args:
-            vehicle_id (int): The ID of the vehicle to release.
-
-        Returns:
-            bool: True if the vehicle was found and released, False otherwise.
+        Simulates the reaction of sub-managers and updates its own aggregate state.
         """
-        try:
-            # Determine if it's a truck or drone to get the actual object
-            if vehicle_id in self.global_state.trucks:
-                vehicle_obj = self.global_state.get_entity("truck", vehicle_id)
-            elif vehicle_id in self.global_state.drones:
-                vehicle_obj = self.global_state.get_entity("drone", vehicle_id)
-            else:
-                print(f"ResourceManager: Vehicle {vehicle_id} not found for maintenance release.")
-                return False
+        # The simulation of individual vehicles/hubs is handled at their level.
+        # This manager's simulation step is to update its own aggregate state.
+        self.fleet_manager.simulate_reaction(p_state=None, p_action=None, p_t_step=p_t_step)
+        self.micro_hubs_manager.simulate_reaction(p_state=None, p_action=None, p_t_step=p_t_step)
+        self._update_state()
+        return self._state
 
-            if vehicle_obj.status == "maintenance":
-                vehicle_obj.set_status("idle")  # Or a more appropriate initial status
-                print(f"ResourceManager: Vehicle {vehicle_id} released from maintenance.")
-                return True
-            else:
-                print(f"ResourceManager: Vehicle {vehicle_id} is not currently in maintenance.")
-                return False
-        except KeyError as e:
-            print(f"ResourceManager: Failed to release vehicle {vehicle_id} from maintenance - {e}.")
-            return False
-
-    def flag_unavailability_of_service_at_micro_hub(self, micro_hub_id: int, service_type: str) -> bool:
+    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
         """
-        Flags a specific service at a micro-hub as unavailable.
-
-        Args:
-            micro_hub_id (int): The ID of the micro-hub.
-            service_type (str): The type of service to flag (e.g., 'charging', 'package_transfer', 'launches', 'recoveries').
-
-        Returns:
-            bool: True if the micro-hub was found and service flagged, False otherwise.
+        Processes a command by dispatching it to the correct sub-manager.
         """
-        try:
-            micro_hub = self.global_state.get_entity("micro_hub", micro_hub_id)
-            micro_hub.flag_service_unavailable(service_type)
-            print(f"ResourceManager: MicroHub {micro_hub_id} service '{service_type}' flagged unavailable.")
-            return True
-        except KeyError:
-            print(f"ResourceManager: MicroHub {micro_hub_id} not found.")
-            return False
-        except Exception as e:  # Catching potential errors from micro_hub.flag_service_unavailable
-            print(f"ResourceManager: Error flagging service at MicroHub {micro_hub_id}: {e}")
-            return False
+        action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        action_kwargs = p_action.get_kwargs()
 
-    def release_unavailability_of_service_at_micro_hub(self, micro_hub_id: int, service_type: str) -> bool:
+        # Actions 0-3 are for the FleetManager
+        if 0 <= action_value <= 3:
+            fm_action = Action(p_action_space=self.fleet_manager.get_action_space(), p_values=[action_value],
+                               **action_kwargs)
+            return self.fleet_manager.process_action(fm_action)
+
+        # Actions 4-5 are for the MicroHubsManager
+        elif 4 <= action_value <= 5:
+            # Map RM action value to MHM action value (4->0, 5->1)
+            mhm_action_value = action_value - 4
+            mhm_action = Action(p_action_space=self.micro_hubs_manager.get_action_space(), p_values=[mhm_action_value],
+                                **action_kwargs)
+            return self.micro_hubs_manager.process_action(mhm_action)
+
+        return False
+
+    def _update_state(self):
         """
-        Releases a specific service at a micro-hub, making it available again.
-
-        Args:
-            micro_hub_id (int): The ID of the micro-hub.
-            service_type (str): The type of service to release.
-
-        Returns:
-            bool: True if the micro-hub was found and service released, False otherwise.
+        Calculates aggregate resource statistics and updates the formal state object.
         """
-        try:
-            micro_hub = self.global_state.get_entity("micro_hub", micro_hub_id)
-            micro_hub.release_service_available(service_type)
-            print(f"ResourceManager: MicroHub {micro_hub_id} service '{service_type}' released.")
-            return True
-        except KeyError:
-            print(f"ResourceManager: MicroHub {micro_hub_id} not found.")
-            return False
-        except Exception as e:  # Catching potential errors from micro_hub.release_service_available
-            print(f"ResourceManager: Error releasing service at MicroHub {micro_hub_id}: {e}")
-            return False
+        trucks = self.global_state.get_all_entities("truck").values()
+        drones = self.global_state.get_all_entities("drone").values()
+        hubs = self.global_state.get_all_entities("micro_hub").values()
 
-    # --- Plotting Methods ---
-    def initialize_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Initializes any resource management specific plotting data.
-        This might include initial vehicle statuses or micro-hub service availability.
-        It also calls the sub-managers' plotting initialization.
-        """
-        print("ResourceManager: Initializing plot data.")
-        # Call sub-managers' plotting initializers
-        self.fleet_manager.initialize_plot_data(figure_data)
-        self.micro_hubs_manager.initialize_plot_data(figure_data)
-
-        # Add any top-level ResourceManager specific data here if needed
-        # For example, a summary of all vehicles currently in maintenance
-        if 'resource_overview' not in figure_data:
-            figure_data['resource_overview'] = {}
-
-        vehicles_in_maintenance = [
-                                      v.id for v in self.global_state.get_all_entities("truck").values() if
-                                      v.status == "maintenance"
-                                  ] + [
-                                      v.id for v in self.global_state.get_all_entities("drone").values() if
-                                      v.status == "maintenance"
-                                  ]
-        figure_data['resource_overview']['initial_vehicles_in_maintenance'] = vehicles_in_maintenance
-
-    def update_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Updates resource management specific plotting data for the current simulation step.
-        This might include real-time vehicle status, micro-hub service status, etc.
-        It also calls the sub-managers' plotting updates.
-        """
-        print("ResourceManager: Updating plot data.")
-        # Call sub-managers' plotting updaters
-        self.fleet_manager.update_plot_data(figure_data)
-        self.micro_hubs_manager.update_plot_data(figure_data)
-
-        # Update any top-level ResourceManager specific data here
-        if 'resource_overview' not in figure_data:
-            figure_data['resource_overview'] = {}  # Defensive check
-
-        current_vehicles_in_maintenance = [
-                                              v.id for v in self.global_state.get_all_entities("truck").values() if
-                                              v.status == "maintenance"
-                                          ] + [
-                                              v.id for v in self.global_state.get_all_entities("drone").values() if
-                                              v.status == "maintenance"
-                                          ]
-        figure_data['resource_overview']['current_vehicles_in_maintenance'] = current_vehicles_in_maintenance
+        self._state.set_value('num_vehicles', len(trucks) + len(drones))
+        self._state.set_value('num_hubs', len(hubs))
+        self._state.set_value('vehicles_in_maintenance', sum(1 for v in trucks if v.status == 'maintenance') + sum(
+            1 for v in drones if v.status == 'maintenance'))

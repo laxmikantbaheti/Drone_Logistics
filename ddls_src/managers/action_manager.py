@@ -31,9 +31,9 @@ class ActionManager:
         self.action_masker = action_masker
 
         # Store references to specialized managers
-        self.supply_chain_manager: SupplyChainManager = managers.get('supply_chain_manager')
-        self.resource_manager: ResourceManager = managers.get('resource_manager')
-        self.network_manager: NetworkManager = managers.get('network_manager')
+        self.supply_chain_manager = managers.get('supply_chain_manager')
+        self.resource_manager = managers.get('resource_manager')
+        self.network_manager = managers.get('network_manager')
 
         # Reverse action map for decoding flattened actions back to tuples (optional, but useful)
         self._reverse_action_map: Dict[int, Tuple] = {idx: act_tuple for act_tuple, idx in action_map.items()}

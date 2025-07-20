@@ -1,132 +1,137 @@
 from typing import Tuple, Dict, Any
+from datetime import timedelta
+
+# MLPro Imports
+from mlpro.bf.systems import System, State, Action
+from mlpro.bf.math import MSpace, Dimension
 
 
-class Edge:
+class Edge(System):
     """
-    Represents a connection between two nodes in the simulation network.
-    Edges have properties like length, base travel time, and dynamic factors
-    like traffic and drone flight impact.
+    Represents a connection between two nodes as an MLPro System.
+    Edges have dynamic properties like traffic that can be altered via actions.
     """
 
-    def __init__(self, id: int, start_node_id: int, end_node_id: int,
-                 length: float, base_travel_time: float):
+    C_TYPE = 'Edge'
+    C_NAME = 'Edge'
+
+    def __init__(self,
+                 p_id: int,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=True,
+                 **p_kwargs):
         """
-        Initializes an Edge.
+        Initializes an Edge system.
 
-        Args:
-            id (int): Unique identifier for the edge.
-            start_node_id (int): The ID of the starting node of the edge.
-            end_node_id (int): The ID of the ending node of the edge.
-            length (float): The physical length of the edge (e.g., in kilometers).
-            base_travel_time (float): The ideal travel time across this edge
-                                      under normal conditions (e.g., in minutes).
+        Parameters:
+            p_id (int): Unique identifier for the edge.
+            p_name (str): Name of the edge.
+            p_visualize (bool): Visualization flag.
+            p_logging: Logging level.
+            p_kwargs: Additional keyword arguments. Expected keys:
+                'start_node_id': int
+                'end_node_id': int
+                'length': float
+                'base_travel_time': float
         """
-        self.id: int = id
-        self.start_node_id: int = start_node_id
-        self.end_node_id: int = end_node_id
-        self.length: float = length
-        self.base_travel_time: float = base_travel_time
-        self.current_traffic_factor: float = 1.0  # Multiplier for base_travel_time (1.0 means no impact)
-        self.is_blocked: bool = False  # True if the edge is impassable
-        self.drone_flight_impact_factor: float = 1.0  # Multiplier for drone travel time
+        super().__init__(p_id=p_id,
+                         p_name=p_name,
+                         p_visualize=p_visualize,
+                         p_logging=p_logging,
+                         p_mode=System.C_MODE_SIM,
+                         p_latency=timedelta(0, 0, 0))
 
-        print(f"Edge {self.id} (from Node {self.start_node_id} to Node {self.end_node_id}) initialized.")
+        # Edge-specific attributes
+        self.start_node_id: int = p_kwargs.get('start_node_id')
+        self.end_node_id: int = p_kwargs.get('end_node_id')
+        self.length: float = p_kwargs.get('length', 0.0)
+        self.base_travel_time: float = p_kwargs.get('base_travel_time', 0.0)
 
+        # Internal dynamic attributes
+        self.current_traffic_factor: float = 1.0
+        self.is_blocked: bool = False
+        self.drone_flight_impact_factor: float = 1.0
+
+        self._state = State(self._state_space)
+        self.reset()
+
+    @staticmethod
+    def setup_spaces():
+        """
+        Defines the state and action spaces for an Edge system.
+        """
+        state_space = MSpace()
+        state_space.add_dim(Dimension('traffic_factor', 'R', 'Traffic Factor', p_boundaries=[1.0, 10.0]))
+        state_space.add_dim(Dimension('is_blocked', 'Z', 'Is Blocked (0=no, 1=yes)', p_boundaries=[0, 1]))
+        state_space.add_dim(Dimension('drone_impact', 'R', 'Drone Impact Factor', p_boundaries=[1.0, 10.0]))
+
+        action_space = MSpace()
+        action_space.add_dim(Dimension(p_name_short='edge_action',
+                                       p_base_set='Z',
+                                       p_name_long='Edge Action',
+                                       p_boundaries=[0, 5]))
+        # 0: Set Traffic Normal (1.0)
+        # 1: Set Traffic Medium (1.5)
+        # 2: Set Traffic High (2.5)
+        # 3: Unblock Edge
+        # 4: Block Edge
+        # 5: No Action
+
+        return state_space, action_space
+
+    def _reset(self, p_seed=None):
+        """
+        Resets the edge to its default state.
+        """
+        self.current_traffic_factor = 1.0
+        self.is_blocked = False
+        self.drone_flight_impact_factor = 1.0
+        self._update_state()
+
+    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+        """
+        Processes a discrete flattened action sent to this Edge.
+        """
+        action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+
+        if action_value == 0:
+            self.current_traffic_factor = 1.0
+        elif action_value == 1:
+            self.current_traffic_factor = 1.5
+        elif action_value == 2:
+            self.current_traffic_factor = 2.5
+        elif action_value == 3:
+            self.is_blocked = False
+        elif action_value == 4:
+            self.is_blocked = True
+        # Action 5 is a no-op
+
+        self._update_state()
+        return True
+
+    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+        """
+        Processes the action and returns the new state.
+        """
+        self._process_action(p_action, p_t_step)
+        return self._state
+
+    def _update_state(self):
+        """
+        Synchronizes internal attributes with the formal MLPro state object.
+        """
+        self._state.set_value('traffic_factor', self.current_traffic_factor)
+        self._state.set_value('is_blocked', 1 if self.is_blocked else 0)
+        self._state.set_value('drone_impact', self.drone_flight_impact_factor)
+
+    # Public methods for getting dynamic travel times
     def get_current_travel_time(self) -> float:
-        """
-        Calculates the current travel time across this edge for trucks,
-        considering the base travel time and current traffic factor.
-
-        Returns:
-            float: The current estimated travel time.
-        """
         if self.is_blocked:
-            return float('inf')  # Impassable
+            return float('inf')
         return self.base_travel_time * self.current_traffic_factor
 
     def get_drone_flight_time(self) -> float:
-        """
-        Calculates the current flight time across this edge for drones,
-        considering the base travel time and drone flight impact factor.
-
-        Returns:
-            float: The current estimated drone flight time.
-        """
-        if self.is_blocked:  # Drones might also be affected by blocked paths (e.g., restricted airspace)
+        if self.is_blocked:
             return float('inf')
         return self.base_travel_time * self.drone_flight_impact_factor
-
-    def set_traffic_factor(self, factor: float) -> None:
-        """
-        Sets the current traffic factor for this edge.
-
-        Args:
-            factor (float): The new traffic multiplier (e.g., 1.5 for 50% slower).
-        """
-        if factor < 0:
-            raise ValueError("Traffic factor cannot be negative.")
-        self.current_traffic_factor = factor
-        # print(f"Edge {self.id}: Traffic factor set to {factor}.")
-
-    def set_blocked(self, status: bool) -> None:
-        """
-        Sets whether this edge is blocked (impassable).
-
-        Args:
-            status (bool): True if blocked, False if clear.
-        """
-        self.is_blocked = status
-        # print(f"Edge {self.id}: Blocked status set to {status}.")
-
-    def set_drone_flight_impact_factor(self, factor: float) -> None:
-        """
-        Sets the impact factor on drone flight time for this edge.
-        This could represent weather conditions, restricted airspace, etc.
-
-        Args:
-            factor (float): The new drone flight impact multiplier.
-        """
-        if factor < 0:
-            raise ValueError("Drone flight impact factor cannot be negative.")
-        self.drone_flight_impact_factor = factor
-        # print(f"Edge {self.id}: Drone flight impact factor set to {factor}.")
-
-    # --- Plotting Methods ---
-    def initialize_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Initializes the plotting data for this specific edge within the shared figure_data.
-        This is typically called once at the start of the simulation.
-        It contributes to the 'network_edges' layer managed by GlobalState or Network.
-        """
-        # Static edge data (like its existence and base position) is often handled
-        # by the overall Network/GlobalState's initialize_plot_data.
-        # This method might be used for edge-specific static labels or initial styling.
-        print(f"Edge {self.id}: Initializing plot data (often handled by GlobalState/Network).")
-        # Example: If an edge needs a specific static symbol or label
-        if 'edge_details' not in figure_data:
-            figure_data['edge_details'] = {}
-        figure_data['edge_details'][self.id] = {
-            'start_node_id': self.start_node_id,
-            'end_node_id': self.end_node_id,
-            'length': self.length,
-            'base_travel_time': self.base_travel_time
-        }
-
-    def update_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Updates the plotting data for this specific edge, reflecting its current state.
-        This method is called at each simulation timestep.
-        It modifies the shared figure_data dictionary.
-        """
-        # Update dynamic properties like traffic factor or blocked status,
-        # which could translate to changing the edge's color or thickness in visualization.
-        print(f"Edge {self.id}: Updating plot data (traffic/blocked status).")
-        if 'edge_dynamic_data' not in figure_data:
-            figure_data['edge_dynamic_data'] = {}
-
-        figure_data['edge_dynamic_data'][self.id] = {
-            'current_traffic_factor': self.current_traffic_factor,
-            'is_blocked': self.is_blocked,
-            'drone_flight_impact_factor': self.drone_flight_impact_factor
-            # The visualization layer would then interpret these values to draw the edge
-        }

@@ -1,124 +1,158 @@
 from typing import List, Tuple, Any, Dict, Optional
-from .base import Vehicle  # Import the base Vehicle class
+from datetime import timedelta
+
+# Refactored local imports
+from .base import Vehicle
+
+# MLPro Imports
+from mlpro.bf.systems import System, State, Action
+from mlpro.bf.math import MSpace, Dimension
+
+
+# Forward declarations
+class GlobalState: pass
+
+
+class Order: pass
+
+
+class Node: pass
 
 
 class Truck(Vehicle):
     """
-    Represents a truck vehicle in the simulation.
-    Inherits from Vehicle and manages its fuel level.
+    Represents a truck vehicle, refactored as a concrete MLPro System.
+    It now processes its own load/unload actions.
     """
 
-    def __init__(self, id: int, start_node_id: int, max_payload_capacity: float,
-                 max_speed: float, initial_fuel: float, fuel_consumption_rate: float):
+    C_TYPE = 'Truck'
+    C_NAME = 'Truck'
+
+    def __init__(self,
+                 p_id: int,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=True,
+                 **p_kwargs):
         """
-        Initializes a Truck.
-
-        Args:
-            id (int): Unique identifier for the truck.
-            start_node_id (int): The ID of the node where the truck starts.
-            max_payload_capacity (float): Maximum weight/volume of cargo the truck can carry.
-            max_speed (float): Maximum speed of the truck.
-            initial_fuel (float): The starting fuel level of the truck.
-            fuel_consumption_rate (float): Rate of fuel consumption per unit of time (e.g., liters/minute).
+        Initializes a Truck system.
         """
-        super().__init__(id, 'truck', start_node_id, max_payload_capacity, max_speed)
-        self.fuel_level: float = initial_fuel
-        self.fuel_consumption_rate: float = fuel_consumption_rate  # Rate per unit of time (e.g., per minute)
-        self.max_fuel_capacity: float = initial_fuel * 1.5  # Assuming a max capacity, e.g., 1.5x initial fuel
+        super().__init__(p_id=p_id,
+                         p_name=p_name,
+                         p_visualize=p_visualize,
+                         p_logging=p_logging,
+                         **p_kwargs)
 
-        print(f"Truck {self.id} initialized with {self.fuel_level} fuel.")
+        self.global_state: 'GlobalState' = p_kwargs.get('global_state')
+        if self.global_state is None:
+            raise ValueError("Truck requires a reference to GlobalState.")
 
-    def update_energy(self, delta_amount: float) -> None:
+        self.initial_fuel: float = p_kwargs.get('initial_fuel', 100.0)
+        self.fuel_consumption_rate: float = p_kwargs.get('fuel_consumption_rate', 0.1)
+        self.max_fuel_capacity: float = self.initial_fuel * 1.5
+        self.fuel_level: float = self.initial_fuel
+
+        self._state = State(self._state_space)
+        self.reset()
+
+    @staticmethod
+    def setup_spaces():
         """
-        Updates the truck's fuel level. Positive delta_amount for refueling,
-        negative for consumption.
-
-        Args:
-            delta_amount (float): The amount to change the fuel level by.
+        Extends the Vehicle's state and action spaces with truck-specific dimensions.
         """
-        self.fuel_level += delta_amount
-        # Ensure fuel level does not go below zero or exceed max capacity
-        self.fuel_level = max(0.0, min(self.fuel_level, self.max_fuel_capacity))
+        state_space, action_space = Vehicle.setup_spaces()
 
-        if self.fuel_level <= 0.0 and self.status == "en_route":
-            self.status = "broken_down"  # Or "out_of_fuel"
-            print(f"Truck {self.id} ran out of fuel and is now {self.status}.")
+        state_space.add_dim(Dimension('fuel_level', 'R', 'Current Fuel Level', p_boundaries=[0, 9999]))
 
-    def consume_fuel(self, delta_time: float) -> None:
+        # Redefine action space for truck-specific discrete actions
+        action_space = MSpace()
+        action_space.add_dim(Dimension(p_name_short='truck_action',
+                                       p_base_set='Z',
+                                       p_name_long='Truck Action',
+                                       p_boundaries=[0, 2]))
+        # 0: GO_TO_NODE (handled by base class)
+        # 1: LOAD_ORDER
+        # 2: UNLOAD_ORDER
+
+        return state_space, action_space
+
+    def _reset(self, p_seed=None):
+        super()._reset(p_seed)
+        self.fuel_level = self.initial_fuel
+        self._update_state()
+
+    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
         """
-        Consumes fuel based on the truck's fuel_consumption_rate and delta_time.
-        This method will be called during continuous dynamics in LogisticsSimulation.
-
-        Args:
-            delta_time (float): The time duration over which fuel is consumed.
+        Processes actions for the truck, including loading and unloading.
         """
-        fuel_consumed = self.fuel_consumption_rate * delta_time
-        self.update_energy(-fuel_consumed)
-        # print(f"Truck {self.id}: Consumed {fuel_consumed:.2f} fuel. Remaining: {self.fuel_level:.2f}")
+        action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        action_kwargs = p_action.get_kwargs()
 
-    # Override move_along_route to include fuel consumption
-    # We can call super().move_along_route and then consume fuel based on time_to_move
-    def move_along_route(self, delta_time: float, network_manager: 'NetworkManager') -> None:
-        """
-        Advances the truck along its current route, consuming fuel.
-        """
-        if self.status != "en_route" or not self.current_route or len(self.current_route) < 2:
-            return
+        if action_value == 0:  # GO_TO_NODE
+            return super()._process_action(p_action, p_t_step)
 
-        # Get current segment travel time (before movement)
-        start_node_id = self.current_route[0]
-        end_node_id = self.current_route[1]
-        global_state = network_manager.global_state
-        network = global_state.network
-        edge = network.get_edge_between_nodes(start_node_id, end_node_id)
+        try:
+            order_id = action_kwargs['order_id']
+            if action_value == 1:  # LOAD_ORDER
+                return self._load_order(order_id)
+            elif action_value == 2:  # UNLOAD_ORDER
+                return self._unload_order(order_id)
+        except KeyError:
+            self.log(self.C_LOG_TYPE_E, "Action requires 'order_id' in kwargs.")
+            return False
 
-        if not edge:
-            super().move_along_route(delta_time, network_manager)  # Let base class handle stopping
-            return
+        return False
 
-        segment_travel_time = edge.get_current_travel_time()
-        if segment_travel_time == float('inf') or segment_travel_time <= 0:
-            super().move_along_route(delta_time, network_manager)  # Let base class handle stopping
-            return
+    def update_energy(self, p_time_passed: float):
+        fuel_consumed = self.fuel_consumption_rate * p_time_passed
+        self.fuel_level -= fuel_consumed
+        self.fuel_level = max(0.0, self.fuel_level)
+        if self.fuel_level <= 0.0:
+            self.status = "broken_down"
 
-        # Calculate actual time that will be spent moving in this step
-        time_to_cover_remaining_segment = (1.0 - self.route_progress) * segment_travel_time
-        time_to_move = min(delta_time, time_to_cover_remaining_segment)
+    def _update_state(self):
+        super()._update_state()
+        self._state.set_value('fuel_level', self.fuel_level)
 
-        # Consume fuel for the time spent moving
-        self.consume_fuel(time_to_move)
+    def _load_order(self, order_id: int) -> bool:
+        """Internal logic to load an order."""
+        try:
+            order: 'Order' = self.global_state.get_entity("order", order_id)
+            if self.current_node_id is None: return False
+            current_node: 'Node' = self.global_state.get_entity("node", self.current_node_id)
 
-        # Only move if there's still fuel
-        if self.fuel_level > 0:
-            super().move_along_route(delta_time, network_manager)
-        else:
-            self.status = "broken_down"  # Or "out_of_fuel"
-            print(f"Truck {self.id} ran out of fuel during movement and is now {self.status}.")
-            self.current_route = []  # Stop movement
+            if not current_node.is_loadable: return False
+            if order_id not in current_node.get_packages(): return False
+            if len(self.cargo_manifest) >= self.max_payload_capacity: return False
 
-    # --- Plotting Methods ---
-    def initialize_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Initializes the plotting data for this specific truck.
-        Calls the base class method and adds truck-specific initial data.
-        """
-        super().initialize_plot_data(figure_data)  # Call base Vehicle's initializer
-        print(f"Truck {self.id}: Initializing truck-specific plot data.")
+            current_node.remove_package(order_id)
+            self.add_cargo(order_id)
+            order.update_status("in_transit")
+            self.set_status("loading")
+            return True
+        except KeyError:
+            return False
 
-        # Add truck-specific initial data to the existing vehicle entry
-        if 'vehicles' in figure_data and self.id in figure_data['vehicles']:
-            figure_data['vehicles'][self.id]['initial_fuel_level'] = self.fuel_level
-            figure_data['vehicles'][self.id]['max_fuel_capacity'] = self.max_fuel_capacity
+    def _unload_order(self, order_id: int) -> bool:
+        """Internal logic to unload an order."""
+        try:
+            order: 'Order' = self.global_state.get_entity("order", order_id)
+            if self.current_node_id is None: return False
+            current_node: 'Node' = self.global_state.get_entity("node", self.current_node_id)
 
-    def update_plot_data(self, figure_data: Dict[str, Any]) -> None:
-        """
-        Updates the plotting data for this specific truck, reflecting its current state
-        (position, status, cargo, and fuel level).
-        Calls the base class method and adds truck-specific dynamic data.
-        """
-        super().update_plot_data(figure_data)  # Call base Vehicle's updater
-        print(f"Truck {self.id}: Updating truck-specific plot data. Fuel: {self.fuel_level:.2f}")
+            if not current_node.is_unloadable: return False
+            if order_id not in self.get_cargo(): return False
 
-        # Update truck-specific dynamic data
-        if 'vehicles' in figure_data and self.id in figure_data['vehicles']:
-            figure_data['vehicles'][self.id]['current_fuel_level'] = self.fuel_level
+            self.remove_cargo(order_id)
+            current_node.add_package(order_id)
+
+            if order.customer_node_id == current_node.id:
+                order.update_status("delivered")
+                order.delivery_time = self.global_state.current_time
+            else:
+                order.update_status("at_node")
+
+            self.set_status("unloading")
+            return True
+        except KeyError:
+            return False

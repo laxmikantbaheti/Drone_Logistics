@@ -118,7 +118,7 @@ class ActionMasker:
         for constraint_func in self.constraint_rules:
             rule_mask = constraint_func(self.simulation_instance)
             # Ensure rule_mask has the correct shape
-            if rule_mask.shape != composite_mask.shape:
+            if rule_mask.shape != composite_mask.shape: #TODO: This is not correct
                 raise ValueError(f"Constraint rule {constraint_func.__name__} returned a mask "
                                  f"of shape {rule_mask.shape}, expected {composite_mask.shape}.")
             composite_mask = np.logical_and(composite_mask, rule_mask)
