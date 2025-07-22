@@ -3,7 +3,7 @@ from datetime import timedelta
 
 # MLPro Imports
 from mlpro.bf.systems import System, State, Action
-from mlpro.bf.data import MSpace, Dimension
+from mlpro.bf.math import MSpace, Dimension
 
 
 class Order(System):
@@ -98,10 +98,16 @@ class Order(System):
             "pending": 0, "accepted": 1, "assigned": 2, "in_transit": 3,
             "at_micro_hub": 4, "delivered": 5, "cancelled": 6, "flagged_re_delivery": 7
         }
-        self._state.set_value('status', status_map.get(self.status, 0))
-        self._state.set_value('priority', self.priority)
-        self._state.set_value('assigned_vehicle_id',
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('status').get_id(),
+                              status_map.get(self.status, 0))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('priority').get_id(),
+                              self.priority)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('assigned_vehicle_id').get_id(),
                               self.assigned_vehicle_id if self.assigned_vehicle_id is not None else -1)
+
+
+
+
 
     # Public methods for managers to call
     def update_status(self, new_status: str):

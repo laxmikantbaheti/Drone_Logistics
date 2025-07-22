@@ -181,9 +181,9 @@ class Vehicle(System, ABC):
         """
         status_map = {"idle": 0, "en_route": 1, "loading": 2, "unloading": 3, "charging": 4, "maintenance": 5,
                       "broken_down": 6}
-        self._state.set_value('status', status_map.get(self.status, 0))
-        self._state.set_value('current_node_id', self.current_node_id if self.current_node_id is not None else -1)
-        self._state.set_value('cargo_count', len(self.cargo_manifest))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name("status").get_id(), status_map.get(self.status, 0))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('current_node_id').get_id(), self.current_node_id if self.current_node_id is not None else -1)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('cargo_count').get_id(), len(self.cargo_manifest))
 
     # Public methods for managers to call
     def set_route(self, route: List[int]):

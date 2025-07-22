@@ -121,9 +121,12 @@ class Edge(System):
         """
         Synchronizes internal attributes with the formal MLPro state object.
         """
-        self._state.set_value('traffic_factor', self.current_traffic_factor)
-        self._state.set_value('is_blocked', 1 if self.is_blocked else 0)
-        self._state.set_value('drone_impact', self.drone_flight_impact_factor)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('traffic_factor').get_id(),
+                              self.current_traffic_factor)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('is_blocked').get_id(),
+                              1 if self.is_blocked else 0)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('drone_impact').get_id(),
+                              self.drone_flight_impact_factor)
 
     # Public methods for getting dynamic travel times
     def get_current_travel_time(self) -> float:

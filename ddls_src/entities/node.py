@@ -74,7 +74,7 @@ class Node(System):
         Resets the node's internal state (clears held packages) and updates the formal state object.
         """
         self.packages_held = []
-        self._state.set_value('num_packages', 0)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name("num_packages").get_id(), 0)
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
@@ -104,7 +104,8 @@ class Node(System):
 
     def _update_state(self):
         """Helper method to synchronize the internal list of packages with the formal MLPro state object."""
-        self._state.set_value('num_packages', len(self.packages_held))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name("num_packages").get_id(),
+                              len(self.packages_held))
 
     def get_packages(self) -> List[int]:
         """

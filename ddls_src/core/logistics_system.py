@@ -5,29 +5,33 @@ import numpy as np
 # MLPro Imports
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
+from mlpro.bf.events import EventManager, Event
 
 # Local Imports
-from ..core.global_state import GlobalState
-from ..core.network import Network
-from ..managers.action_manager import ActionManager
-from ..managers.supply_chain_manager import SupplyChainManager
-from ..managers.resource_manager.base import ResourceManager
-from ..managers.network_manager import NetworkManager
-from ..actions.action_mapping import ACTION_MAP, ACTION_SPACE_SIZE
-from ..actions.action_enums import SimulationAction
-from ..scenarios.generators.data_loader import DataLoader
-from ..scenarios.generators.scenario_generator import ScenarioGenerator
-from ..core.logistics_simulation import TimeManager  # Keep TimeManager as a helper
+from ddls_src.core.global_state import GlobalState
+from ddls_src.core.network import Network
+from ddls_src.managers.action_manager import ActionManager
+from ddls_src.managers.supply_chain_manager import SupplyChainManager
+from ddls_src.managers.resource_manager.base import ResourceManager
+from ddls_src.managers.network_manager import NetworkManager
+from ddls_src.actions.action_mapping import ACTION_MAP, ACTION_SPACE_SIZE
+from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.scenarios.generators.data_loader import DataLoader
+from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
+from ddls_src.scenarios.generators.order_generator import OrderGenerator
+from ddls_src.actions.state_action_mapper import StateActionMapper
+from ddls_src.actions.constraints.base import OrderAssignableConstraint, VehicleAvailableConstraint
+from ddls_src.core.logistics_simulation import TimeManager
 
 
-class LogisticsSystem(System):
+class LogisticsSystem(System, EventManager):
     """
     The top-level MLPro System that IS the entire logistics simulation engine.
-    It manages the state, entities, and managers, and processes actions to advance the simulation.
     """
 
     C_TYPE = 'Logistics System'
     C_NAME = 'Logistics System'
+    C_EVENT_NEW_ORDER = 'NEW_ORDER_CREATED'
 
     def __init__(self,
                  p_id=None,
@@ -35,25 +39,21 @@ class LogisticsSystem(System):
                  p_visualize: bool = False,
                  p_logging=True,
                  **p_kwargs):
-        """
-        Initializes the entire LogisticsSystem and all its sub-components.
-        """
+
         self._config = p_kwargs.get('config', {})
 
-        super().__init__(p_id=p_id,
-                         p_name=p_name,
-                         p_visualize=p_visualize,
-                         p_logging=p_logging,
-                         p_mode=System.C_MODE_SIM,
-                         p_latency=timedelta(seconds=self._config.get("main_timestep_duration", 60.0)))
+        System.__init__(self, p_id=p_id,
+                        p_name=p_name,
+                        p_visualize=p_visualize,
+                        p_logging=p_logging,
+                        p_mode=System.C_MODE_SIM,
+                        p_latency=timedelta(seconds=self._config.get("main_timestep_duration", 60.0)))
+        EventManager.__init__(self, p_logging=self.get_log_level())
 
-        # Initialize all core components directly within this system
         self.time_manager = TimeManager(initial_time=self._config.get("initial_time", 0.0))
         self.data_loader = DataLoader(self._config.get("data_loader_config", {}))
-        self.action_map = ACTION_MAP
-        self.action_space_size = ACTION_SPACE_SIZE
+        self.action_map = ACTION_MAP.copy()
 
-        # Placeholders for components to be initialized by _reset
         self.global_state: GlobalState = None
         self.network: Network = None
         self.scenario_generator: ScenarioGenerator = None
@@ -61,15 +61,14 @@ class LogisticsSystem(System):
         self.supply_chain_manager: SupplyChainManager = None
         self.resource_manager: ResourceManager = None
         self.network_manager: NetworkManager = None
+        self.order_generator: OrderGenerator = None
+        self.state_action_mapper: StateActionMapper = None
 
         self._state = State(self._state_space)
         self.reset()
 
     @staticmethod
     def setup_spaces():
-        """
-        Defines the global state and action spaces for the entire logistics system.
-        """
         state_space = MSpace()
         state_space.add_dim(Dimension('total_orders', 'Z', 'Total Orders', p_boundaries=[0, 9999]))
         state_space.add_dim(Dimension('delivered_orders', 'Z', 'Delivered Orders', p_boundaries=[0, 9999]))
@@ -78,40 +77,52 @@ class LogisticsSystem(System):
         action_space.add_dim(Dimension(p_name_short='global_action',
                                        p_base_set='Z',
                                        p_name_long='Global Flattened Action ID',
-                                       p_boundaries=[0, ACTION_SPACE_SIZE - 1]))
+                                       p_boundaries=[0, 10000]))
 
         return state_space, action_space
 
     def _reset(self, p_seed=None):
         """
-        Resets the entire simulation to its initial state by re-initializing all components.
+        Resets the simulation using a two-phase initialization.
         """
+        # --- Phase 1: Create all objects ---
         raw_entity_data = self.data_loader.load_initial_simulation_data()
         self.scenario_generator = ScenarioGenerator(raw_entity_data)
-
-        # The ScenarioGenerator needs a global_state reference to instantiate entities correctly
-        # This creates a slight chicken-and-egg problem. We solve it by passing a reference
-        # to this system, which will have the global_state after it's created.
-        initial_entities = self.scenario_generator.build_entities(p_system=self)
+        initial_entities = self.scenario_generator.build_entities()
 
         self.global_state = GlobalState(initial_entities)
         self.network = Network(self.global_state)
-        self.global_state.network = self.network
 
+        # --- Phase 2: Inject dependencies ---
+        self.global_state.network = self.network
+        all_entity_dicts = [
+            self.global_state.orders, self.global_state.trucks,
+            self.global_state.drones, self.global_state.micro_hubs,
+            self.global_state.nodes
+        ]
+        for entity_dict in all_entity_dicts:
+            for entity in entity_dict.values():
+                # Inject the global state reference into each entity
+                entity.global_state = self.global_state
+
+        # Now that entities have their dependencies, finalize their setup (e.g., adding packages)
+        for node in self.global_state.nodes.values():
+            if hasattr(node, 'temp_packages'):
+                for order_id in node.temp_packages:
+                    node.add_package(order_id)
+                del node.temp_packages
+
+        # --- Initialize Managers and other components ---
         self.supply_chain_manager = SupplyChainManager(p_id='scm', global_state=self.global_state)
         self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
         self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network)
 
-        managers = {
-            'supply_chain_manager': self.supply_chain_manager,
-            'resource_manager': self.resource_manager,
-            'network_manager': self.network_manager
-        }
+        self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
 
-        # ActionMasker needs to be refactored
-        action_masker = None  # Placeholder
+        constraints_to_use = [OrderAssignableConstraint(), VehicleAvailableConstraint()]
+        self.state_action_mapper = StateActionMapper(self.global_state, self.action_map, constraints_to_use)
 
-        self.action_manager = ActionManager(self.global_state, managers, self.action_map, action_masker)
+        self.register_event_handler(self.C_EVENT_NEW_ORDER, self.state_action_mapper.handle_new_order_event)
 
         initial_sim_time = initial_entities.get('initial_time', 0.0)
         self.time_manager.reset_time(new_initial_time=initial_sim_time)
@@ -120,26 +131,15 @@ class LogisticsSystem(System):
         self._update_state()
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
-        """
-        This is the core of the environment. It takes an action, processes it, advances the
-        simulation time by one step, and returns the new state.
-        """
-        # 1. Process the incoming action from the external agent
         action_index = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
-        action_tuple = self.action_manager._reverse_action_map.get(action_index)
 
-        # For now, we assume a refactored ActionMasker would have been used by the Scenario
-        # to ensure the action is valid. We pass a dummy mask.
-        dummy_mask = np.ones(self.action_space_size, dtype=bool)
-        self.action_manager.execute_action(action_tuple, dummy_mask)
-
-        # 2. Advance the simulation by one main timestep
         timestep_duration = self.get_latency().total_seconds()
-        t_step = timedelta(seconds=timestep_duration)
+        t_step = p_t_step or timedelta(seconds=timestep_duration)
         self.time_manager.advance_time(timestep_duration)
         self.global_state.current_time = self.time_manager.get_current_time()
 
-        # 3. Simulate all active sub-systems
+        self.order_generator.generate(self.global_state.current_time)
+
         all_systems = list(self.global_state.trucks.values()) + \
                       list(self.global_state.drones.values()) + \
                       list(self.global_state.micro_hubs.values()) + \
@@ -148,14 +148,15 @@ class LogisticsSystem(System):
         for system in all_systems:
             system.simulate_reaction(p_state=None, p_action=None, p_t_step=t_step)
 
-        # 4. Update and return the new high-level state
         self._update_state()
         return self._state
 
+    def get_current_mask(self) -> np.ndarray:
+        if self.state_action_mapper:
+            return self.state_action_mapper.generate_mask()
+        return np.ones(len(self.action_map), dtype=bool)
+
     def _update_state(self):
-        """
-        Updates the high-level state of this system based on the detailed global state.
-        """
         if self.global_state:
             orders = self.global_state.get_all_entities("order").values()
             self._state.set_value('total_orders', len(orders))

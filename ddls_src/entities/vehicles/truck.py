@@ -1,11 +1,10 @@
 from typing import List, Tuple, Any, Dict, Optional
-from datetime import timedelta
 
 # Refactored local imports
 from .base import Vehicle
 
 # MLPro Imports
-from mlpro.bf.systems import System, State, Action
+from mlpro.bf.systems import State, Action
 from mlpro.bf.math import MSpace, Dimension
 
 
@@ -37,20 +36,20 @@ class Truck(Vehicle):
         """
         Initializes a Truck system.
         """
+        # FIX: Set attributes BEFORE calling super().__init__ to avoid initialization errors
+        self.initial_fuel: float = p_kwargs.get('initial_fuel', 100.0)
+        self.fuel_consumption_rate: float = p_kwargs.get('fuel_consumption_rate', 0.1)
+        self.max_fuel_capacity: float = self.initial_fuel * 1.5
+        self.fuel_level: float = self.initial_fuel
+
+        # FIX: Make global_state optional during initialization, defaulting to None
+        self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
+
         super().__init__(p_id=p_id,
                          p_name=p_name,
                          p_visualize=p_visualize,
                          p_logging=p_logging,
                          **p_kwargs)
-
-        self.global_state: 'GlobalState' = p_kwargs.get('global_state')
-        if self.global_state is None:
-            raise ValueError("Truck requires a reference to GlobalState.")
-
-        self.initial_fuel: float = p_kwargs.get('initial_fuel', 100.0)
-        self.fuel_consumption_rate: float = p_kwargs.get('fuel_consumption_rate', 0.1)
-        self.max_fuel_capacity: float = self.initial_fuel * 1.5
-        self.fuel_level: float = self.initial_fuel
 
         self._state = State(self._state_space)
         self.reset()
@@ -81,10 +80,14 @@ class Truck(Vehicle):
         self.fuel_level = self.initial_fuel
         self._update_state()
 
-    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+    def _process_action(self, p_action: Action, p_t_step=None) -> bool:
         """
         Processes actions for the truck, including loading and unloading.
         """
+        if self.global_state is None:
+            self.log(self.C_LOG_TYPE_E, "Cannot process action, global_state not injected.")
+            return False
+
         action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
         action_kwargs = p_action.get_kwargs()
 

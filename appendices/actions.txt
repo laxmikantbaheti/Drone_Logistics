@@ -1,0 +1,97 @@
+Blueprint: Hierarchical Action Spaces
+=======================================
+
+This document provides a detailed breakdown of the discrete, flattened action spaces at each level of the framework's hierarchy.
+
+---
+
+1. Global Action Space (LogisticsSystem)
+-----------------------------------------
+
+This is the top-level action space exposed to the external agent. It is a single integer that corresponds to a unique action tuple defined in action_mapping.py.
+
+Type: Integer
+Range: 0 to ACTION_SPACE_SIZE - 1
+
+Example Mappings:
+  - 0 -> (ACCEPT_ORDER, order_id=0)
+  - 1 -> (PRIORITIZE_ORDER, order_id=0, priority=1)
+  - ...
+  - 50 -> (ASSIGN_ORDER_TO_TRUCK, order_id=3, truck_id=1)
+  - ...
+  - 150 -> (TRUCK_TO_NODE, truck_id=0, destination_node_id=5)
+  - ...
+
+---
+
+2. Manager-Level Action Spaces
+-------------------------------
+
+These are the action spaces for the high-level manager systems. The ActionManager dispatches a global action to one of these managers by creating a new Action object with the appropriate integer value.
+
+SupplyChainManager Action Space
+  Dimension Name: scm_action
+  Type: Integer
+  Values:
+    - 0: ACCEPT_ORDER (kwargs: order_id)
+    - 1: CANCEL_ORDER (kwargs: order_id)
+    - 2: ASSIGN_TO_TRUCK (kwargs: order_id, truck_id)
+    - 3: ASSIGN_TO_DRONE (kwargs: order_id, drone_id)
+    - 4: ASSIGN_TO_HUB (kwargs: order_id, micro_hub_id)
+
+ResourceManager Action Space
+  Dimension Name: rm_action
+  Type: Integer
+  Values:
+    - 0: LOAD_TRUCK (kwargs: truck_id, order_id)
+    - 1: UNLOAD_TRUCK (kwargs: truck_id, order_id)
+    - 2: LOAD_DRONE (kwargs: drone_id, order_id)
+    - 3: UNLOAD_DRONE (kwargs: drone_id, order_id)
+    - 4: ACTIVATE_HUB (kwargs: micro_hub_id)
+    - 5: DEACTIVATE_HUB (kwargs: micro_hub_id)
+
+NetworkManager Action Space
+  Dimension Name: nm_action
+  Type: Integer
+  Values:
+    - 0: TRUCK_TO_NODE (kwargs: truck_id, destination_node_id)
+    - 1: REROUTE_TRUCK (kwargs: truck_id, new_destination_node_id)
+    - 2: LAUNCH_DRONE (kwargs: drone_id, order_id)
+    - 3: DRONE_TO_CHARGING (kwargs: drone_id, charging_station_id)
+
+---
+
+3. Entity-Level Action Spaces
+------------------------------
+
+These are the action spaces for the individual entity systems. A manager dispatches an action to an entity by creating an Action object with one of these values.
+
+Truck / Drone Action Space
+  Dimension Name: truck_action or drone_action
+  Type: Integer
+  Values:
+    - 0: GO_TO_NODE (kwargs: target_node)
+    - 1: LOAD_ORDER (kwargs: order_id)
+    - 2: UNLOAD_ORDER (kwargs: order_id)
+
+MicroHub Action Space
+  Dimension Name: hub_action
+  Type: Integer
+  Values:
+    - 0: DEACTIVATE
+    - 1: ACTIVATE
+    - 2: UNBLOCK_LAUNCHES
+    - 3: BLOCK_LAUNCHES
+    - 4: UNBLOCK_RECOVERIES
+    - 5: BLOCK_RECOVERIES
+
+Edge Action Space
+  Dimension Name: edge_action
+  Type: Integer
+  Values:
+    - 0: SET_TRAFFIC_NORMAL
+    - 1: SET_TRAFFIC_MEDIUM
+    - 2: SET_TRAFFIC_HIGH
+    - 3: UNBLOCK_EDGE
+    - 4: BLOCK_EDGE
+    - 5: NO_ACTION

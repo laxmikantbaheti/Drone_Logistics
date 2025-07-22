@@ -41,14 +41,15 @@ class MicroHub(Node):
         p_kwargs['is_unloadable'] = True
         p_kwargs['is_charging_station'] = True
 
+        self.num_charging_slots = p_kwargs.get('num_charging_slots', 0)
+        self.charging_slots: Dict[int, Optional[int]] = {i: None for i in range(self.num_charging_slots)}
+
         super().__init__(p_id=p_id,
                          p_name=p_name,
                          p_visualize=p_visualize,
                          p_logging=p_logging,
                          **p_kwargs)
 
-        self.num_charging_slots = p_kwargs.get('num_charging_slots', 0)
-        self.charging_slots: Dict[int, Optional[int]] = {i: None for i in range(self.num_charging_slots)}
 
         self.is_blocked_for_launches: bool = False
         self.is_blocked_for_recoveries: bool = False
@@ -130,10 +131,14 @@ class MicroHub(Node):
         Helper method to synchronize all internal attributes with the formal MLPro state object.
         """
         super()._update_state()
-        self._state.set_value('op_status', 1 if self.operational_status == 'active' else 0)
-        self._state.set_value('occupied_slots', len(self.charging_slots) - len(self.get_available_charging_slots()))
-        self._state.set_value('blocked_launches', 1 if self.is_blocked_for_launches else 0)
-        self._state.set_value('blocked_recoveries', 1 if self.is_blocked_for_recoveries else 0)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('op_status').get_id(),
+                              1 if self.operational_status == 'active' else 0)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('occupied_slots').get_id(),
+                              len(self.charging_slots) - len(self.get_available_charging_slots()))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('blocked_launches').get_id(),
+                              1 if self.is_blocked_for_launches else 0)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('blocked_recoveries').get_id(),
+                              1 if self.is_blocked_for_recoveries else 0)
 
     # Business logic for charging slots remains, as this is managed internally
     # based on other actions (like a drone requesting a charge).
