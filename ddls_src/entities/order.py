@@ -53,7 +53,8 @@ class Order(System):
         self.assigned_vehicle_id: Optional[int] = None
         self.assigned_micro_hub_id: Optional[int] = None
         self.delivery_time: Optional[float] = None
-
+        # FIX: Make global_state optional during initialization, defaulting to None
+        self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self._state = State(self._state_space)
         self.reset()
 
@@ -87,9 +88,12 @@ class Order(System):
         """
         Synchronizes the formal MLPro state with the order's internal attributes.
         """
+        # FIX: Only process an action if one is actually passed to the method
+        if p_action is not None:
+            self._process_action(p_action, p_t_step)
+
         self._update_state()
         return self._state
-
     def _update_state(self):
         """
         Helper method to synchronize internal attributes with the formal MLPro state object.

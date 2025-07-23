@@ -129,6 +129,9 @@ class NetworkManager(System):
         nodes = self.global_state.get_all_entities("node").values()
         edges = self.global_state.get_all_entities("edge").values()
 
-        self._state.set_value('total_nodes', len(nodes))
-        self._state.set_value('total_edges', len(edges))
-        self._state.set_value('blocked_edges', sum(1 for e in edges if e.is_blocked))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('total_nodes').get_id(),
+                              len(nodes))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('total_edges').get_id(),
+                              len(edges))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('blocked_edges').get_id(),
+                              sum(1 for e in edges if e.is_blocked))

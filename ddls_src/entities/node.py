@@ -50,7 +50,9 @@ class Node(System):
         self.is_loadable: bool = p_kwargs.get('is_loadable', False)
         self.is_unloadable: bool = p_kwargs.get('is_unloadable', False)
         self.is_charging_station: bool = p_kwargs.get('is_charging_station', False)
-
+        self.type_of_node = p_kwargs.get('type', None)
+        # FIX: Make global_state optional during initialization, defaulting to None
+        self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         # Initialize the formal state object
         self._state = State(self._state_space)
         self.reset()
@@ -83,6 +85,10 @@ class Node(System):
         """
         # The node's state is changed by external managers calling add/remove_package.
         # This method ensures the formal _state object reflects those changes.
+        # FIX: Only process an action if one is actually passed to the method
+        if p_action is not None:
+            self._process_action(p_action, p_t_step)
+
         self._update_state()
         return self._state
 

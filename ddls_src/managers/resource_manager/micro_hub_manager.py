@@ -109,10 +109,13 @@ class MicroHubsManager(System):
         Calculates aggregate micro-hub statistics and updates the formal MLPro state object.
         """
         hubs = self.global_state.get_all_entities("micro_hub").values()
-        self._state.set_value('num_micro_hubs', len(hubs))
-        self._state.set_value('active_hubs', sum(1 for h in hubs if h.operational_status == 'active'))
-        self._state.set_value('total_charging_slots', sum(h.num_charging_slots for h in hubs))
-        self._state.set_value('occupied_slots',
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('num_micro_hubs').get_id(),
+                              len(hubs))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('active_hubs').get_id(),
+                              sum(1 for h in hubs if h.operational_status == 'active'))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('total_charging_slots').get_id(),
+                              sum(h.num_charging_slots for h in hubs))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('occupied_slots').get_id(),
                               sum(len(h.charging_slots) - len(h.get_available_charging_slots()) for h in hubs))
 
     def _add_to_charging_queue(self, p_hub: 'MicroHub', p_drone_id: int) -> bool:

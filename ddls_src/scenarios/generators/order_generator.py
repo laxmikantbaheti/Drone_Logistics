@@ -47,7 +47,7 @@ class OrderGenerator:
 
             print(f"\n  >>> DYNAMIC EVENT: {num_new_orders} new order(s) arriving at time {current_time}...")
 
-            customer_nodes = [n.id for n in self.global_state.nodes.values() if n.type == 'customer']
+            customer_nodes = [n.id for n in self.global_state.nodes.values() if n.type_of_node == 'customer']
             if not customer_nodes:
                 return
 

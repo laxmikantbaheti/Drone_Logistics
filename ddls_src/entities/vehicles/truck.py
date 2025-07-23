@@ -1,4 +1,5 @@
 from typing import List, Tuple, Any, Dict, Optional
+from datetime import timedelta
 
 # Refactored local imports
 from .base import Vehicle
@@ -42,7 +43,7 @@ class Truck(Vehicle):
         self.max_fuel_capacity: float = self.initial_fuel * 1.5
         self.fuel_level: float = self.initial_fuel
 
-        # FIX: Make global_state optional during initialization, defaulting to None
+        # FIX: Make global_state optional during initialization
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
 
         super().__init__(p_id=p_id,
@@ -59,7 +60,7 @@ class Truck(Vehicle):
         """
         Extends the Vehicle's state and action spaces with truck-specific dimensions.
         """
-        state_space, action_space = Vehicle.setup_spaces()
+        state_space, _ = Vehicle.setup_spaces()
 
         state_space.add_dim(Dimension('fuel_level', 'R', 'Current Fuel Level', p_boundaries=[0, 9999]))
 
@@ -80,7 +81,7 @@ class Truck(Vehicle):
         self.fuel_level = self.initial_fuel
         self._update_state()
 
-    def _process_action(self, p_action: Action, p_t_step=None) -> bool:
+    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
         """
         Processes actions for the truck, including loading and unloading.
         """
@@ -107,15 +108,22 @@ class Truck(Vehicle):
         return False
 
     def update_energy(self, p_time_passed: float):
-        fuel_consumed = self.fuel_consumption_rate * p_time_passed
+        # p_time_passed is negative because it's passed from _move_along_route
+        fuel_consumed = self.fuel_consumption_rate * abs(p_time_passed)
         self.fuel_level -= fuel_consumed
         self.fuel_level = max(0.0, self.fuel_level)
         if self.fuel_level <= 0.0:
             self.status = "broken_down"
 
     def _update_state(self):
+        """
+        Synchronizes truck's internal attributes with the formal MLPro state object
+        using the explicit, robust method of getting dimension IDs by name.
+        """
         super()._update_state()
-        self._state.set_value('fuel_level', self.fuel_level)
+        # REFACTORED: Use explicit get_dim_by_name().get_id() for robustness
+        state_space = self._state.get_related_set()
+        self._state.set_value(state_space.get_dim_by_name("fuel_level").get_id(), self.fuel_level)
 
     def _load_order(self, order_id: int) -> bool:
         """Internal logic to load an order."""

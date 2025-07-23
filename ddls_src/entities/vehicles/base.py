@@ -29,17 +29,6 @@ class Vehicle(System, ABC):
                  **p_kwargs):
         """
         Initializes a Vehicle system.
-
-        Parameters:
-            p_id (int): Unique identifier for the vehicle.
-            p_name (str): Name of the vehicle.
-            p_visualize (bool): Visualization flag.
-            p_logging: Logging level.
-            p_kwargs: Additional keyword arguments. Expected keys:
-                'start_node_id': int
-                'max_payload_capacity': float
-                'max_speed': float
-                'network_manager': NetworkManager
         """
         super().__init__(p_id=p_id,
                          p_name=p_name,
@@ -92,8 +81,6 @@ class Vehicle(System, ABC):
         self.cargo_manifest = []
         self.current_route = []
         self.route_progress = 0.0
-        # In a full implementation, coords would be set from the start node's coords
-        # self.current_location_coords = self.network_manager.global_state.get_entity("node", self.start_node_id).coords
         self._update_state()
 
     def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
@@ -123,11 +110,18 @@ class Vehicle(System, ABC):
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
-        Simulates the vehicle's movement over a given time step.
+        Simulates the vehicle's state over a given time step. It processes a discrete
+        action if one is provided, and then simulates continuous movement.
         """
+        # 1. Process discrete action if provided
+        if p_action is not None:
+            self._process_action(p_action, p_t_step)
+
+        # 2. Simulate continuous movement if the vehicle is en-route
         if self.status == "en_route" and self.current_route and len(self.current_route) >= 2:
             self._move_along_route(p_t_step.total_seconds())
 
+        # 3. Update the formal state object
         self._update_state()
         return self._state
 
@@ -135,7 +129,6 @@ class Vehicle(System, ABC):
         """
         Internal logic to advance the vehicle along its route.
         """
-        # This logic is adapted from the original move_along_route method
         start_node_id, end_node_id = self.current_route[0], self.current_route[1]
         edge = self.network_manager.network.get_edge_between_nodes(start_node_id, end_node_id)
 
@@ -154,7 +147,6 @@ class Vehicle(System, ABC):
 
         self.route_progress += time_to_move / travel_time
 
-        # Update energy (to be implemented by child classes)
         self.update_energy(-time_to_move)
 
         if self.route_progress >= 1.0:
@@ -163,10 +155,8 @@ class Vehicle(System, ABC):
             self.route_progress = 0.0
             if not self.current_route or len(self.current_route) < 2:
                 self.status = "idle"
-            # Here you would also update coordinates to the node's exact location
         else:
-            self.current_node_id = None  # En-route
-            # Here you would interpolate coordinates based on route_progress
+            self.current_node_id = None
 
     @abstractmethod
     def update_energy(self, p_time_passed: float):
@@ -181,9 +171,12 @@ class Vehicle(System, ABC):
         """
         status_map = {"idle": 0, "en_route": 1, "loading": 2, "unloading": 3, "charging": 4, "maintenance": 5,
                       "broken_down": 6}
-        self._state.set_value(self._state.get_related_set().get_dim_by_name("status").get_id(), status_map.get(self.status, 0))
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('current_node_id').get_id(), self.current_node_id if self.current_node_id is not None else -1)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('cargo_count').get_id(), len(self.cargo_manifest))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('status').get_id(),
+                              status_map.get(self.status, 0))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('current_node_id').get_id(),
+                              self.current_node_id if self.current_node_id is not None else -1)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('cargo_count').get_id(),
+                              len(self.cargo_manifest))
 
     # Public methods for managers to call
     def set_route(self, route: List[int]):

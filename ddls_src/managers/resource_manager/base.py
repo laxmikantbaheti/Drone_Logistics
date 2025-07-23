@@ -118,7 +118,10 @@ class ResourceManager(System):
         drones = self.global_state.get_all_entities("drone").values()
         hubs = self.global_state.get_all_entities("micro_hub").values()
 
-        self._state.set_value('num_vehicles', len(trucks) + len(drones))
-        self._state.set_value('num_hubs', len(hubs))
-        self._state.set_value('vehicles_in_maintenance', sum(1 for v in trucks if v.status == 'maintenance') + sum(
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('num_vehicles').get_id(),
+                              len(trucks) + len(drones))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('num_hubs').get_id(),
+                              len(hubs))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('vehicles_in_maintenance').get_id(),
+                              sum(1 for v in trucks if v.status == 'maintenance') + sum(
             1 for v in drones if v.status == 'maintenance'))

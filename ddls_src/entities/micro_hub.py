@@ -54,7 +54,8 @@ class MicroHub(Node):
         self.is_blocked_for_launches: bool = False
         self.is_blocked_for_recoveries: bool = False
         self.is_package_transfer_unavailable: bool = False
-
+        # FIX: Make global_state optional during initialization, defaulting to None
+        self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self._state = State(self._state_space)
         self.reset()
 
@@ -120,10 +121,15 @@ class MicroHub(Node):
         return True
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+
         """
-        Processes the action and returns the new state.
+              Processes an action if provided, and synchronizes the formal MLPro state.
         """
-        self._process_action(p_action, p_t_step)
+        # FIX: Only process an action if one is actually passed to the method
+        if p_action is not None:
+            self._process_action(p_action, p_t_step)
+
+        self._update_state()
         return self._state
 
     def _update_state(self):

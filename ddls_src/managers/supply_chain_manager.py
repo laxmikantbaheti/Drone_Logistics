@@ -139,7 +139,11 @@ class SupplyChainManager(System):
         """
         orders = self.global_state.get_all_entities("order").values()
 
-        self._state.set_value('num_orders_total', len(orders))
-        self._state.set_value('orders_pending', sum(1 for o in orders if o.status == 'pending'))
-        self._state.set_value('orders_in_transit', sum(1 for o in orders if o.status == 'in_transit'))
-        self._state.set_value('orders_delivered', sum(1 for o in orders if o.status == 'delivered'))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('num_orders_total').get_id()
+                              , len(orders))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('orders_pending').get_id(),
+                              sum(1 for o in orders if o.status == 'pending'))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('orders_in_transit').get_id(),
+                              sum(1 for o in orders if o.status == 'in_transit'))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('orders_delivered').get_id(),
+                              sum(1 for o in orders if o.status == 'delivered'))

@@ -128,9 +128,15 @@ class FleetManager(System):
         trucks = self.global_state.get_all_entities("truck").values()
         drones = self.global_state.get_all_entities("drone").values()
 
-        self._state.set_value('num_trucks', len(trucks))
-        self._state.set_value('num_drones', len(drones))
-        self._state.set_value('trucks_idle', sum(1 for t in trucks if t.status == 'idle'))
-        self._state.set_value('drones_idle', sum(1 for d in drones if d.status == 'idle'))
-        self._state.set_value('trucks_en_route', sum(1 for t in trucks if t.status == 'en_route'))
-        self._state.set_value('drones_en_route', sum(1 for d in drones if d.status == 'en_route'))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('num_trucks').get_id(),
+                              len(trucks))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('num_drones').get_id(),
+                              len(drones))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('trucks_idle').get_id(),
+                              sum(1 for t in trucks if t.status == 'idle'))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('drones_idle').get_id(),
+                              sum(1 for d in drones if d.status == 'idle'))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('trucks_en_route').get_id(),
+                              sum(1 for t in trucks if t.status == 'en_route'))
+        self._state.set_value(self._state.get_related_set().get_dim_by_name('drones_en_route').get_id(),
+                              sum(1 for d in drones if d.status == 'en_route'))

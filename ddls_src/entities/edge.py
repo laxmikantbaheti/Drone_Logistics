@@ -112,21 +112,26 @@ class Edge(System):
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
-        Processes the action and returns the new state.
+        Processes an action if provided, and synchronizes the formal MLPro state.
         """
-        self._process_action(p_action, p_t_step)
+        # FIX: Only process an action if one is actually passed to the method
+        if p_action is not None:
+            self._process_action(p_action, p_t_step)
+
+        self._update_state()
         return self._state
 
     def _update_state(self):
         """
         Synchronizes internal attributes with the formal MLPro state object.
         """
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('traffic_factor').get_id(),
-                              self.current_traffic_factor)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('is_blocked').get_id(),
-                              1 if self.is_blocked else 0)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('drone_impact').get_id(),
-                              self.drone_flight_impact_factor)
+        # self._state.set_value('traffic_factor', self.current_traffic_factor)
+        # self._state.set_value('is_blocked', 1 if self.is_blocked else 0)
+        # self._state.set_value('drone_impact', self.drone_flight_impact_factor)
+
+        self._state.set_value(self._state.get_related_set().get_dim_by_name("traffic_factor").get_id(), self.current_traffic_factor)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name("is_blocked").get_id(), 1 if self.is_blocked else 0)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name("drone_impact").get_id(), self.drone_flight_impact_factor)
 
     # Public methods for getting dynamic travel times
     def get_current_travel_time(self) -> float:

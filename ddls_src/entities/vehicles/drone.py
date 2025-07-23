@@ -5,7 +5,7 @@ from datetime import timedelta
 from .base import Vehicle
 
 # MLPro Imports
-from mlpro.bf.systems import System, State, Action
+from mlpro.bf.systems import State, Action
 from mlpro.bf.math import MSpace, Dimension
 
 
@@ -37,22 +37,20 @@ class Drone(Vehicle):
         """
         Initializes a Drone system.
         """
-        super().__init__(p_id=p_id,
-                         p_name=p_name,
-                         p_visualize=p_visualize,
-                         p_logging=p_logging,
-                         **p_kwargs)
-
-        self.global_state: 'GlobalState' = p_kwargs.get('global_state')
-        if self.global_state is None:
-            raise ValueError("Drone requires a reference to GlobalState.")
-
+        # FIX: Set attributes BEFORE calling super().__init__ to avoid initialization errors
         self.initial_battery: float = p_kwargs.get('initial_battery', 1.0)
         self.battery_drain_rate_flying: float = p_kwargs.get('battery_drain_rate_flying', 0.005)
         self.battery_drain_rate_idle: float = p_kwargs.get('battery_drain_rate_idle', 0.001)
         self.battery_charge_rate: float = p_kwargs.get('battery_charge_rate', 0.01)
         self.max_battery_capacity: float = 1.0
         self.battery_level: float = self.initial_battery
+        self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
+
+        super().__init__(p_id=p_id,
+                         p_name=p_name,
+                         p_visualize=p_visualize,
+                         p_logging=p_logging,
+                         **p_kwargs)
 
         self._state = State(self._state_space)
         self.reset()
@@ -86,6 +84,10 @@ class Drone(Vehicle):
         """
         Processes actions for the drone, including loading and unloading.
         """
+        if self.global_state is None:
+            self.log(self.C_LOG_TYPE_E, "Cannot process action, global_state not injected.")
+            return False
+
         action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
         action_kwargs = p_action.get_kwargs()
 
@@ -112,7 +114,7 @@ class Drone(Vehicle):
         else:
             drain_rate = self.battery_drain_rate_idle
 
-        battery_consumed = drain_rate * p_time_passed
+        battery_consumed = drain_rate * abs(p_time_passed)
         self.battery_level -= battery_consumed
         self.battery_level = max(0.0, self.battery_level)
 
@@ -126,17 +128,38 @@ class Drone(Vehicle):
             self.battery_level = min(self.battery_level, self.max_battery_capacity)
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+        """
+        Simulates the drone's state over a time step. It processes a discrete action
+        if one is provided, and then simulates continuous processes like charging or moving.
+        """
+        # 1. Process discrete action if provided
+        if p_action is not None:
+            self._process_action(p_action, p_t_step)
+
+        # 2. Simulate continuous processes for the time step
         time_seconds = p_t_step.total_seconds()
         if self.status == "charging":
             self.charge(time_seconds)
-        else:
-            super()._simulate_reaction(p_state, p_action, p_t_step)
+        elif self.status == "en_route":
+            # Call the parent's movement logic, which also handles energy drain
+            super()._simulate_reaction(p_state, None, p_t_step)
+        else:  # Idle, loading, unloading, etc.
+            # Just drain idle battery
+            self.update_energy(-time_seconds)
+
+        # 3. Update the formal state object
         self._update_state()
         return self._state
 
     def _update_state(self):
+        """
+        Synchronizes drone's internal attributes with the formal MLPro state object
+        using the explicit, robust method of getting dimension IDs by name.
+        """
         super()._update_state()
-        self._state.set_value('battery_level', self.battery_level)
+        # REFACTORED: Use explicit get_dim_by_name().get_id() for robustness
+        state_space = self._state.get_related_set()
+        self._state.set_value(state_space.get_dim_by_name("battery_level").get_id(), self.battery_level)
 
     def _load_order(self, order_id: int) -> bool:
         """Internal logic to load an order."""

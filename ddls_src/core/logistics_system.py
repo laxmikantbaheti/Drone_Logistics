@@ -131,7 +131,8 @@ class LogisticsSystem(System, EventManager):
         self._update_state()
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
-        action_index = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        # action_index = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        action_index = p_action.get_sorted_values()
 
         timestep_duration = self.get_latency().total_seconds()
         t_step = p_t_step or timedelta(seconds=timestep_duration)
@@ -159,5 +160,7 @@ class LogisticsSystem(System, EventManager):
     def _update_state(self):
         if self.global_state:
             orders = self.global_state.get_all_entities("order").values()
-            self._state.set_value('total_orders', len(orders))
-            self._state.set_value('delivered_orders', sum(1 for o in orders if o.status == 'delivered'))
+            self._state.set_value(self._state.get_related_set().get_dim_by_name('total_orders').get_id(),
+                                  len(orders))
+            self._state.set_value(self._state.get_related_set().get_dim_by_name('delivered_orders').get_id(),
+                                  sum(1 for o in orders if o.status == 'delivered'))

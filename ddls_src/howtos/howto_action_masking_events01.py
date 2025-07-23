@@ -51,7 +51,7 @@ def run_logistics_system_demo():
     print("  - LogisticsSystem and all sub-components initialized.")
 
     # 3. Simulation Loop
-    num_cycles = 15
+    num_cycles = 100
     print(f"\n[Step 2] Starting simulation loop for {num_cycles} cycles...")
 
     for i in range(num_cycles):
@@ -63,8 +63,8 @@ def run_logistics_system_demo():
         system_mask = logistics_system.get_current_mask()
 
         print("\n*** Current High-Level State ***")
-        print(f"  - Total Orders: {current_state.get_value('total_orders')}")
-        print(f"  - Delivered Orders: {current_state.get_value('delivered_orders')}")
+        print(f"  - Total Orders: {current_state.get_value(current_state.get_related_set().get_dim_by_name('total_orders').get_id())}")
+        print(f"  - Delivered Orders: {current_state.get_value(current_state.get_related_set().get_dim_by_name('delivered_orders').get_id())}")
         print("********************************")
 
         # Find a valid action for the agent to take
