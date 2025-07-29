@@ -57,3 +57,8 @@ class SimulationAction(Enum):
 
     def __str__(self):
         return self.name
+
+
+if __name__ == "__main__":
+    for action in SimulationAction:
+        print(action.value, "->", action.name)
