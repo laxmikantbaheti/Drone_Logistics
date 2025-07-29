@@ -37,13 +37,11 @@ class Vehicle(System, ABC):
                          p_mode=System.C_MODE_SIM,
                          p_latency=timedelta(0, 0, 0))
 
-        # Vehicle-specific attributes
         self.start_node_id: int = p_kwargs.get('start_node_id')
         self.max_payload_capacity: float = p_kwargs.get('max_payload_capacity', 0)
         self.max_speed: float = p_kwargs.get('max_speed', 0)
         self.network_manager: 'NetworkManager' = p_kwargs.get('network_manager')
 
-        # Internal dynamic attributes
         self.status: str = "idle"
         self.current_node_id: Optional[int] = self.start_node_id
         self.current_location_coords: Tuple[float, float] = (0.0, 0.0)
@@ -60,7 +58,6 @@ class Vehicle(System, ABC):
         Defines the state and action spaces for a generic Vehicle system.
         """
         state_space = MSpace()
-        # Status: 0=idle, 1=en_route, 2=loading, 3=unloading, 4=charging, 5=maintenance, 6=broken_down
         state_space.add_dim(Dimension('status', 'Z', 'Vehicle Status', p_boundaries=[0, 6]))
         state_space.add_dim(
             Dimension('current_node_id', 'Z', 'Current Node ID (-1 for en-route)', p_boundaries=[-1, 999]))
@@ -92,7 +89,8 @@ class Vehicle(System, ABC):
                      f'Vehicle {self.id} is busy (status: {self.status}) and cannot start a new route.')
             return False
 
-        target_node_id = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        # target_node_id = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        target_node_id = p_action.get_sorted_values()[0]
 
         if self.current_node_id is None:
             self.log(self.C_LOG_TYPE_E, f'Vehicle {self.id} is en-route and cannot start a new route this way.')
@@ -113,15 +111,12 @@ class Vehicle(System, ABC):
         Simulates the vehicle's state over a given time step. It processes a discrete
         action if one is provided, and then simulates continuous movement.
         """
-        # 1. Process discrete action if provided
         if p_action is not None:
             self._process_action(p_action, p_t_step)
 
-        # 2. Simulate continuous movement if the vehicle is en-route
         if self.status == "en_route" and self.current_route and len(self.current_route) >= 2:
             self._move_along_route(p_t_step.total_seconds())
 
-        # 3. Update the formal state object
         self._update_state()
         return self._state
 
@@ -169,17 +164,25 @@ class Vehicle(System, ABC):
         """
         Synchronizes internal attributes with the formal MLPro state object.
         """
+        state_space = self._state.get_related_set()
         status_map = {"idle": 0, "en_route": 1, "loading": 2, "unloading": 3, "charging": 4, "maintenance": 5,
                       "broken_down": 6}
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('status').get_id(),
-                              status_map.get(self.status, 0))
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('current_node_id').get_id(),
+        self._state.set_value(state_space.get_dim_by_name("status").get_id(), status_map.get(self.status, 0))
+        self._state.set_value(state_space.get_dim_by_name("current_node_id").get_id(),
                               self.current_node_id if self.current_node_id is not None else -1)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('cargo_count').get_id(),
-                              len(self.cargo_manifest))
+        self._state.set_value(state_space.get_dim_by_name("cargo_count").get_id(), len(self.cargo_manifest))
 
-    # Public methods for managers to call
     def set_route(self, route: List[int]):
+        """
+        Sets the planned route for the vehicle.
+        FIX: Only sets status to 'en_route' if the path is valid (more than one node).
+        """
+        if not route or len(route) < 2:
+            self.log(self.C_LOG_TYPE_W, f"Vehicle {self.id}: Invalid route provided (length < 2). Remaining idle.")
+            self.current_route = []
+            self.status = "idle"
+            return
+
         self.current_route = route
         self.status = "en_route"
         self.route_progress = 0.0

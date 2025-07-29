@@ -1,9 +1,14 @@
+from math import acosh
 from typing import List, Dict, Any, Optional
 from datetime import timedelta
 
 # MLPro Imports
-from mlpro.bf.systems import System, State, Action
+from mlpro.bf.systems import System, State
 from mlpro.bf.math import MSpace, Dimension
+
+# Local Imports
+from ..core.basics import LogisticsAction
+from ..actions.action_enums import SimulationAction
 
 
 # Forward declarations
@@ -25,7 +30,7 @@ class MicroHub: pass
 class SupplyChainManager(System):
     """
     Manages the lifecycle and assignment of orders as an MLPro System.
-    It processes high-level strategic commands and orchestrates entities.
+    It now includes automatic, rule-based logic for order assignment.
     """
 
     C_TYPE = 'Supply Chain Manager'
@@ -48,6 +53,7 @@ class SupplyChainManager(System):
                          p_latency=timedelta(0, 0, 0))
 
         self.global_state: 'GlobalState' = p_kwargs.get('global_state')
+        self.automatic_logic_config = p_kwargs.get('p_automatic_logic_config', {})
         if self.global_state is None:
             raise ValueError("SupplyChainManager requires a reference to GlobalState.")
 
@@ -77,16 +83,44 @@ class SupplyChainManager(System):
     def _reset(self, p_seed=None):
         self._update_state()
 
-    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+    def _simulate_reaction(self, p_state: State, p_action: LogisticsAction, p_t_step: timedelta = None) -> State:
+        if p_action is not None:
+            self._process_action(p_action)
+
+        # --- Automatic Logic ---
+        self._check_and_assign_orders()
+
         self._update_state()
         return self._state
 
-    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+    def _check_and_assign_orders(self):
+        """
+        Scans for pending orders and assigns them to available vehicles if auto-assignment is enabled.
+        """
+        if not self.automatic_logic_config.get(SimulationAction.ASSIGN_ORDER_TO_TRUCK, False):
+            return  # Exit if auto-assignment is off for trucks (drones would have a separate check)
+
+        pending_orders = [o for o in self.global_state.orders.values() if o.status == 'pending']
+        if not pending_orders: return
+
+        idle_trucks = [t for t in self.global_state.trucks.values() if t.status == 'idle']
+        if not idle_trucks: return
+
+        # Simple logic: assign the first pending order to the first idle truck
+        order_to_assign = pending_orders[0]
+        truck_to_assign = idle_trucks[0]
+
+        print(
+            f"  - AUTOMATIC LOGIC (SupplyChainManager): Assigning Order {order_to_assign.id} to Truck {truck_to_assign.id}")
+        order_to_assign.assign_vehicle(truck_to_assign.id)
+
+    def _process_action(self, p_action: LogisticsAction) -> bool:
         """
         Processes a high-level command related to order management.
         """
-        action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
-        action_kwargs = p_action.get_kwargs()
+        # action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        action_value = p_action.get_sorted_values()[0]
+        action_kwargs = p_action.data
 
         try:
             order_id = action_kwargs['order_id']
@@ -137,13 +171,13 @@ class SupplyChainManager(System):
         """
         Calculates aggregate order statistics and updates the formal state object.
         """
+        state_space = self._state.get_related_set()
         orders = self.global_state.get_all_entities("order").values()
 
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('num_orders_total').get_id()
-                              , len(orders))
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('orders_pending').get_id(),
+        self._state.set_value(state_space.get_dim_by_name("num_orders_total").get_id(), len(orders))
+        self._state.set_value(state_space.get_dim_by_name("orders_pending").get_id(),
                               sum(1 for o in orders if o.status == 'pending'))
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('orders_in_transit').get_id(),
+        self._state.set_value(state_space.get_dim_by_name("orders_in_transit").get_id(),
                               sum(1 for o in orders if o.status == 'in_transit'))
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('orders_delivered').get_id(),
+        self._state.set_value(state_space.get_dim_by_name("orders_delivered").get_id(),
                               sum(1 for o in orders if o.status == 'delivered'))

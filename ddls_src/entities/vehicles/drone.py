@@ -7,6 +7,7 @@ from .base import Vehicle
 # MLPro Imports
 from mlpro.bf.systems import State, Action
 from mlpro.bf.math import MSpace, Dimension
+from ddls_src.actions.action_enums import SimulationAction
 
 
 # Forward declarations
@@ -22,7 +23,7 @@ class Node: pass
 class Drone(Vehicle):
     """
     Represents a drone vehicle, refactored as a concrete MLPro System.
-    It now processes its own load/unload actions and manages its battery.
+    It now includes automatic logic for loading and unloading.
     """
 
     C_TYPE = 'Drone'
@@ -37,7 +38,6 @@ class Drone(Vehicle):
         """
         Initializes a Drone system.
         """
-        # FIX: Set attributes BEFORE calling super().__init__ to avoid initialization errors
         self.initial_battery: float = p_kwargs.get('initial_battery', 1.0)
         self.battery_drain_rate_flying: float = p_kwargs.get('battery_drain_rate_flying', 0.005)
         self.battery_drain_rate_idle: float = p_kwargs.get('battery_drain_rate_idle', 0.001)
@@ -45,6 +45,7 @@ class Drone(Vehicle):
         self.max_battery_capacity: float = 1.0
         self.battery_level: float = self.initial_battery
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
+        self.automatic_logic_config = p_kwargs.get('p_automatic_logic_config', {})
 
         super().__init__(p_id=p_id,
                          p_name=p_name,
@@ -69,9 +70,6 @@ class Drone(Vehicle):
                                        p_base_set='Z',
                                        p_name_long='Drone Action',
                                        p_boundaries=[0, 2]))
-        # 0: GO_TO_NODE (handled by base class)
-        # 1: LOAD_ORDER
-        # 2: UNLOAD_ORDER
 
         return state_space, action_space
 
@@ -80,13 +78,58 @@ class Drone(Vehicle):
         self.battery_level = self.initial_battery
         self._update_state()
 
+    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+        """
+        Simulates the drone's state, including automatic loading/unloading and continuous processes.
+        """
+        if p_action is not None:
+            self._process_action(p_action, p_t_step)
+
+        # --- Automatic Logic ---
+        self._check_and_perform_node_actions()
+
+        # --- Continuous Processes ---
+        time_seconds = p_t_step.total_seconds()
+        if self.status == "charging":
+            self.charge(time_seconds)
+        elif self.status == "en_route":
+            # Call the parent's movement logic, which also handles energy drain
+            super()._simulate_reaction(p_state, None, p_t_step)
+        else:  # Idle, loading, unloading, etc.
+            # Just drain idle battery
+            self.update_energy(-time_seconds)
+
+        self._update_state()
+        return self._state
+
+    def _check_and_perform_node_actions(self):
+        """
+        Checks for and executes automatic loading or unloading if the drone is idle at a node.
+        """
+        if self.status != 'idle' or self.current_node_id is None:
+            return
+
+        # Check for auto-unloading (delivery)
+        if self.automatic_logic_config.get(SimulationAction.DRONE_UNLOAD_ACTION, False):
+            for order_id in self.cargo_manifest:
+                order = self.global_state.get_entity("order", order_id)
+                if order.customer_node_id == self.current_node_id:
+                    print(f"  - AUTOMATIC LOGIC (Drone {self.id}): Unloading Order {order_id} at destination.")
+                    self._unload_order(order_id)
+                    return
+
+        # Check for auto-loading (pickup)
+        if self.automatic_logic_config.get(SimulationAction.DRONE_LOAD_ACTION, False):
+            current_node = self.global_state.get_entity("node", self.current_node_id)
+            for order_id in current_node.packages_held:
+                order = self.global_state.get_entity("order", order_id)
+                if order.assigned_vehicle_id == self.id:
+                    print(f"  - AUTOMATIC LOGIC (Drone {self.id}): Loading assigned Order {order_id}.")
+                    self._load_order(order_id)
+                    return
+
     def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
-        """
-        Processes actions for the drone, including loading and unloading.
-        """
-        if self.global_state is None:
-            self.log(self.C_LOG_TYPE_E, "Cannot process action, global_state not injected.")
-            return False
+        if self.global_state is None: return False
 
         action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
         action_kwargs = p_action.get_kwargs()
@@ -101,7 +144,6 @@ class Drone(Vehicle):
             elif action_value == 2:  # UNLOAD_ORDER
                 return self._unload_order(order_id)
         except KeyError:
-            self.log(self.C_LOG_TYPE_E, "Action requires 'order_id' in kwargs.")
             return False
 
         return False
@@ -127,42 +169,12 @@ class Drone(Vehicle):
             self.battery_level += battery_charged
             self.battery_level = min(self.battery_level, self.max_battery_capacity)
 
-    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
-        """
-        Simulates the drone's state over a time step. It processes a discrete action
-        if one is provided, and then simulates continuous processes like charging or moving.
-        """
-        # 1. Process discrete action if provided
-        if p_action is not None:
-            self._process_action(p_action, p_t_step)
-
-        # 2. Simulate continuous processes for the time step
-        time_seconds = p_t_step.total_seconds()
-        if self.status == "charging":
-            self.charge(time_seconds)
-        elif self.status == "en_route":
-            # Call the parent's movement logic, which also handles energy drain
-            super()._simulate_reaction(p_state, None, p_t_step)
-        else:  # Idle, loading, unloading, etc.
-            # Just drain idle battery
-            self.update_energy(-time_seconds)
-
-        # 3. Update the formal state object
-        self._update_state()
-        return self._state
-
     def _update_state(self):
-        """
-        Synchronizes drone's internal attributes with the formal MLPro state object
-        using the explicit, robust method of getting dimension IDs by name.
-        """
         super()._update_state()
-        # REFACTORED: Use explicit get_dim_by_name().get_id() for robustness
         state_space = self._state.get_related_set()
         self._state.set_value(state_space.get_dim_by_name("battery_level").get_id(), self.battery_level)
 
     def _load_order(self, order_id: int) -> bool:
-        """Internal logic to load an order."""
         try:
             order: 'Order' = self.global_state.get_entity("order", order_id)
             if self.current_node_id is None: return False
@@ -181,7 +193,6 @@ class Drone(Vehicle):
             return False
 
     def _unload_order(self, order_id: int) -> bool:
-        """Internal logic to unload an order."""
         try:
             order: 'Order' = self.global_state.get_entity("order", order_id)
             if self.current_node_id is None: return False

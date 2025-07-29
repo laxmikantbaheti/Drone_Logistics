@@ -27,8 +27,7 @@ class OrderGenerator:
         self.config = config
         self._next_order_id = self._get_initial_max_order_id() + 1
 
-        # A simple schedule of when new orders should arrive
-        self._arrival_schedule = config.get('arrival_schedule', {})  # Ex: { "1500.0": 1, "2700.0": 2 }
+        self._arrival_schedule = config.get('arrival_schedule', {})
 
     def _get_initial_max_order_id(self) -> int:
         """Finds the highest order ID at the start of the simulation."""
@@ -39,7 +38,7 @@ class OrderGenerator:
     def generate(self, current_time: float):
         """
         Checks the current time against the arrival schedule and generates new orders,
-        raising an event for each one.
+        raising an event for each one. Does not return the orders.
         """
         time_key = str(current_time)
         if time_key in self._arrival_schedule:
@@ -64,10 +63,8 @@ class OrderGenerator:
                 from ...entities.order import Order
                 new_order = Order(**new_order_data)
 
-                # Add the new order to the global state
-                self.global_state.add_entity(new_order)
-
-                # Raise an event with the new order object as the payload
+                # The generator's only job is to raise the event.
+                # The system that listens to the event will be responsible for adding the order to the state.
                 event = Event(p_raising_object=self, order=new_order)
                 self.logistics_system._raise_event(self.logistics_system.C_EVENT_NEW_ORDER, event)
 

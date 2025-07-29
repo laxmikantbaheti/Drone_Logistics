@@ -7,8 +7,8 @@ from collections import defaultdict
 from mlpro.bf.events import Event
 
 # Local Imports
-from ddls_src.actions.action_enums import SimulationAction
-from ddls_src.actions.constraints.base import Constraint
+from ..actions.action_enums import SimulationAction
+from ..actions.constraints.base import Constraint
 
 
 # Forward declarations
@@ -99,7 +99,8 @@ class StateActionMapper:
                     self._invalidation_map[state_tuple] = set()
                 self._invalidation_map[state_tuple].update(action_indices)
 
-    def _update_for_new_order(self, order_id: int):
+    # FIX: Renamed to be a public method
+    def update_for_new_order(self, order_id: int):
         """Dynamically updates the maps and indexes for a newly arrived order."""
         self.action_index.add_actions_for_new_order(order_id, self.action_map)
         print("StateActionMapper: Re-building invalidation map to include new order...")
@@ -113,7 +114,7 @@ class StateActionMapper:
         print(f"StateActionMapper: Received event '{p_event_id}'.")
         new_order: 'Order' = p_event_object.get_data().get('order')
         if new_order:
-            self._update_for_new_order(new_order.id)
+            self.update_for_new_order(new_order.id)
 
     def generate_mask(self) -> np.ndarray:
         mask = np.ones(len(self.action_map), dtype=bool)

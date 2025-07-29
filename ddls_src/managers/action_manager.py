@@ -1,124 +1,150 @@
-import numpy as np # numpy is imported here as it's used for current_mask
-from typing import Dict, Any, Tuple, Callable
+from typing import Dict, Any, Tuple
 
-# Assuming AgentActionType will be an Enum defined in actions/action_enums.py
-# For now, we'll use a placeholder for its type if needed in method signatures.
-# Example: from ..actions.action_enums import AgentActionType
-# For the purpose of removing placeholders, we'll assume AgentActionType will be defined
-# and the string representations will correspond to its enum values.
-NO_OPERATION = ("NO_OP",)
+# Local Imports
+from ..actions.action_enums import SimulationAction
+from ..core.basics import LogisticsAction  # <-- IMPORT the new custom action class
+
+
+# Forward declarations
+class GlobalState: pass
+
+
+class ActionMasker: pass
+
+
+class SupplyChainManager: pass
+
+
+class ResourceManager: pass
+
+
+class NetworkManager: pass
+
 
 class ActionManager:
     """
-    Receives agent's action, validates it against the current mask, and routes
-    it to the appropriate manager for execution.
+    Receives a global action tuple, validates it, and routes it to the
+    appropriate high-level manager system using the custom LogisticsAction class.
     """
-    def __init__(self, global_state: 'GlobalState', managers: Dict[str, Any], action_map: Dict[Tuple, int], action_masker: 'ActionMasker'):
-        """
-        Initializes the ActionManager with references to GlobalState,
-        other specialized managers, the action mapping, and the ActionMasker.
 
-        Args:
-            global_state (GlobalState): Reference to the central GlobalState.
-            managers (Dict[str, Any]): A dictionary containing instances of other managers,
-                                       e.g., {'supply_chain_manager': SupplyChainManager_instance, ...}.
-                                       These will be populated during LogisticsSimulation.initialize_simulation.
-            action_map (Dict[Tuple, int]): Mapping from action tuple to its flattened index.
-            action_masker (ActionMasker): Reference to the ActionMasker for validation.
-        """
+    def __init__(self,
+                 global_state: 'GlobalState',
+                 managers: Dict[str, Any],
+                 action_map: Dict[Tuple, int],
+                 action_masker: 'ActionMasker'):
+
         self.global_state = global_state
         self.action_map = action_map
         self.action_masker = action_masker
 
-        # Store references to specialized managers
-        self.supply_chain_manager = managers.get('supply_chain_manager')
-        self.resource_manager = managers.get('resource_manager')
-        self.network_manager = managers.get('network_manager')
+        self.supply_chain_manager: 'SupplyChainManager' = managers.get('supply_chain_manager')
+        self.resource_manager: 'ResourceManager' = managers.get('resource_manager')
+        self.network_manager: 'NetworkManager' = managers.get('network_manager')
 
-        # Reverse action map for decoding flattened actions back to tuples (optional, but useful)
         self._reverse_action_map: Dict[int, Tuple] = {idx: act_tuple for act_tuple, idx in action_map.items()}
 
-        print("ActionManager initialized.")
+        self._setup_action_sets()
+        self._setup_dispatch_mappings()
 
-    def execute_action(self, action_tuple: Tuple, current_mask: np.ndarray) -> bool:
+        print("ActionManager (Refactored with LogisticsAction) initialized.")
+
+    def _setup_action_sets(self):
+        """Groups global actions by the manager responsible for them."""
+        self.SCM_ACTIONS = {
+            SimulationAction.ACCEPT_ORDER, SimulationAction.CANCEL_ORDER,
+            SimulationAction.ASSIGN_ORDER_TO_TRUCK, SimulationAction.ASSIGN_ORDER_TO_DRONE,
+            SimulationAction.ASSIGN_ORDER_TO_MICRO_HUB
+        }
+        self.RM_ACTIONS = {
+            SimulationAction.LOAD_TRUCK_ACTION, SimulationAction.UNLOAD_TRUCK_ACTION,
+            SimulationAction.DRONE_LOAD_ACTION, SimulationAction.DRONE_UNLOAD_ACTION,
+            SimulationAction.ACTIVATE_MICRO_HUB, SimulationAction.DEACTIVATE_MICRO_HUB
+        }
+        self.NM_ACTIONS = {
+            SimulationAction.TRUCK_TO_NODE, SimulationAction.RE_ROUTE_TRUCK_TO_NODE,
+            SimulationAction.LAUNCH_DRONE, SimulationAction.DRONE_TO_CHARGING_STATION
+        }
+
+    def _setup_dispatch_mappings(self):
+        """Creates mappings for local action values and required parameters."""
+        self.SCM_ACTION_MAP = {
+            SimulationAction.ACCEPT_ORDER: 0, SimulationAction.CANCEL_ORDER: 1,
+            SimulationAction.ASSIGN_ORDER_TO_TRUCK: 2, SimulationAction.ASSIGN_ORDER_TO_DRONE: 3,
+            SimulationAction.ASSIGN_ORDER_TO_MICRO_HUB: 4
+        }
+        self.RM_ACTION_MAP = {
+            SimulationAction.LOAD_TRUCK_ACTION: 0, SimulationAction.UNLOAD_TRUCK_ACTION: 1,
+            SimulationAction.DRONE_LOAD_ACTION: 2, SimulationAction.DRONE_UNLOAD_ACTION: 3,
+            SimulationAction.ACTIVATE_MICRO_HUB: 4, SimulationAction.DEACTIVATE_MICRO_HUB: 5
+        }
+        self.NM_ACTION_MAP = {
+            SimulationAction.TRUCK_TO_NODE: 0, SimulationAction.RE_ROUTE_TRUCK_TO_NODE: 1,
+            SimulationAction.LAUNCH_DRONE: 2, SimulationAction.DRONE_TO_CHARGING_STATION: 3
+        }
+
+        self.PARAM_MAP = {
+            SimulationAction.ACCEPT_ORDER: ['order_id'],
+            SimulationAction.CANCEL_ORDER: ['order_id'],
+            SimulationAction.ASSIGN_ORDER_TO_TRUCK: ['order_id', 'truck_id'],
+            SimulationAction.ASSIGN_ORDER_TO_DRONE: ['order_id', 'drone_id'],
+            SimulationAction.ASSIGN_ORDER_TO_MICRO_HUB: ['order_id', 'micro_hub_id'],
+            SimulationAction.LOAD_TRUCK_ACTION: ['truck_id', 'order_id'],
+            SimulationAction.UNLOAD_TRUCK_ACTION: ['truck_id', 'order_id'],
+            SimulationAction.DRONE_LOAD_ACTION: ['drone_id', 'order_id'],
+            SimulationAction.DRONE_UNLOAD_ACTION: ['drone_id', 'order_id'],
+            SimulationAction.ACTIVATE_MICRO_HUB: ['micro_hub_id'],
+            SimulationAction.DEACTIVATE_MICRO_HUB: ['micro_hub_id'],
+            SimulationAction.TRUCK_TO_NODE: ['truck_id', 'destination_node_id'],
+            SimulationAction.RE_ROUTE_TRUCK_TO_NODE: ['truck_id', 'new_destination_node_id'],
+            SimulationAction.LAUNCH_DRONE: ['drone_id', 'order_id'],
+            SimulationAction.DRONE_TO_CHARGING_STATION: ['drone_id', 'charging_station_id']
+        }
+
+    def execute_action(self, action_tuple: Tuple, current_mask) -> bool:
         """
-        Decodes the action tuple, performs final validation against the current_mask,
-        and dispatches it to the correct specialized manager/method for execution.
-
-        Args:
-            action_tuple (Tuple): The action tuple received from the agent.
-                                  e.g., (AgentActionType.TRUCK_TO_NODE, truck_id, node_id)
-            current_mask (np.ndarray): The boolean mask generated by ActionMasker for the current state.
-
-        Returns:
-            bool: True if the action was valid and executed, False if invalid or could not be executed.
+        Decodes the global action tuple and dispatches it to the correct manager system.
         """
-        # First, check if the action tuple is even in our action map
-        flattened_index = self.action_map.get(action_tuple)
-        if flattened_index is None:
-            print(f"ActionManager: Error - Action tuple {action_tuple} not found in action_map.")
-            return False
+        action_type_enum = action_tuple[0]
+        params = self._get_params_from_tuple(action_tuple)
 
-        # Second, validate against the current mask
-        if not current_mask[flattened_index]:
-            return False
 
-        # If we reach here, the action is considered valid by the mask.
-        # Now, dispatch the action to the appropriate manager.
-        # The first element of the action_tuple is assumed to be the AgentActionType
+        if action_type_enum in self.SCM_ACTIONS:
+            action_value = self.SCM_ACTION_MAP[action_type_enum]
+                # REFACTORED: Use LogisticsAction
+            scm_action = LogisticsAction(p_action_space=self.supply_chain_manager.get_action_space(),
+                                             p_values=[action_value],
+                                             **params)
+            return self.supply_chain_manager.process_action(scm_action)
+
+        elif action_type_enum in self.RM_ACTIONS:
+            action_value = self.RM_ACTION_MAP[action_type_enum]
+            # REFACTORED: Use LogisticsAction
+            rm_action = LogisticsAction(p_action_space=self.resource_manager.get_action_space(),
+                                            p_values=[action_value],
+                                            **params)
+            return self.resource_manager.process_action(rm_action)
+
+        elif action_type_enum in self.NM_ACTIONS:
+            action_value = self.NM_ACTION_MAP[action_type_enum]
+                # REFACTORED: Use LogisticsAction
+            nm_action = LogisticsAction(p_action_space=self.network_manager.get_action_space(),
+                                            p_values=[action_value],
+                                            **params)
+            return self.network_manager.process_action(nm_action)
+
+
+        # print(f"ActionManager dispatch error for action {action_tuple}: {e}")
+
+        return False
+
+
+    def _get_params_from_tuple(self, action_tuple: Tuple) -> Dict[str, Any]:
+        """Creates a kwargs dictionary from the action tuple using the PARAM_MAP."""
         action_type = action_tuple[0]
-        params = action_tuple[1:] # Remaining elements are parameters for the action
+        param_names = self.PARAM_MAP.get(action_type, [])
 
-        try:
-            # Dispatch based on action_type.
-            # This requires a mapping from action_type to the manager method.
-            # The following 'if/elif' structure will be expanded as enums and managers are fully defined.
-            # For now, it includes the examples from the plan.
+        params = {}
+        for i, param_name in enumerate(param_names):
+            params[param_name] = action_tuple[i + 1]
 
-            if action_type == "ACCEPT_ORDER": # Corresponds to AgentActionType.ACCEPT_ORDER
-                if self.supply_chain_manager:
-                    self.supply_chain_manager.accept_order(*params)
-                else:
-                    print("SupplyChainManager not initialized for ACCEPT_ORDER.")
-                    return False
-            elif action_type == "TRUCK_TO_NODE": # Corresponds to AgentActionType.TRUCK_TO_NODE
-                if self.network_manager:
-                    self.network_manager.truck_to_node(*params)
-                else:
-                    print("NetworkManager not initialized for TRUCK_TO_NODE.")
-                    return False
-            elif action_type == "LOAD_TRUCK_ACTION": # Corresponds to AgentActionType.LOAD_TRUCK_ACTION
-                # Assuming FleetManager is an attribute of ResourceManager
-                if self.resource_manager and hasattr(self.resource_manager, 'fleet_manager') and self.resource_manager.fleet_manager:
-                    self.resource_manager.fleet_manager.load_truck(*params)
-                else:
-                    print("FleetManager not initialized for LOAD_TRUCK_ACTION.")
-                    return False
-            elif action_type == "NO_OP": # This is handled upstream by LogisticsSimulation.process_agent_micro_action
-                 # If it somehow reaches here, it's a valid non-operation, but no further action needed.
-                 pass
-            # Add more elif blocks here for other action types as they are defined and implemented
-            # For example:
-            # elif action_type == "PRIORITIZE_ORDER":
-            #     if self.supply_chain_manager:
-            #         self.supply_chain_manager.prioritize_order(*params)
-            # ... and so on for all AgentActionType enums
-
-            else:
-                print(f"ActionManager: No dispatch logic implemented for action type {action_type}.")
-                return False
-
-            return True
-
-        except Exception as e:
-            print(f"ActionManager: Error executing action {action_tuple}: {e}")
-            return False
-
-    def _dispatch_action(self, action_type: Any, *params: Any) -> None:
-        """
-        Internal method to call the specific manager's method based on action_type.
-        The logic for this is currently embedded directly within `execute_action` for clarity.
-        This method serves as a conceptual placeholder from the original plan.
-        """
-        pass
-
+        return params

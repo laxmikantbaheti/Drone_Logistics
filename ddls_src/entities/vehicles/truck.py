@@ -7,6 +7,7 @@ from .base import Vehicle
 # MLPro Imports
 from mlpro.bf.systems import State, Action
 from mlpro.bf.math import MSpace, Dimension
+from ddls_src.actions.action_enums import SimulationAction
 
 
 # Forward declarations
@@ -22,7 +23,7 @@ class Node: pass
 class Truck(Vehicle):
     """
     Represents a truck vehicle, refactored as a concrete MLPro System.
-    It now processes its own load/unload actions.
+    It now includes automatic logic for loading and unloading.
     """
 
     C_TYPE = 'Truck'
@@ -37,14 +38,12 @@ class Truck(Vehicle):
         """
         Initializes a Truck system.
         """
-        # FIX: Set attributes BEFORE calling super().__init__ to avoid initialization errors
         self.initial_fuel: float = p_kwargs.get('initial_fuel', 100.0)
         self.fuel_consumption_rate: float = p_kwargs.get('fuel_consumption_rate', 0.1)
         self.max_fuel_capacity: float = self.initial_fuel * 1.5
         self.fuel_level: float = self.initial_fuel
-
-        # FIX: Make global_state optional during initialization
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
+        self.automatic_logic_config = p_kwargs.get('p_automatic_logic_config', {})
 
         super().__init__(p_id=p_id,
                          p_name=p_name,
@@ -57,22 +56,14 @@ class Truck(Vehicle):
 
     @staticmethod
     def setup_spaces():
-        """
-        Extends the Vehicle's state and action spaces with truck-specific dimensions.
-        """
         state_space, _ = Vehicle.setup_spaces()
-
         state_space.add_dim(Dimension('fuel_level', 'R', 'Current Fuel Level', p_boundaries=[0, 9999]))
 
-        # Redefine action space for truck-specific discrete actions
         action_space = MSpace()
         action_space.add_dim(Dimension(p_name_short='truck_action',
                                        p_base_set='Z',
                                        p_name_long='Truck Action',
                                        p_boundaries=[0, 2]))
-        # 0: GO_TO_NODE (handled by base class)
-        # 1: LOAD_ORDER
-        # 2: UNLOAD_ORDER
 
         return state_space, action_space
 
@@ -81,15 +72,53 @@ class Truck(Vehicle):
         self.fuel_level = self.initial_fuel
         self._update_state()
 
-    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
-        Processes actions for the truck, including loading and unloading.
+        Simulates the truck's state, including automatic loading/unloading logic.
         """
-        if self.global_state is None:
-            self.log(self.C_LOG_TYPE_E, "Cannot process action, global_state not injected.")
-            return False
+        if p_action is not None:
+            self._process_action(p_action, p_t_step)
 
-        action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        # --- Automatic Logic ---
+        self._check_and_perform_node_actions()
+
+        # Call parent's simulation for movement
+        super()._simulate_reaction(p_state, None, p_t_step)
+
+        self._update_state()
+        return self._state
+
+    def _check_and_perform_node_actions(self):
+        """
+        Checks for and executes automatic loading or unloading if the truck is idle at a node.
+        """
+        if self.status != 'idle' or self.current_node_id is None:
+            return
+
+        # Check for auto-unloading (delivery)
+        if self.automatic_logic_config.get(SimulationAction.UNLOAD_TRUCK_ACTION, False):
+            for order_id in self.cargo_manifest:
+                order = self.global_state.get_entity("order", order_id)
+                if order.customer_node_id == self.current_node_id:
+                    print(f"  - AUTOMATIC LOGIC (Truck {self.id}): Unloading Order {order_id} at destination.")
+                    self._unload_order(order_id)
+                    return  # Only do one action per cycle
+
+        # Check for auto-loading (pickup)
+        if self.automatic_logic_config.get(SimulationAction.LOAD_TRUCK_ACTION, False):
+            current_node = self.global_state.get_entity("node", self.current_node_id)
+            for order_id in current_node.packages_held:
+                order = self.global_state.get_entity("order", order_id)
+                if order.assigned_vehicle_id == self.id:
+                    print(f"  - AUTOMATIC LOGIC (Truck {self.id}): Loading assigned Order {order_id}.")
+                    self._load_order(order_id)
+                    return  # Only do one action per cycle
+
+    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+        if self.global_state is None: return False
+
+        # action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        action_value = p_action.get_sorted_values()[0]
         action_kwargs = p_action.get_kwargs()
 
         if action_value == 0:  # GO_TO_NODE
@@ -102,13 +131,11 @@ class Truck(Vehicle):
             elif action_value == 2:  # UNLOAD_ORDER
                 return self._unload_order(order_id)
         except KeyError:
-            self.log(self.C_LOG_TYPE_E, "Action requires 'order_id' in kwargs.")
             return False
 
         return False
 
     def update_energy(self, p_time_passed: float):
-        # p_time_passed is negative because it's passed from _move_along_route
         fuel_consumed = self.fuel_consumption_rate * abs(p_time_passed)
         self.fuel_level -= fuel_consumed
         self.fuel_level = max(0.0, self.fuel_level)
@@ -116,17 +143,11 @@ class Truck(Vehicle):
             self.status = "broken_down"
 
     def _update_state(self):
-        """
-        Synchronizes truck's internal attributes with the formal MLPro state object
-        using the explicit, robust method of getting dimension IDs by name.
-        """
         super()._update_state()
-        # REFACTORED: Use explicit get_dim_by_name().get_id() for robustness
         state_space = self._state.get_related_set()
         self._state.set_value(state_space.get_dim_by_name("fuel_level").get_id(), self.fuel_level)
 
     def _load_order(self, order_id: int) -> bool:
-        """Internal logic to load an order."""
         try:
             order: 'Order' = self.global_state.get_entity("order", order_id)
             if self.current_node_id is None: return False
@@ -145,7 +166,6 @@ class Truck(Vehicle):
             return False
 
     def _unload_order(self, order_id: int) -> bool:
-        """Internal logic to unload an order."""
         try:
             order: 'Order' = self.global_state.get_entity("order", order_id)
             if self.current_node_id is None: return False
