@@ -59,7 +59,7 @@
     ],
     "trucks": [
         {
-            "id": 0,
+            "id": 101,
             "start_node_id": 0,
             "max_payload_capacity": 5,
             "max_speed": 60.0,
@@ -69,7 +69,7 @@
     ],
     "drones": [
         {
-            "id": 0,
+            "id": 201,
             "start_node_id": 0,
             "max_payload_capacity": 1,
             "max_speed": 30.0,

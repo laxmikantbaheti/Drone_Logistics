@@ -94,10 +94,10 @@ class StateActionMapper:
         self._invalidation_map.clear()
         for constraint in self.constraints:
             rule_map = constraint.get_invalidations(self.global_state, self.action_index)
-            for state_tuple, action_indices in rule_map.items():
-                if state_tuple not in self._invalidation_map:
-                    self._invalidation_map[state_tuple] = set()
-                self._invalidation_map[state_tuple].update(action_indices)
+            for action_tuple, action_indices in rule_map.items():
+                if action_tuple not in self._invalidation_map:
+                    self._invalidation_map[action_tuple] = set()
+                self._invalidation_map[action_tuple].update(action_indices)
 
     # FIX: Renamed to be a public method
     def update_for_new_order(self, order_id: int):

@@ -2,6 +2,7 @@ import numpy as np
 from mlpro.bf.ml import Model
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.actions.action_enums import SimulationAction
+import random
 
 class DummyAgent(Model):
     """
@@ -21,7 +22,8 @@ class DummyAgent(Model):
         action_to_take_idx = -1
 
         if len(valid_actions) > 0:
-            action_to_take_idx = valid_actions[0]
+            # action_to_take_idx = valid_actions[0]
+            action_to_take_idx = random.choice(valid_actions)
         else:
             # Fallback to NO_OPERATION if no other actions are valid
             # This requires access to the action map, which we'll pass during scenario setup

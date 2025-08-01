@@ -5,6 +5,7 @@ from mlpro.bf.systems import Action
 
 # Local Imports
 from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.core.basics import LogisticsAction
 
 
 # Forward declarations
@@ -76,7 +77,7 @@ class ActionManager:
             return False
 
         # 3. Create and dispatch the formal MLPro Action
-        scm_action = Action(p_action_space=self.supply_chain_manager.get_action_space(),
+        scm_action = LogisticsAction(p_action_space=self.supply_chain_manager.get_action_space(),
                             p_values=[scm_action_value],
                             **params)
 
