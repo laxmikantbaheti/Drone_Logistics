@@ -39,6 +39,8 @@ class SimulationAction(Enum):
     TRUCK_TO_NODE = auto()
     RE_ROUTE_TRUCK_TO_NODE = auto()
     LAUNCH_DRONE = auto()
+    DRONE_TO_NODE = auto()
+    RE_ROUTE_DRONE_TO_NODE = auto()
     DRONE_LANDING_ACTION = auto()
     DRONE_TO_CHARGING_STATION = auto()
 

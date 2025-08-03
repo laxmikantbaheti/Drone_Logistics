@@ -35,6 +35,8 @@ AUTOMATIC_LOGIC_CONFIG = {
     # after it has been assigned an order.
     SimulationAction.TRUCK_TO_NODE: True,
     SimulationAction.RE_ROUTE_TRUCK_TO_NODE: True,
+    SimulationAction.DRONE_TO_NODE: True,
+    SimulationAction.RE_ROUTE_DRONE_TO_NODE: True,
     SimulationAction.LAUNCH_DRONE: True,
     SimulationAction.DRONE_TO_CHARGING_STATION: True,
 
