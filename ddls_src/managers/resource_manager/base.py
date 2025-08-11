@@ -2,9 +2,10 @@ from typing import List, Dict, Any, Optional
 from datetime import timedelta
 
 # Refactored local imports
-from .fleet_manager import FleetManager
-from .micro_hub_manager import MicroHubsManager
-from ...core.basics import LogisticsAction  # <-- Import LogisticsAction
+from ddls_src.managers.resource_manager.fleet_manager import FleetManager
+from ddls_src.managers.resource_manager.micro_hub_manager import MicroHubsManager
+from ddls_src.core.basics import LogisticsAction
+from ddls_src.actions.base import SimulationAction
 
 # MLPro Imports
 from mlpro.bf.systems import System, State
@@ -18,9 +19,8 @@ class GlobalState:
 
 class ResourceManager(System):
     """
-    Manages various resources within the simulation, including vehicle maintenance
-    and the availability of services at micro-hubs. It orchestrates actions
-    related to fleet and micro-hub resources.
+    Manages various resources within the simulation. It now dynamically configures
+    its action space and dispatches actions based on the central action blueprint.
     """
 
     C_TYPE = 'Resource Manager'
@@ -63,13 +63,15 @@ class ResourceManager(System):
         state_space.add_dim(Dimension('num_hubs', 'Z', 'Total Hubs', p_boundaries=[0, 999]))
         state_space.add_dim(Dimension('vehicles_in_maintenance', 'Z', 'Vehicles in Maintenance', p_boundaries=[0, 999]))
 
+        # Dynamically find all actions handled by this manager
+        handler_name = "ResourceManager"
+        action_ids = [action.id for action in SimulationAction if action.handler == handler_name]
+
         action_space = MSpace()
-        action_space.add_dim(Dimension(p_name_short='rm_action',
+        action_space.add_dim(Dimension(p_name_short='rm_action_id',
                                        p_base_set='Z',
-                                       p_name_long='Resource Manager Action',
-                                       p_boundaries=[0, 5]))
-        # 0: LOAD_TRUCK, 1: UNLOAD_TRUCK, 2: LOAD_DRONE, 3: UNLOAD_DRONE (to FleetManager)
-        # 4: ACTIVATE_HUB, 5: DEACTIVATE_HUB (to MicroHubsManager)
+                                       p_name_long='Resource Manager Action ID',
+                                       p_boundaries=[min(action_ids), max(action_ids)]))
 
         return state_space, action_space
 
@@ -94,21 +96,23 @@ class ResourceManager(System):
         """
         Processes a command by dispatching it to the correct sub-manager.
         """
-        action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
-        action_kwargs = p_action.data  # Use the .data attribute from LogisticsAction
+        action_id = int(p_action.get_sorted_values()[0])
+        action_type = SimulationAction._value2member_map_.get(action_id)
+        action_kwargs = p_action.data
 
-        # Actions 0-3 are for the FleetManager
-        if 0 <= action_value <= 3:
-            fm_action = LogisticsAction(p_action_space=self.fleet_manager.get_action_space(), p_values=[action_value],
+        # This logic could be made more robust by reading sub-handler info from the blueprint
+        # For now, we assume a simple mapping based on the action type name
+
+        # Actions for the FleetManager
+        if "TRUCK" in action_type.name or "DRONE" in action_type.name:
+            fm_action = LogisticsAction(p_action_space=self.fleet_manager.get_action_space(), p_values=[action_id],
                                         **action_kwargs)
             return self.fleet_manager.process_action(fm_action)
 
-        # Actions 4-5 are for the MicroHubsManager
-        elif 4 <= action_value <= 5:
-            # Map RM action value to MHM action value (4->0, 5->1)
-            mhm_action_value = action_value - 4
+        # Actions for the MicroHubsManager
+        elif "HUB" in action_type.name:
             mhm_action = LogisticsAction(p_action_space=self.micro_hubs_manager.get_action_space(),
-                                         p_values=[mhm_action_value], **action_kwargs)
+                                         p_values=[action_id], **action_kwargs)
             return self.micro_hubs_manager.process_action(mhm_action)
 
         return False
@@ -127,19 +131,3 @@ class ResourceManager(System):
         self._state.set_value(state_space.get_dim_by_name("vehicles_in_maintenance").get_id(),
                               sum(1 for v in trucks if v.status == 'maintenance') +
                               sum(1 for v in drones if v.status == 'maintenance'))
-
-    # Public API for higher-level managers
-    def flag_vehicle_for_maintenance(self, vehicle_id: int) -> bool:
-        try:
-            vehicle = None
-            if vehicle_id in self.global_state.trucks:
-                vehicle = self.global_state.get_entity("truck", vehicle_id)
-            elif vehicle_id in self.global_state.drones:
-                vehicle = self.global_state.get_entity("drone", vehicle_id)
-
-            if vehicle and vehicle.status not in ["maintenance", "broken_down"]:
-                vehicle.set_status("maintenance")
-                return True
-            return False
-        except KeyError:
-            return False

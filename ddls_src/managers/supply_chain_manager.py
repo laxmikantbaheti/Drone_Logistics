@@ -1,4 +1,3 @@
-from math import acosh
 from typing import List, Dict, Any, Optional
 from datetime import timedelta
 
@@ -8,7 +7,7 @@ from mlpro.bf.math import MSpace, Dimension
 
 # Local Imports
 from ..core.basics import LogisticsAction
-from ..actions.action_enums import SimulationAction
+from ..actions.base import SimulationAction
 
 
 # Forward declarations
@@ -30,7 +29,7 @@ class MicroHub: pass
 class SupplyChainManager(System):
     """
     Manages the lifecycle and assignment of orders as an MLPro System.
-    It now includes automatic, rule-based logic for order assignment.
+    Its action space is now dynamically configured from the action blueprint.
     """
 
     C_TYPE = 'Supply Chain Manager'
@@ -64,6 +63,7 @@ class SupplyChainManager(System):
     def setup_spaces():
         """
         Defines the state and action spaces for the SupplyChainManager.
+        The action space is dynamically built from the action blueprint.
         """
         state_space = MSpace()
         state_space.add_dim(Dimension('num_orders_total', 'Z', 'Total Orders', p_boundaries=[0, 9999]))
@@ -71,12 +71,15 @@ class SupplyChainManager(System):
         state_space.add_dim(Dimension('orders_in_transit', 'Z', 'In-Transit Orders', p_boundaries=[0, 9999]))
         state_space.add_dim(Dimension('orders_delivered', 'Z', 'Delivered Orders', p_boundaries=[0, 9999]))
 
+        # Dynamically find all actions handled by this manager
+        handler_name = "SupplyChainManager"
+        action_ids = [action.id for action in SimulationAction if action.handler == handler_name]
+
         action_space = MSpace()
-        action_space.add_dim(Dimension(p_name_short='scm_action',
+        action_space.add_dim(Dimension(p_name_short='scm_action_id',
                                        p_base_set='Z',
-                                       p_name_long='Supply Chain Manager Action',
-                                       p_boundaries=[0, 4]))
-        # 0: ACCEPT_ORDER, 1: CANCEL_ORDER, 2: ASSIGN_TO_TRUCK, 3: ASSIGN_TO_DRONE, 4: ASSIGN_TO_HUB
+                                       p_name_long='Supply Chain Manager Action ID',
+                                       p_boundaries=[min(action_ids), max(action_ids)]))
 
         return state_space, action_space
 
@@ -87,7 +90,6 @@ class SupplyChainManager(System):
         if p_action is not None:
             self._process_action(p_action)
 
-        # --- Automatic Logic ---
         self._check_and_assign_orders()
 
         self._update_state()
@@ -98,13 +100,13 @@ class SupplyChainManager(System):
         Scans for pending orders and assigns them to available vehicles if auto-assignment is enabled.
         """
         if not self.automatic_logic_config.get(SimulationAction.ASSIGN_ORDER_TO_TRUCK, False):
-            return  # Exit if auto-assignment is off for trucks (drones would have a separate check)
+            return
 
         pending_orders = [o for o in self.global_state.orders.values() if o.status == 'pending']
-        if not pending_orders: return
-
         idle_trucks = [t for t in self.global_state.trucks.values() if t.status == 'idle']
-        if not idle_trucks: return
+
+        if not pending_orders or not idle_trucks:
+            return
 
         # Simple logic: assign the first pending order to the first idle truck
         order_to_assign = pending_orders[0]
@@ -118,21 +120,21 @@ class SupplyChainManager(System):
         """
         Processes a high-level command related to order management.
         """
-        # action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
-        action_value = p_action.get_sorted_values()[0]
+        action_id = int(p_action.get_sorted_values()[0])
+        action_type = SimulationAction._value2member_map_.get(action_id)
         action_kwargs = p_action.data
 
         try:
             order_id = action_kwargs['order_id']
             order: 'Order' = self.global_state.get_entity("order", order_id)
 
-            if action_value == 0:  # ACCEPT_ORDER
+            if action_type == SimulationAction.ACCEPT_ORDER:
                 if order.status == "pending":
                     order.update_status("accepted")
                     return True
                 return False
 
-            elif action_value == 1:  # CANCEL_ORDER
+            elif action_type == SimulationAction.CANCEL_ORDER:
                 if order.status not in ["delivered", "cancelled"]:
                     if order.assigned_vehicle_id is not None:
                         order.unassign_vehicle()
@@ -140,21 +142,21 @@ class SupplyChainManager(System):
                     return True
                 return False
 
-            elif action_value == 2:  # ASSIGN_TO_TRUCK
+            elif action_type == SimulationAction.ASSIGN_ORDER_TO_TRUCK:
                 truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
                 if order.status in ["pending", "accepted", "flagged_re_delivery"]:
                     order.assign_vehicle(truck.id)
                     return True
                 return False
 
-            elif action_value == 3:  # ASSIGN_TO_DRONE
+            elif action_type == SimulationAction.ASSIGN_ORDER_TO_DRONE:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
                 if order.status in ["pending", "accepted", "flagged_re_delivery"]:
                     order.assign_vehicle(drone.id)
                     return True
                 return False
 
-            elif action_value == 4:  # ASSIGN_TO_HUB
+            elif action_type == SimulationAction.ASSIGN_ORDER_TO_MICRO_HUB:
                 hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
                 if order.status in ["pending", "accepted", "flagged_re_delivery"]:
                     order.assign_micro_hub(hub.id)

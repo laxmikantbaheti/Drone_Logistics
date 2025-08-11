@@ -1,10 +1,9 @@
 from typing import Dict, Any, Tuple
 
-from mlpro.bf.math import MSpace, Dimension
-
 # Local Imports
 from ddls_src.actions.base import SimulationAction
 from ddls_src.core.basics import LogisticsAction
+from mlpro.bf.math import MSpace, Dimension  # For validation block
 
 
 # Forward declarations
@@ -69,7 +68,7 @@ class ActionManager:
         # 1. Find the target manager from the self-configured dispatch map
         target_manager = self._dispatch_map.get(action_type_enum)
         if not target_manager:
-            self.log(self.C_LOG_TYPE_W, f"No handler defined or found for action type {action_type_enum.name}")
+            # self.log(self.C_LOG_TYPE_W, f"No handler defined or found for action type {action_type_enum.name}")
             return False
 
         # 2. Create the parameter dictionary from the self-configured param map
@@ -77,20 +76,19 @@ class ActionManager:
         params = {name: value for name, value in zip(param_names, action_tuple[1:])}
 
         # 3. Create the LogisticsAction object for the target manager
-        # Note: This assumes all managers have a compatible action space. A more
-        # complex system might map global actions to specific local manager actions.
         manager_action_space = target_manager.get_action_space()
+
         # We pass the global action's ID as the value for the manager's action space
         action_obj = LogisticsAction(p_action_space=manager_action_space,
                                      p_values=[action_type_enum.id],
                                      **params)
 
         # 4. Dispatch the action
-        # try:
-        return target_manager.process_action(action_obj)
-        # except Exception as e:
-        #     print(f"ActionManager dispatch error for action {action_tuple}: {e}")
-        #     return False
+        try:
+            return target_manager.process_action(action_obj)
+        except Exception as e:
+            print(f"ActionManager dispatch error for action {action_tuple}: {e}")
+            return False
 
 
 # -------------------------------------------------------------------------
@@ -106,9 +104,7 @@ if __name__ == '__main__':
         def get_action_space(self):
             space = MSpace()
             space.add_dim(Dimension(p_name_short="mock_action_dimension"))
-
             return space
-
 
         def process_action(self, action):
             print(
@@ -147,4 +143,3 @@ if __name__ == '__main__':
     action_manager.execute_action((SimulationAction.TRUCK_TO_NODE, 101, 5))
 
     print("\n--- Validation Complete ---")
-

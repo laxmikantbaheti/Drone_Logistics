@@ -6,8 +6,8 @@ from mlpro.bf.systems import System, State
 from mlpro.bf.math import MSpace, Dimension
 
 # Local Imports
-from ddls_src.actions.action_enums import SimulationAction
-from ddls_src.core.basics import LogisticsAction
+from ..actions.base import SimulationAction
+from ..core.basics import LogisticsAction
 
 
 # Forward declarations
@@ -29,7 +29,8 @@ class Order: pass
 class NetworkManager(System):
     """
     Manages all network operations, including vehicle routing, as an MLPro System.
-    It now includes robust, rule-based logic for routing vehicles.
+    It now dynamically configures its action space and dispatches actions based
+    on the central action blueprint.
     """
 
     C_TYPE = 'Network Manager'
@@ -71,11 +72,15 @@ class NetworkManager(System):
         state_space.add_dim(Dimension('total_edges', 'Z', 'Total Edges', p_boundaries=[0, 9999]))
         state_space.add_dim(Dimension('blocked_edges', 'Z', 'Blocked Edges', p_boundaries=[0, 9999]))
 
+        # Dynamically find all actions handled by this manager
+        handler_name = "NetworkManager"
+        action_ids = [action.id for action in SimulationAction if action.handler == handler_name]
+
         action_space = MSpace()
-        action_space.add_dim(Dimension(p_name_short='nm_action',
+        action_space.add_dim(Dimension(p_name_short='nm_action_id',
                                        p_base_set='Z',
-                                       p_name_long='Network Manager Action',
-                                       p_boundaries=[0, 3]))
+                                       p_name_long='Network Manager Action ID',
+                                       p_boundaries=[min(action_ids), max(action_ids)]))
 
         return state_space, action_space
 
@@ -125,7 +130,6 @@ class NetworkManager(System):
             vehicle = self.global_state.get_entity("truck",
                                                    vehicle_id) if vehicle_id in self.global_state.trucks else self.global_state.get_entity(
                 "drone", vehicle_id)
-            # FIX: Explicitly determine the vehicle type string for pathfinding
             vehicle_type_str = 'truck' if vehicle_id in self.global_state.trucks else 'drone'
 
             pickup_node_id = None
@@ -143,8 +147,6 @@ class NetworkManager(System):
                 path = self.network.calculate_shortest_path(vehicle.current_node_id, destination_node_id,
                                                             vehicle_type_str)
                 if path:
-                    print(
-                        f"  - AUTOMATIC LOGIC (NetworkManager): Vehicle {vehicle_id} is at pickup. Routing directly to destination via {path}.")
                     vehicle.set_route(path)
                 return
 
@@ -158,46 +160,32 @@ class NetworkManager(System):
 
             full_path = path_to_pickup + path_to_destination[1:]
 
-            print(
-                f"  - AUTOMATIC LOGIC (NetworkManager): Routing Vehicle {vehicle_id} on path {full_path} for Order {order_id}")
             vehicle.set_route(full_path)
 
         except KeyError:
             pass
 
     def _process_action(self, p_action: LogisticsAction) -> bool:
-        action_value = p_action.get_sorted_values()
+        """
+        Processes a command by creating a specific action for a vehicle and dispatching it.
+        """
+        action_id = int(p_action.get_sorted_values()[0])
+        action_type = SimulationAction._value2member_map_.get(action_id)
         action_kwargs = p_action.data
 
         try:
-            if action_value == 0:  # TRUCK_TO_NODE
+            if action_type in [SimulationAction.TRUCK_TO_NODE, SimulationAction.RE_ROUTE_TRUCK_TO_NODE]:
                 truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
                 target_node = action_kwargs['destination_node_id']
-                truck_action = LogisticsAction(p_action_space=truck.get_action_space(), p_values=[0],
-                                               target_node=target_node)
+                truck_action = LogisticsAction(p_action_space=truck.get_action_space(), p_values=[action_id],
+                                               **action_kwargs)
                 return truck.process_action(truck_action)
 
-            elif action_value == 1:  # REROUTE_TRUCK
-                truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
-                target_node = action_kwargs['new_destination_node_id']
-                truck_action = LogisticsAction(p_action_space=truck.get_action_space(), p_values=[0],
-                                               target_node=target_node)
-                return truck.process_action(truck_action)
-
-            elif action_value == 2:  # LAUNCH_DRONE
+            elif action_type in [SimulationAction.LAUNCH_DRONE, SimulationAction.DRONE_TO_NODE,
+                                 SimulationAction.DRONE_TO_CHARGING_STATION]:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
-                order: 'Order' = self.global_state.get_entity("order", action_kwargs['order_id'])
-                if action_kwargs['order_id'] not in drone.cargo_manifest: return False
-                target_node = order.customer_node_id
-                drone_action = LogisticsAction(p_action_space=drone.get_action_space(), p_values=[0],
-                                               target_node=target_node)
-                return drone.process_action(drone_action)
-
-            elif action_value == 3:  # DRONE_TO_CHARGING
-                drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
-                target_node = action_kwargs['charging_station_id']
-                drone_action = LogisticsAction(p_action_space=drone.get_action_space(), p_values=[0],
-                                               target_node=target_node)
+                drone_action = LogisticsAction(p_action_space=drone.get_action_space(), p_values=[action_id],
+                                               **action_kwargs)
                 return drone.process_action(drone_action)
 
         except KeyError as e:
@@ -215,4 +203,3 @@ class NetworkManager(System):
         self._state.set_value(state_space.get_dim_by_name("total_edges").get_id(), len(edges))
         self._state.set_value(state_space.get_dim_by_name("blocked_edges").get_id(),
                               sum(1 for e in edges if e.is_blocked))
-

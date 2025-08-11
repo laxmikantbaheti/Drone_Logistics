@@ -16,17 +16,16 @@ from ddls_src.managers.supply_chain_manager import SupplyChainManager
 from ddls_src.managers.resource_manager.base import ResourceManager
 from ddls_src.managers.network_manager import NetworkManager
 from ddls_src.actions.action_map_generator import generate_action_map
-from ddls_src.actions.base import SimulationAction
-from ddls_src.scenarios.generators.data_loader import DataLoader
-from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
-from ddls_src.scenarios.generators.order_generator import OrderGenerator
-from ddls_src.actions.state_action_mapper import StateActionMapper
-from ddls_src.actions.constraints.base import OrderAssignableConstraint, VehicleAvailableConstraint
+from ddls_src.actions.base import SimulationAction, Constraint, OrderAssignableConstraint, VehicleAvailableConstraint
 from ddls_src.core.logistics_simulation import TimeManager
 from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.entities.vehicles.truck import Truck
 from ddls_src.entities.vehicles.drone import Drone
+from ddls_src.scenarios.generators.data_loader import DataLoader
+from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
+from ddls_src.scenarios.generators.order_generator import OrderGenerator
+from ddls_src.core.state_action_mapper import StateActionMapper
 
 
 class LogisticsSystem(System, EventManager):
@@ -103,8 +102,8 @@ class LogisticsSystem(System, EventManager):
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
 
         self.network = Network(self.global_state)
-
         self.global_state.network = self.network
+
         all_entity_dicts = [
             self.global_state.orders, self.global_state.trucks,
             self.global_state.drones, self.global_state.micro_hubs,
@@ -129,16 +128,17 @@ class LogisticsSystem(System, EventManager):
         self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
 
         constraints_to_use = [OrderAssignableConstraint(), VehicleAvailableConstraint()]
-        self.state_action_mapper = StateActionMapper(self.global_state, self.action_map, constraints_to_use)
+        self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
 
         self.register_event_handler(self.C_EVENT_NEW_ORDER, self.state_action_mapper.handle_new_order_event)
 
+        # FIX: Use the correct handler names (class names) as keys to match the blueprint
         managers = {
-            'supply_chain_manager': self.supply_chain_manager,
-            'resource_manager': self.resource_manager,
-            'network_manager': self.network_manager
+            'SupplyChainManager': self.supply_chain_manager,
+            'ResourceManager': self.resource_manager,
+            'NetworkManager': self.network_manager
         }
-        self.action_manager = ActionManager(self.global_state, managers, self.action_map, None)
+        self.action_manager = ActionManager(self.global_state, managers, self.action_map)
 
         initial_sim_time = initial_entities.get('initial_time', 0.0)
         self.time_manager.reset_time(new_initial_time=initial_sim_time)
@@ -167,7 +167,7 @@ class LogisticsSystem(System, EventManager):
 
         if action_tuple and action_tuple[0] != SimulationAction.NO_OPERATION:
             print(f"  - Executing Agent Action: {action_tuple}")
-            self.action_manager.execute_action(action_tuple, self.get_current_mask())
+            self.action_manager.execute_action(action_tuple)
 
         print("  - Entering Automatic Action Loop...")
         for i in range(self.C_MAX_AUTO_ACTIONS_PER_STEP):
@@ -179,7 +179,7 @@ class LogisticsSystem(System, EventManager):
 
             auto_action_tuple = automatic_actions_to_take[0]
             print(f"  - Executing Automatic Action: {auto_action_tuple}")
-            self.action_manager.execute_action(auto_action_tuple, self.get_current_mask())
+            self.action_manager.execute_action(auto_action_tuple)
         else:
             self.log(self.C_LOG_TYPE_W,
                      f"Automatic action loop reached max iterations ({self.C_MAX_AUTO_ACTIONS_PER_STEP}). Possible action storm.")
