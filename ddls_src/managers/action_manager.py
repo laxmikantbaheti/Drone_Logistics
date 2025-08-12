@@ -1,7 +1,7 @@
 from typing import Dict, Any, Tuple
 
 # Local Imports
-from ddls_src.actions.base import SimulationAction
+from ddls_src.actions.base import SimulationActions, ActionType
 from ddls_src.core.basics import LogisticsAction
 from mlpro.bf.math import MSpace, Dimension  # For validation block
 
@@ -42,8 +42,8 @@ class ActionManager:
         self._managers = managers
 
         # Self-configure the dispatch and parameter maps from the blueprint
-        self._dispatch_map: Dict[SimulationAction, Any] = {}
-        self._param_map: Dict[SimulationAction, Any] = {}
+        self._dispatch_map: Dict[ActionType, Any] = {}
+        self._param_map: Dict[ActionType, Any] = {}
         self._build_maps()
 
         print("ActionManager (Self-Configuring) initialized.")
@@ -51,9 +51,9 @@ class ActionManager:
     def _build_maps(self):
         """
         Programmatically builds the internal dispatch and parameter maps by
-        reading the SimulationAction blueprint.
+        reading the SimulationActions blueprint.
         """
-        for action in SimulationAction:
+        for action in SimulationActions.get_all_actions():
             handler_name = action.handler
             if handler_name and handler_name in self._managers:
                 self._dispatch_map[action] = self._managers[handler_name]
@@ -63,16 +63,16 @@ class ActionManager:
         """
         Decodes the global action tuple and dispatches it to the correct manager system.
         """
-        action_type_enum = action_tuple[0]
+        action_type = action_tuple[0]
 
         # 1. Find the target manager from the self-configured dispatch map
-        target_manager = self._dispatch_map.get(action_type_enum)
+        target_manager = self._dispatch_map.get(action_type)
         if not target_manager:
-            # self.log(self.C_LOG_TYPE_W, f"No handler defined or found for action type {action_type_enum.name}")
+            # self.log(self.C_LOG_TYPE_W, f"No handler defined or found for action type {action_type.name}")
             return False
 
         # 2. Create the parameter dictionary from the self-configured param map
-        param_names = self._param_map.get(action_type_enum, [])
+        param_names = self._param_map.get(action_type, [])
         params = {name: value for name, value in zip(param_names, action_tuple[1:])}
 
         # 3. Create the LogisticsAction object for the target manager
@@ -80,7 +80,7 @@ class ActionManager:
 
         # We pass the global action's ID as the value for the manager's action space
         action_obj = LogisticsAction(p_action_space=manager_action_space,
-                                     p_values=[action_type_enum.id],
+                                     p_values=[action_type.id],
                                      **params)
 
         # 4. Dispatch the action
@@ -120,8 +120,8 @@ if __name__ == '__main__':
 
     # A small, representative action_map for this demo
     mock_action_map = {
-        (SimulationAction.ASSIGN_ORDER_TO_TRUCK, 0, 101): 0,
-        (SimulationAction.TRUCK_TO_NODE, 101, 5): 1
+        (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 101): 0,
+        (SimulationActions.TRUCK_TO_NODE, 101, 5): 1
     }
 
     print("--- Validating Self-Configuring ActionManager ---")
@@ -137,9 +137,9 @@ if __name__ == '__main__':
     print("\n[B] Dispatching Demo:")
 
     print("\n  - Dispatching an ASSIGN_ORDER_TO_TRUCK action...")
-    action_manager.execute_action((SimulationAction.ASSIGN_ORDER_TO_TRUCK, 0, 101))
+    action_manager.execute_action((SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 101))
 
     print("\n  - Dispatching a TRUCK_TO_NODE action...")
-    action_manager.execute_action((SimulationAction.TRUCK_TO_NODE, 101, 5))
+    action_manager.execute_action((SimulationActions.TRUCK_TO_NODE, 101, 5))
 
     print("\n--- Validation Complete ---")

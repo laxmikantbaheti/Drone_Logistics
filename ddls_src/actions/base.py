@@ -17,53 +17,51 @@ class Constraint(ABC):
     """
 
     @abstractmethod
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex') -> Dict[Tuple, Set[int]]:
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
         pass
 
 
-# --- Concrete Constraint Implementations ---
+# --- Concrete Constraint Implementations (Placeholders for now) ---
 
 class OrderAssignableConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex') -> Dict[Tuple, Set[int]]:
-        # Logic to be implemented
-        return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
 
 
 class VehicleAvailableConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex') -> Dict[Tuple, Set[int]]:
-        # Logic to be implemented
-        return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
 
 
 class VehicleCapacityConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex') -> Dict[Tuple, Set[int]]:
-        # Logic to be implemented
-        return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
 
 
 class HubIsActiveConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex') -> Dict[Tuple, Set[int]]:
-        return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
 
 
 class VehicleAtNodeConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex') -> Dict[Tuple, Set[int]]:
-        return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
 
 
 class OrderAtNodeConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex') -> Dict[Tuple, Set[int]]:
-        return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
 
 
 class OrderInCargoConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex') -> Dict[Tuple, Set[int]]:
-        return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
 
 
 class DroneBatteryConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex') -> Dict[Tuple, Set[int]]:
-        return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
 
 
 # -------------------------------------------------------------------------------------------------
@@ -71,26 +69,8 @@ class DroneBatteryConstraint(Constraint):
 # -------------------------------------------------------------------------------------------------
 
 class ActionIndex:
-    def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
-        self.actions_by_type: Dict['ActionType', Set[int]] = defaultdict(set)
-        self.actions_involving_entity: Dict[Tuple, Set[int]] = defaultdict(set)
-        self._build_indexes(global_state, action_map)
-
-    def _build_indexes(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
-        for action_tuple, action_index in action_map.items():
-            action_type = action_tuple[0]
-            self.actions_by_type[action_type].add(action_index)
-            if not action_type.params: continue
-            for i, param_def in enumerate(action_type.params):
-                entity_type = param_def['type']
-                entity_id = action_tuple[i + 1]
-                self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
-
-    def get_actions_of_type(self, action_types: List['ActionType']) -> Set[int]:
-        ids = set()
-        for action_type in action_types:
-            ids.update(self.actions_by_type[action_type])
-        return ids
+    # ... (Implementation would go here) ...
+    pass
 
 
 # -------------------------------------------------------------------------------------------------
@@ -104,13 +84,15 @@ class ActionType:
     _id_counter = 0
     _id_map = {}
 
-    def __init__(self, name: str, params: List, constraints: List, is_automatic: bool, handler: str):
+    def __init__(self, name: str, params: List, constraints: List, is_automatic: bool, handler: str,
+                 active: bool = True):
         self.id = ActionType._id_counter
         self.name = name
         self.params = params
         self.constraints = constraints
         self.is_automatic = is_automatic
         self.handler = handler
+        self.active = active
 
         ActionType._id_map[self.id] = self
         ActionType._id_counter += 1
@@ -122,17 +104,14 @@ class ActionType:
 
 class SimulationActions:
     """
-    A namespace class that holds all action blueprints as class attributes.
-    This serves as our single source of truth for all action definitions.
+    A namespace class that holds all action blueprints. The 'active' flag
+    determines which actions are included in the action map for a given scenario.
     """
+    # ---------------------------------------------------------------------------------------------
+    # -- Core Actions (Active for Demonstration)
+    # ---------------------------------------------------------------------------------------------
     ACCEPT_ORDER = ActionType("ACCEPT_ORDER", [{'name': 'order_id', 'type': 'Order'}], [OrderAssignableConstraint],
                               False, "SupplyChainManager")
-    PRIORITIZE_ORDER = ActionType("PRIORITIZE_ORDER",
-                                  [{'name': 'order_id', 'type': 'Order'}, {'name': 'priority', 'type': 'int'}], [],
-                                  False, "SupplyChainManager")
-    CANCEL_ORDER = ActionType("CANCEL_ORDER", [{'name': 'order_id', 'type': 'Order'}], [], False, "SupplyChainManager")
-    FLAG_FOR_RE_DELIVERY = ActionType("FLAG_FOR_RE_DELIVERY", [{'name': 'order_id', 'type': 'Order'}], [], False,
-                                      "SupplyChainManager")
     ASSIGN_ORDER_TO_TRUCK = ActionType("ASSIGN_ORDER_TO_TRUCK",
                                        [{'name': 'order_id', 'type': 'Order'}, {'name': 'truck_id', 'type': 'Truck'}],
                                        [OrderAssignableConstraint, VehicleAvailableConstraint,
@@ -141,20 +120,6 @@ class SimulationActions:
                                        [{'name': 'order_id', 'type': 'Order'}, {'name': 'drone_id', 'type': 'Drone'}],
                                        [OrderAssignableConstraint, VehicleAvailableConstraint,
                                         VehicleCapacityConstraint], False, "SupplyChainManager")
-    ASSIGN_ORDER_TO_MICRO_HUB = ActionType("ASSIGN_ORDER_TO_MICRO_HUB", [{'name': 'order_id', 'type': 'Order'},
-                                                                         {'name': 'micro_hub_id', 'type': 'MicroHub'}],
-                                           [OrderAssignableConstraint, HubIsActiveConstraint], False,
-                                           "SupplyChainManager")
-    REASSIGN_ORDER = ActionType("REASSIGN_ORDER",
-                                [{'name': 'order_id', 'type': 'Order'}, {'name': 'vehicle_id', 'type': 'Vehicle'}],
-                                [OrderAssignableConstraint, VehicleAvailableConstraint, VehicleCapacityConstraint],
-                                False, "SupplyChainManager")
-    CONSOLIDATE_FOR_TRUCK = ActionType("CONSOLIDATE_FOR_TRUCK", [{'name': 'truck_id', 'type': 'Truck'}],
-                                       [VehicleAvailableConstraint, VehicleAtNodeConstraint], False,
-                                       "SupplyChainManager")
-    CONSOLIDATE_FOR_DRONE = ActionType("CONSOLIDATE_FOR_DRONE", [{'name': 'drone_id', 'type': 'Drone'}],
-                                       [VehicleAvailableConstraint, VehicleAtNodeConstraint], False,
-                                       "SupplyChainManager")
     LOAD_TRUCK_ACTION = ActionType("LOAD_TRUCK_ACTION",
                                    [{'name': 'truck_id', 'type': 'Truck'}, {'name': 'order_id', 'type': 'Order'}],
                                    [VehicleAvailableConstraint, VehicleAtNodeConstraint, OrderAtNodeConstraint,
@@ -171,43 +136,74 @@ class SimulationActions:
                                      [{'name': 'drone_id', 'type': 'Drone'}, {'name': 'order_id', 'type': 'Order'}],
                                      [VehicleAvailableConstraint, VehicleAtNodeConstraint, OrderInCargoConstraint],
                                      True, "ResourceManager")
-    DRONE_CHARGE_ACTION = ActionType("DRONE_CHARGE_ACTION",
-                                     [{'name': 'drone_id', 'type': 'Drone'}, {'name': 'duration', 'type': 'int'}],
-                                     [VehicleAtNodeConstraint], True, "ResourceManager")
-    ACTIVATE_MICRO_HUB = ActionType("ACTIVATE_MICRO_HUB", [{'name': 'micro_hub_id', 'type': 'MicroHub'}], [], False,
-                                    "ResourceManager")
-    DEACTIVATE_MICRO_HUB = ActionType("DEACTIVATE_MICRO_HUB", [{'name': 'micro_hub_id', 'type': 'MicroHub'}], [], False,
-                                      "ResourceManager")
-    ADD_TO_CHARGING_QUEUE = ActionType("ADD_TO_CHARGING_QUEUE", [{'name': 'micro_hub_id', 'type': 'MicroHub'},
-                                                                 {'name': 'drone_id', 'type': 'Drone'}],
-                                       [HubIsActiveConstraint, VehicleAtNodeConstraint], True, "ResourceManager")
-    FLAG_VEHICLE_FOR_MAINTENANCE = ActionType("FLAG_VEHICLE_FOR_MAINTENANCE",
-                                              [{'name': 'vehicle_id', 'type': 'Vehicle'}], [], False, "ResourceManager")
-    FLAG_UNAVAILABILITY_OF_SERVICE_AT_MICRO_HUB = ActionType("FLAG_UNAVAILABILITY_OF_SERVICE_AT_MICRO_HUB",
-                                                             [{'name': 'micro_hub_id', 'type': 'MicroHub'},
-                                                              {'name': 'service_type', 'type': 'str'}], [], False,
-                                                             "ResourceManager")
     TRUCK_TO_NODE = ActionType("TRUCK_TO_NODE",
                                [{'name': 'truck_id', 'type': 'Truck'}, {'name': 'destination_node_id', 'type': 'Node'}],
                                [VehicleAvailableConstraint], True, "NetworkManager")
-    RE_ROUTE_TRUCK_TO_NODE = ActionType("RE_ROUTE_TRUCK_TO_NODE", [{'name': 'truck_id', 'type': 'Truck'},
-                                                                   {'name': 'destination_node_id', 'type': 'Node'}], [],
-                                        False, "NetworkManager")
+    DRONE_TO_NODE = ActionType("DRONE_TO_NODE",
+                               [{'name': 'drone_id', 'type': 'Drone'}, {'name': 'destination_node_id', 'type': 'Node'}],
+                               [VehicleAvailableConstraint], True, "NetworkManager")
     LAUNCH_DRONE = ActionType("LAUNCH_DRONE",
                               [{'name': 'drone_id', 'type': 'Drone'}, {'name': 'order_id', 'type': 'Order'}],
                               [VehicleAvailableConstraint, VehicleAtNodeConstraint, OrderInCargoConstraint,
                                DroneBatteryConstraint], True, "NetworkManager")
-    DRONE_TO_NODE = ActionType("DRONE_TO_NODE",
-                               [{'name': 'drone_id', 'type': 'Drone'}, {'name': 'destination_node_id', 'type': 'Node'}],
-                               [VehicleAvailableConstraint], True, "NetworkManager")
-    RE_ROUTE_DRONE_TO_NODE = ActionType("RE_ROUTE_DRONE_TO_NODE", [{'name': 'drone_id', 'type': 'Drone'},
-                                                                   {'name': 'destination_node_id', 'type': 'Node'}], [],
-                                        False, "NetworkManager")
     DRONE_LANDING_ACTION = ActionType("DRONE_LANDING_ACTION", [{'name': 'drone_id', 'type': 'Drone'}], [], True,
                                       "NetworkManager")
+
+    # ---------------------------------------------------------------------------------------------
+    # -- Secondary / Inactive Actions
+    # ---------------------------------------------------------------------------------------------
+    PRIORITIZE_ORDER = ActionType("PRIORITIZE_ORDER",
+                                  [{'name': 'order_id', 'type': 'Order'}, {'name': 'priority', 'type': 'int'}], [],
+                                  False, "SupplyChainManager", active=False)
+    CANCEL_ORDER = ActionType("CANCEL_ORDER", [{'name': 'order_id', 'type': 'Order'}], [], False, "SupplyChainManager",
+                              active=False)
+    FLAG_FOR_RE_DELIVERY = ActionType("FLAG_FOR_RE_DELIVERY", [{'name': 'order_id', 'type': 'Order'}], [], False,
+                                      "SupplyChainManager", active=False)
+    ASSIGN_ORDER_TO_MICRO_HUB = ActionType("ASSIGN_ORDER_TO_MICRO_HUB", [{'name': 'order_id', 'type': 'Order'},
+                                                                         {'name': 'micro_hub_id', 'type': 'MicroHub'}],
+                                           [OrderAssignableConstraint, HubIsActiveConstraint], False,
+                                           "SupplyChainManager", active=False)
+    REASSIGN_ORDER = ActionType("REASSIGN_ORDER",
+                                [{'name': 'order_id', 'type': 'Order'}, {'name': 'vehicle_id', 'type': 'Vehicle'}],
+                                [OrderAssignableConstraint, VehicleAvailableConstraint, VehicleCapacityConstraint],
+                                False, "SupplyChainManager", active=False)
+    CONSOLIDATE_FOR_TRUCK = ActionType("CONSOLIDATE_FOR_TRUCK", [{'name': 'truck_id', 'type': 'Truck'}],
+                                       [VehicleAvailableConstraint, VehicleAtNodeConstraint], False,
+                                       "SupplyChainManager", active=False)
+    CONSOLIDATE_FOR_DRONE = ActionType("CONSOLIDATE_FOR_DRONE", [{'name': 'drone_id', 'type': 'Drone'}],
+                                       [VehicleAvailableConstraint, VehicleAtNodeConstraint], False,
+                                       "SupplyChainManager", active=False)
+    DRONE_CHARGE_ACTION = ActionType("DRONE_CHARGE_ACTION",
+                                     [{'name': 'drone_id', 'type': 'Drone'}, {'name': 'duration', 'type': 'int'}],
+                                     [VehicleAtNodeConstraint], True, "ResourceManager", active=False)
+    ACTIVATE_MICRO_HUB = ActionType("ACTIVATE_MICRO_HUB", [{'name': 'micro_hub_id', 'type': 'MicroHub'}], [], False,
+                                    "ResourceManager", active=False)
+    DEACTIVATE_MICRO_HUB = ActionType("DEACTIVATE_MICRO_HUB", [{'name': 'micro_hub_id', 'type': 'MicroHub'}], [], False,
+                                      "ResourceManager", active=False)
+    ADD_TO_CHARGING_QUEUE = ActionType("ADD_TO_CHARGING_QUEUE", [{'name': 'micro_hub_id', 'type': 'MicroHub'},
+                                                                 {'name': 'drone_id', 'type': 'Drone'}],
+                                       [HubIsActiveConstraint, VehicleAtNodeConstraint], True, "ResourceManager",
+                                       active=False)
+    FLAG_VEHICLE_FOR_MAINTENANCE = ActionType("FLAG_VEHICLE_FOR_MAINTENANCE",
+                                              [{'name': 'vehicle_id', 'type': 'Vehicle'}], [], False, "ResourceManager",
+                                              active=False)
+    FLAG_UNAVAILABILITY_OF_SERVICE_AT_MICRO_HUB = ActionType("FLAG_UNAVAILABILITY_OF_SERVICE_AT_MICRO_HUB",
+                                                             [{'name': 'micro_hub_id', 'type': 'MicroHub'},
+                                                              {'name': 'service_type', 'type': 'str'}], [], False,
+                                                             "ResourceManager", active=False)
+    RE_ROUTE_TRUCK_TO_NODE = ActionType("RE_ROUTE_TRUCK_TO_NODE", [{'name': 'truck_id', 'type': 'Truck'},
+                                                                   {'name': 'destination_node_id', 'type': 'Node'}], [],
+                                        False, "NetworkManager", active=False)
+    RE_ROUTE_DRONE_TO_NODE = ActionType("RE_ROUTE_DRONE_TO_NODE", [{'name': 'drone_id', 'type': 'Drone'},
+                                                                   {'name': 'destination_node_id', 'type': 'Node'}], [],
+                                        False, "NetworkManager", active=False)
     DRONE_TO_CHARGING_STATION = ActionType("DRONE_TO_CHARGING_STATION", [{'name': 'drone_id', 'type': 'Drone'},
                                                                          {'name': 'station_id', 'type': 'Node'}],
-                                           [VehicleAvailableConstraint], True, "NetworkManager")
+                                           [VehicleAvailableConstraint], True, "NetworkManager", active=False)
+
+    # ---------------------------------------------------------------------------------------------
+    # -- Special Actions
+    # ---------------------------------------------------------------------------------------------
     NO_OPERATION = ActionType("NO_OPERATION", [], [], False, None)
 
     @classmethod
@@ -221,24 +217,19 @@ class SimulationActions:
 if __name__ == "__main__":
     print("--- Validating Class-based Action Blueprint ---")
 
+    active_actions = []
+    inactive_actions = []
+
     for action in SimulationActions.get_all_actions():
-        print(f"\nAction: {action.name}")
-        print(f"  - ID: {action.id}")
-        print(f"  - Handler: {action.handler}")
-        print(f"  - Is Automatic: {action.is_automatic}")
-
-        print("  - Parameters:")
-        if action.params:
-            for param in action.params:
-                print(f"    - {param['name']} (Type: {param['type']})")
+        if action.active:
+            active_actions.append(action.name)
         else:
-            print("    - None")
+            inactive_actions.append(action.name)
 
-        print("  - Constraints:")
-        if action.constraints:
-            for constraint_class in action.constraints:
-                print(f"    - {constraint_class.__name__}")
-        else:
-            print("    - None")
+    print(f"\nFound {len(active_actions)} ACTIVE actions:")
+    pprint(active_actions)
+
+    print(f"\nFound {len(inactive_actions)} INACTIVE actions:")
+    pprint(inactive_actions)
 
     print("\n--- Validation Complete ---")

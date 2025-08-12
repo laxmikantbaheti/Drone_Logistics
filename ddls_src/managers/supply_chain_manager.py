@@ -6,8 +6,9 @@ from mlpro.bf.systems import System, State
 from mlpro.bf.math import MSpace, Dimension
 
 # Local Imports
-from ..core.basics import LogisticsAction
-from ..actions.base import SimulationAction
+
+from ddls_src.core.basics import LogisticsAction
+from ddls_src.actions.base import SimulationActions, ActionType
 
 
 # Forward declarations
@@ -73,7 +74,7 @@ class SupplyChainManager(System):
 
         # Dynamically find all actions handled by this manager
         handler_name = "SupplyChainManager"
-        action_ids = [action.id for action in SimulationAction if action.handler == handler_name]
+        action_ids = [action.id for action in SimulationActions.get_all_actions() if action.handler == handler_name]
 
         action_space = MSpace()
         action_space.add_dim(Dimension(p_name_short='scm_action_id',
@@ -99,7 +100,7 @@ class SupplyChainManager(System):
         """
         Scans for pending orders and assigns them to available vehicles if auto-assignment is enabled.
         """
-        if not self.automatic_logic_config.get(SimulationAction.ASSIGN_ORDER_TO_TRUCK, False):
+        if not self.automatic_logic_config.get(SimulationActions.ASSIGN_ORDER_TO_TRUCK, False):
             return
 
         pending_orders = [o for o in self.global_state.orders.values() if o.status == 'pending']
@@ -108,33 +109,32 @@ class SupplyChainManager(System):
         if not pending_orders or not idle_trucks:
             return
 
-        # Simple logic: assign the first pending order to the first idle truck
         order_to_assign = pending_orders[0]
         truck_to_assign = idle_trucks[0]
 
         print(
-            f"  - AUTOMATIC LOGIC (SupplyChainManager): Assigning Order {order_to_assign.id} to Truck {truck_to_assign.id}")
-        order_to_assign.assign_vehicle(truck_to_assign.id)
+            f"  - AUTOMATIC LOGIC (SupplyChainManager): Assigning Order {order_to_assign.get_id()} to Truck {truck_to_assign.get_id()}")
+        order_to_assign.assign_vehicle(truck_to_assign.get_id())
 
     def _process_action(self, p_action: LogisticsAction) -> bool:
         """
         Processes a high-level command related to order management.
         """
         action_id = int(p_action.get_sorted_values()[0])
-        action_type = SimulationAction._value2member_map_.get(action_id)
+        action_type = ActionType.get_by_id(action_id)
         action_kwargs = p_action.data
 
         try:
             order_id = action_kwargs['order_id']
             order: 'Order' = self.global_state.get_entity("order", order_id)
 
-            if action_type == SimulationAction.ACCEPT_ORDER:
+            if action_type == SimulationActions.ACCEPT_ORDER:
                 if order.status == "pending":
                     order.update_status("accepted")
                     return True
                 return False
 
-            elif action_type == SimulationAction.CANCEL_ORDER:
+            elif action_type == SimulationActions.CANCEL_ORDER:
                 if order.status not in ["delivered", "cancelled"]:
                     if order.assigned_vehicle_id is not None:
                         order.unassign_vehicle()
@@ -142,24 +142,24 @@ class SupplyChainManager(System):
                     return True
                 return False
 
-            elif action_type == SimulationAction.ASSIGN_ORDER_TO_TRUCK:
+            elif action_type == SimulationActions.ASSIGN_ORDER_TO_TRUCK:
                 truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
                 if order.status in ["pending", "accepted", "flagged_re_delivery"]:
-                    order.assign_vehicle(truck.id)
+                    order.assign_vehicle(truck.get_id())
                     return True
                 return False
 
-            elif action_type == SimulationAction.ASSIGN_ORDER_TO_DRONE:
+            elif action_type == SimulationActions.ASSIGN_ORDER_TO_DRONE:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
                 if order.status in ["pending", "accepted", "flagged_re_delivery"]:
-                    order.assign_vehicle(drone.id)
+                    order.assign_vehicle(drone.get_id())
                     return True
                 return False
 
-            elif action_type == SimulationAction.ASSIGN_ORDER_TO_MICRO_HUB:
+            elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
                 hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
                 if order.status in ["pending", "accepted", "flagged_re_delivery"]:
-                    order.assign_micro_hub(hub.id)
+                    order.assign_micro_hub(hub.get_id())
                     return True
                 return False
 
@@ -183,3 +183,94 @@ class SupplyChainManager(System):
                               sum(1 for o in orders if o.status == 'in_transit'))
         self._state.set_value(state_space.get_dim_by_name("orders_delivered").get_id(),
                               sum(1 for o in orders if o.status == 'delivered'))
+
+
+# -------------------------------------------------------------------------
+# -- Validation Block
+# -------------------------------------------------------------------------
+if __name__ == '__main__':
+    from pprint import pprint
+
+
+    # 1. Create Mock Objects for the test
+    class MockOrder(System):
+        def __init__(self, p_id, status):
+            super().__init__(p_id=p_id)
+            self.status = status
+            self.assigned_vehicle_id = None
+
+        def assign_vehicle(self, vehicle_id):
+            self.assigned_vehicle_id = vehicle_id
+            self.status = 'assigned'
+
+        def update_status(self, status):
+            self.status = status
+
+        @staticmethod
+        def setup_spaces(): return None, None
+
+
+    class MockTruck(System):
+        def __init__(self, p_id, status):
+            super().__init__(p_id=p_id)
+            self.status = status
+
+        @staticmethod
+        def setup_spaces(): return None, None
+
+
+    class MockGlobalState:
+        def __init__(self):
+            self.orders = {
+                0: MockOrder(p_id=0, status='pending'),
+                1: MockOrder(p_id=1, status='pending'),
+            }
+            self.trucks = {
+                101: MockTruck(p_id=101, status='idle'),
+                102: MockTruck(p_id=102, status='en_route'),
+            }
+            self.drones = {}
+            self.micro_hubs = {}
+
+        def get_entity(self, type, id):
+            return getattr(self, type + 's', {}).get(id)
+
+        def get_all_entities(self, type):
+            return getattr(self, type + 's', {})
+
+
+    mock_gs = MockGlobalState()
+
+    print("--- Validating SupplyChainManager ---")
+
+    # 2. Test Manual Action Processing
+    print("\n[A] Testing Manual Action Processing...")
+    scm_manual = SupplyChainManager(p_id='scm_manual', global_state=mock_gs)
+    action_to_process = LogisticsAction(
+        p_action_space=scm_manual.get_action_space(),
+        p_values=[SimulationActions.ASSIGN_ORDER_TO_TRUCK.id],
+        order_id=0,
+        truck_id=101
+    )
+    scm_manual._process_action(action_to_process)
+    assert mock_gs.orders[0].status == 'assigned'
+    assert mock_gs.orders[0].assigned_vehicle_id == 101
+    print("  - PASSED: Correctly assigned Order 0 to Truck 101.")
+
+    # 3. Test Automatic Action Logic
+    print("\n[B] Testing Automatic Action Logic...")
+    # Reset state for this test
+    mock_gs.orders[0].status = 'pending'
+    mock_gs.orders[0].assigned_vehicle_id = None
+
+    auto_config = {SimulationActions.ASSIGN_ORDER_TO_TRUCK: True}
+    scm_auto = SupplyChainManager(p_id='scm_auto', global_state=mock_gs, p_automatic_logic_config=auto_config)
+
+    # Call simulate_reaction to trigger the automatic logic
+    scm_auto._simulate_reaction(p_state=None, p_action=None)
+
+    assert mock_gs.orders[0].status == 'assigned'
+    assert mock_gs.orders[0].assigned_vehicle_id == 101
+    print("  - PASSED: Correctly auto-assigned pending Order 0 to idle Truck 101.")
+
+    print("\n--- Validation Complete ---")

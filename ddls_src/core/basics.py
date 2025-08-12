@@ -21,8 +21,8 @@ class LogisticsAction(Action):
         """
         Action.__init__(self,
                         p_action_space=p_action_space,
-                        p_values=p_values,
-                        p_tstamp=p_tstamp)
+                        p_values=p_values)
+        
 
         self.data = p_kwargs.copy()
 

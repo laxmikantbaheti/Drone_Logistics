@@ -5,7 +5,7 @@ from datetime import timedelta
 from ddls_src.managers.resource_manager.fleet_manager import FleetManager
 from ddls_src.managers.resource_manager.micro_hub_manager import MicroHubsManager
 from ddls_src.core.basics import LogisticsAction
-from ddls_src.actions.base import SimulationAction
+from ddls_src.actions.base import SimulationActions, ActionType
 
 # MLPro Imports
 from mlpro.bf.systems import System, State
@@ -65,7 +65,7 @@ class ResourceManager(System):
 
         # Dynamically find all actions handled by this manager
         handler_name = "ResourceManager"
-        action_ids = [action.id for action in SimulationAction if action.handler == handler_name]
+        action_ids = [action.id for action in SimulationActions.get_all_actions() if action.handler == handler_name]
 
         action_space = MSpace()
         action_space.add_dim(Dimension(p_name_short='rm_action_id',
@@ -97,7 +97,7 @@ class ResourceManager(System):
         Processes a command by dispatching it to the correct sub-manager.
         """
         action_id = int(p_action.get_sorted_values()[0])
-        action_type = SimulationAction._value2member_map_.get(action_id)
+        action_type = ActionType.get_by_id(action_id)
         action_kwargs = p_action.data
 
         # This logic could be made more robust by reading sub-handler info from the blueprint
@@ -131,3 +131,79 @@ class ResourceManager(System):
         self._state.set_value(state_space.get_dim_by_name("vehicles_in_maintenance").get_id(),
                               sum(1 for v in trucks if v.status == 'maintenance') +
                               sum(1 for v in drones if v.status == 'maintenance'))
+
+
+# -------------------------------------------------------------------------
+# -- Validation Block
+# -------------------------------------------------------------------------
+if __name__ == '__main__':
+    from pprint import pprint
+
+
+    # 1. Create Mock Objects for the test
+    class MockSubManager(System):
+        def __init__(self, p_id, name):
+            super().__init__(p_id=p_id)
+            self.name = name
+            self.last_action_received = None
+
+        def get_action_space(self):
+            space = MSpace()
+            space.add_dim(Dimension(p_name_short="mock_dim"))
+            return space
+
+        def process_action(self, p_action):
+            self.last_action_received = p_action
+            print(
+                f"  - MockManager '{self.name}' received action with ID {p_action.get_sorted_values()[0]} and data {p_action.data}")
+            return True
+
+        @staticmethod
+        def setup_spaces(): return None, None
+
+
+    class MockGlobalState:
+        def __init__(self):
+            self.trucks = {}
+            self.drones = {}
+            self.micro_hubs = {}
+
+        def get_all_entities(self, type):
+            return getattr(self, type + 's', {})
+
+
+    mock_gs = MockGlobalState()
+
+    print("--- Validating ResourceManager ---")
+
+    # 2. Instantiate ResourceManager and mock its sub-managers
+    rm = ResourceManager(p_id='rm_test', global_state=mock_gs)
+    rm.fleet_manager = MockSubManager(p_id='fm_mock', name="FleetManager")
+    rm.micro_hubs_manager = MockSubManager(p_id='mhm_mock', name="MicroHubsManager")
+
+    # 3. Test dispatching a fleet-related action
+    print("\n[A] Testing dispatch to FleetManager...")
+    load_action = LogisticsAction(
+        p_action_space=rm.get_action_space(),
+        p_values=[SimulationActions.LOAD_TRUCK_ACTION.id],
+        truck_id=101,
+        order_id=0
+    )
+    rm._process_action(load_action)
+    assert rm.fleet_manager.last_action_received is not None
+    assert rm.fleet_manager.last_action_received.get_sorted_values()[0] == SimulationActions.LOAD_TRUCK_ACTION.id
+    print("  - PASSED: Correctly dispatched to FleetManager.")
+
+    # 4. Test dispatching a hub-related action
+    print("\n[B] Testing dispatch to MicroHubsManager...")
+    activate_action = LogisticsAction(
+        p_action_space=rm.get_action_space(),
+        p_values=[SimulationActions.ACTIVATE_MICRO_HUB.id],
+        micro_hub_id=1
+    )
+    rm._process_action(activate_action)
+    assert rm.micro_hubs_manager.last_action_received is not None
+    assert rm.micro_hubs_manager.last_action_received.get_sorted_values()[0] == SimulationActions.ACTIVATE_MICRO_HUB.id
+    print("  - PASSED: Correctly dispatched to MicroHubsManager.")
+
+    print("\n--- Validation Complete ---")

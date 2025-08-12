@@ -4,7 +4,7 @@ import numpy as np
 import os
 
 # MLPro Imports
-from mlpro.bf.systems import System, State, Action
+from mlpro.bf.systems import System, State
 from mlpro.bf.math import MSpace, Dimension
 from mlpro.bf.events import EventManager, Event
 
@@ -16,16 +16,16 @@ from ddls_src.managers.supply_chain_manager import SupplyChainManager
 from ddls_src.managers.resource_manager.base import ResourceManager
 from ddls_src.managers.network_manager import NetworkManager
 from ddls_src.actions.action_map_generator import generate_action_map
-from ddls_src.actions.base import SimulationAction, Constraint, OrderAssignableConstraint, VehicleAvailableConstraint
+from ddls_src.actions.base import SimulationActions, ActionType
+from ddls_src.scenarios.generators.data_loader import DataLoader
+from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
+from ddls_src.scenarios.generators.order_generator import OrderGenerator
+from ddls_src.core.state_action_mapper import StateActionMapper
 from ddls_src.core.logistics_simulation import TimeManager
 from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.entities.vehicles.truck import Truck
 from ddls_src.entities.vehicles.drone import Drone
-from ddls_src.scenarios.generators.data_loader import DataLoader
-from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
-from ddls_src.scenarios.generators.order_generator import OrderGenerator
-from ddls_src.core.state_action_mapper import StateActionMapper
 
 
 class LogisticsSystem(System, EventManager):
@@ -56,7 +56,7 @@ class LogisticsSystem(System, EventManager):
                         p_latency=timedelta(seconds=self._config.get("main_timestep_duration", 60.0)))
         EventManager.__init__(self, p_logging=self.get_log_level())
 
-        self.automatic_logic_config = AUTOMATIC_LOGIC_CONFIG
+        self.automatic_logic_config = {action: action.is_automatic for action in SimulationActions.get_all_actions()}
         self.time_manager = TimeManager(initial_time=self._config.get("initial_time", 0.0))
         self.data_loader = DataLoader(self._config.get("data_loader_config", {}))
 
@@ -113,26 +113,21 @@ class LogisticsSystem(System, EventManager):
             for entity in entity_dict.values():
                 entity.global_state = self.global_state
 
-        for node in self.global_state.nodes.values():
-            if hasattr(node, 'temp_packages'):
-                for order_id in node.temp_packages:
-                    node.add_package(order_id)
-                del node.temp_packages
-
         self.supply_chain_manager = SupplyChainManager(p_id='scm', global_state=self.global_state,
                                                        p_automatic_logic_config=self.automatic_logic_config)
         self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
         self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
                                               p_automatic_logic_config=self.automatic_logic_config)
 
+        for vehicle in list(self.global_state.trucks.values()) + list(self.global_state.drones.values()):
+            vehicle.network_manager = self.network_manager
+
         self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
 
-        constraints_to_use = [OrderAssignableConstraint(), VehicleAvailableConstraint()]
         self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
 
         self.register_event_handler(self.C_EVENT_NEW_ORDER, self.state_action_mapper.handle_new_order_event)
 
-        # FIX: Use the correct handler names (class names) as keys to match the blueprint
         managers = {
             'SupplyChainManager': self.supply_chain_manager,
             'ResourceManager': self.resource_manager,
@@ -165,8 +160,8 @@ class LogisticsSystem(System, EventManager):
         action_index = int(action_values[0])
         action_tuple = self._reverse_action_map.get(action_index)
 
-        if action_tuple and action_tuple[0] != SimulationAction.NO_OPERATION:
-            print(f"  - Executing Agent Action: {action_tuple}")
+        if action_tuple and action_tuple[0] != SimulationActions.NO_OPERATION:
+            print(f"  - Executing Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
             self.action_manager.execute_action(action_tuple)
 
         print("  - Entering Automatic Action Loop...")
@@ -178,7 +173,7 @@ class LogisticsSystem(System, EventManager):
                 break
 
             auto_action_tuple = automatic_actions_to_take[0]
-            print(f"  - Executing Automatic Action: {auto_action_tuple}")
+            print(f"  - Executing Automatic Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
             self.action_manager.execute_action(auto_action_tuple)
         else:
             self.log(self.C_LOG_TYPE_W,
@@ -222,39 +217,36 @@ class LogisticsSystem(System, EventManager):
 if __name__ == "__main__":
     print("--- Validating LogisticsSystem ---")
 
-    try:
-        script_path = os.path.dirname(os.path.realpath(__file__))
-        config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data.json')
-        config_file_path = os.path.normpath(config_file_path)
+    script_path = os.path.dirname(os.path.realpath(__file__))
+    # Go up two levels from core/ to the project root, then into config
+    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data.json')
+    config_file_path = os.path.normpath(config_file_path)
 
-        sim_config = {
-            "initial_time": 0.0,
-            "main_timestep_duration": 300.0,
-            "data_loader_config": {
-                "generator_type": "json_file",
-                "generator_config": {"file_path": config_file_path}
-            },
-            "new_order_config": {}
-        }
+    sim_config = {
+        "initial_time": 0.0,
+        "main_timestep_duration": 300.0,
+        "data_loader_config": {
+            "generator_type": "json_file",
+            "generator_config": {"file_path": config_file_path}
+        },
+        "new_order_config": {}
+    }
 
-        logistics_system = LogisticsSystem(p_id='validation_sys',
-                                           p_visualize=False,
-                                           p_logging=True,
-                                           config=sim_config)
+    logistics_system = LogisticsSystem(p_id='validation_sys',
+                                       p_visualize=False,
+                                       p_logging=True,
+                                       config=sim_config)
 
-        print("\n--- Running simulation for 3 cycles with NO_OPERATION ---")
-        no_op_idx = logistics_system.action_map.get((SimulationAction.NO_OPERATION,))
-        no_op_action = LogisticsAction(p_action_space=logistics_system.get_action_space(), p_values=[no_op_idx])
+    print("\n--- Running simulation for 3 cycles with NO_OPERATION ---")
+    no_op_idx = logistics_system.action_map.get((SimulationActions.NO_OPERATION,))
+    no_op_action = LogisticsAction(p_action_space=logistics_system.get_action_space(), p_values=[no_op_idx])
 
-        for i in range(3):
-            print(f"\n--- Cycle {i + 1} ---")
-            logistics_system.simulate_reaction(p_state=None, p_action=no_op_action)
-            state = logistics_system.get_state()
-            print(f"  - Current Time: {logistics_system.time_manager.get_current_time()}s")
-            print(f"  - Total Orders: {state.get_value('total_orders')}")
-            print(f"  - Delivered Orders: {state.get_value('delivered_orders')}")
+    for i in range(3):
+        print(f"\n--- Cycle {i + 1} ---")
+        logistics_system.simulate_reaction(p_state=None, p_action=no_op_action)
+        state = logistics_system.get_state()
+        print(f"  - Current Time: {logistics_system.time_manager.get_current_time()}s")
+        print(f"  - Total Orders: {state.get_value(state.get_related_set().get_dim_by_name('total_orders').get_id())}")
+        print(f"  - Delivered Orders: {state.get_value(state.get_related_set().get_dim_by_name('delivered_orders').get_id())}")
 
-        print("\n--- Validation Complete: LogisticsSystem initialized and ran successfully. ---")
-
-    except Exception as e:
-        print(f"\n--- Validation Failed: {e} ---")
+    print("\n--- Validation Complete: LogisticsSystem initialized and ran successfully. ---")

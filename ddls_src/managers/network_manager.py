@@ -6,8 +6,8 @@ from mlpro.bf.systems import System, State
 from mlpro.bf.math import MSpace, Dimension
 
 # Local Imports
-from ..actions.base import SimulationAction
-from ..core.basics import LogisticsAction
+from ddls_src.actions.base import SimulationActions, ActionType
+from ddls_src.core.basics import LogisticsAction
 
 
 # Forward declarations
@@ -29,8 +29,7 @@ class Order: pass
 class NetworkManager(System):
     """
     Manages all network operations, including vehicle routing, as an MLPro System.
-    It now dynamically configures its action space and dispatches actions based
-    on the central action blueprint.
+    It now includes automatic, rule-based logic for routing vehicles.
     """
 
     C_TYPE = 'Network Manager'
@@ -74,7 +73,7 @@ class NetworkManager(System):
 
         # Dynamically find all actions handled by this manager
         handler_name = "NetworkManager"
-        action_ids = [action.id for action in SimulationAction if action.handler == handler_name]
+        action_ids = [action.id for action in SimulationActions.get_all_actions() if action.handler == handler_name]
 
         action_space = MSpace()
         action_space.add_dim(Dimension(p_name_short='nm_action_id',
@@ -94,6 +93,7 @@ class NetworkManager(System):
         if p_action is not None:
             self._process_action(p_action)
 
+        # --- Automatic Logic ---
         self._check_and_route_vehicles()
 
         self._update_state()
@@ -103,11 +103,12 @@ class NetworkManager(System):
         """
         Scans for newly assigned, idle vehicles and routes them if auto-routing is enabled.
         """
-        if not self.automatic_logic_config.get(SimulationAction.TRUCK_TO_NODE, False):
+        if not self.automatic_logic_config.get(SimulationActions.TRUCK_TO_NODE, False):
             return
 
         for order in self.global_state.orders.values():
-            if order.status == 'assigned' and order.assigned_vehicle_id is not None:
+            if order.status == 'assigned' and hasattr(order,
+                                                      'assigned_vehicle_id') and order.assigned_vehicle_id is not None:
                 vehicle_id = order.assigned_vehicle_id
 
                 try:
@@ -116,7 +117,8 @@ class NetworkManager(System):
                         "drone", vehicle_id)
 
                     if vehicle.status == 'idle':
-                        self.route_vehicle_for_order(vehicle.id, order.id)
+                        self.route_vehicle_for_order(vehicle.get_id(), order.get_id())
+                        # We typically only route one vehicle per cycle to avoid action storms
                         break
                 except KeyError:
                     continue
@@ -146,7 +148,9 @@ class NetworkManager(System):
             if vehicle.current_node_id == pickup_node_id:
                 path = self.network.calculate_shortest_path(vehicle.current_node_id, destination_node_id,
                                                             vehicle_type_str)
-                if path:
+                if path and len(path) > 1:
+                    print(
+                        f"  - AUTOMATIC LOGIC (NetworkManager): Vehicle {vehicle_id} is at pickup. Routing directly to destination via {path}.")
                     vehicle.set_route(path)
                 return
 
@@ -160,6 +164,8 @@ class NetworkManager(System):
 
             full_path = path_to_pickup + path_to_destination[1:]
 
+            print(
+                f"  - AUTOMATIC LOGIC (NetworkManager): Routing Vehicle {vehicle_id} on path {full_path} for Order {order_id}")
             vehicle.set_route(full_path)
 
         except KeyError:
@@ -170,19 +176,19 @@ class NetworkManager(System):
         Processes a command by creating a specific action for a vehicle and dispatching it.
         """
         action_id = int(p_action.get_sorted_values()[0])
-        action_type = SimulationAction._value2member_map_.get(action_id)
+        action_type = ActionType.get_by_id(action_id)
         action_kwargs = p_action.data
 
         try:
-            if action_type in [SimulationAction.TRUCK_TO_NODE, SimulationAction.RE_ROUTE_TRUCK_TO_NODE]:
+            # FIX: Use direct, type-safe comparisons with the ActionType objects
+            if action_type in [SimulationActions.TRUCK_TO_NODE, SimulationActions.RE_ROUTE_TRUCK_TO_NODE]:
                 truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
-                target_node = action_kwargs['destination_node_id']
                 truck_action = LogisticsAction(p_action_space=truck.get_action_space(), p_values=[action_id],
                                                **action_kwargs)
                 return truck.process_action(truck_action)
 
-            elif action_type in [SimulationAction.LAUNCH_DRONE, SimulationAction.DRONE_TO_NODE,
-                                 SimulationAction.DRONE_TO_CHARGING_STATION]:
+            elif action_type in [SimulationActions.LAUNCH_DRONE, SimulationActions.DRONE_TO_NODE,
+                                 SimulationActions.DRONE_TO_CHARGING_STATION]:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
                 drone_action = LogisticsAction(p_action_space=drone.get_action_space(), p_values=[action_id],
                                                **action_kwargs)
@@ -203,3 +209,84 @@ class NetworkManager(System):
         self._state.set_value(state_space.get_dim_by_name("total_edges").get_id(), len(edges))
         self._state.set_value(state_space.get_dim_by_name("blocked_edges").get_id(),
                               sum(1 for e in edges if e.is_blocked))
+
+
+# -------------------------------------------------------------------------
+# -- Validation Block
+# -------------------------------------------------------------------------
+if __name__ == '__main__':
+    from pprint import pprint
+
+
+    # 1. Create Mock Objects for the test
+    class MockVehicle(System):
+        def __init__(self, p_id):
+            super().__init__(p_id=p_id)
+            self.last_action_received = None
+
+        def get_action_space(self):
+            space = MSpace()
+            space.add_dim(Dimension(p_name_short="mock_dim"))
+            return space
+
+        def process_action(self, p_action):
+            self.last_action_received = p_action
+            print(
+                f"  - MockVehicle '{self.get_id()}' received action with ID {p_action.get_sorted_values()[0]} and data {p_action.data}")
+            return True
+
+        @staticmethod
+        def setup_spaces(): return None, None
+
+
+    class MockGlobalState:
+        def __init__(self):
+            self.trucks = {101: MockVehicle(p_id=101)}
+            self.drones = {201: MockVehicle(p_id=201)}
+
+        def get_entity(self, type, id):
+            return getattr(self, type + 's', {}).get(id)
+
+        def get_all_entities(self, type):
+            return getattr(self, type + 's', {})
+
+
+    class MockNetwork:
+        pass
+
+
+    mock_gs = MockGlobalState()
+    mock_network = MockNetwork()
+
+    print("--- Validating NetworkManager ---")
+
+    # 2. Instantiate NetworkManager
+    nm = NetworkManager(p_id='nm_test', global_state=mock_gs, network=mock_network)
+
+    # 3. Test dispatching a truck-related action
+    print("\n[A] Testing dispatch to Truck...")
+    truck_action = LogisticsAction(
+        p_action_space=nm.get_action_space(),
+        p_values=[SimulationActions.TRUCK_TO_NODE.id],
+        truck_id=101,
+        destination_node_id=5
+    )
+    nm._process_action(truck_action)
+    assert mock_gs.trucks[101].last_action_received is not None
+    assert mock_gs.trucks[101].last_action_received.get_sorted_values()[0] == SimulationActions.TRUCK_TO_NODE.id
+    print("  - PASSED: Correctly dispatched to Truck.")
+
+    # 4. Test dispatching a drone-related action
+    print("\n[B] Testing dispatch to Drone...")
+    drone_action = LogisticsAction(
+        p_action_space=nm.get_action_space(),
+        p_values=[SimulationActions.DRONE_TO_NODE.id],
+        drone_id=201,
+        destination_node_id=10
+    )
+    nm._process_action(drone_action)
+    assert mock_gs.drones[201].last_action_received is not None
+    assert mock_gs.drones[201].last_action_received.get_sorted_values()[0] == SimulationActions.DRONE_TO_NODE.id
+    print("  - PASSED: Correctly dispatched to Drone.")
+
+    print("\n--- Validation Complete ---")
