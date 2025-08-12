@@ -1,5 +1,5 @@
 import itertools
-from ddls_src.actions.base import SimulationActions, ActionType
+from .base import SimulationActions, ActionType
 from typing import Dict, Tuple, Any
 
 
@@ -10,7 +10,8 @@ class GlobalState: pass
 def generate_action_map(global_state: 'GlobalState') -> Tuple[Dict[Tuple, int], int]:
     """
     Programmatically generates the global flattened action map and action space size
-    at runtime by reading the class-based blueprint in actions/base.py.
+    at runtime based on the entities that actually exist in the global_state.
+    This version generates the COMPLETE map, ignoring the 'active' flag.
     """
     action_map = {}
     current_index = 0
@@ -27,6 +28,7 @@ def generate_action_map(global_state: 'GlobalState') -> Tuple[Dict[Tuple, int], 
 
     # 2. Iterate through each action defined in our blueprint
     for action_type in SimulationActions.get_all_actions():
+        # This loop now includes ALL actions to ensure a static action map size
         if not action_type.params:
             action_tuple = (action_type,)
             if action_tuple not in action_map:
@@ -38,10 +40,8 @@ def generate_action_map(global_state: 'GlobalState') -> Tuple[Dict[Tuple, int], 
         param_ranges = []
         possible = True
         for param in action_type.params:
-            # If the range is defined in the blueprint, use it.
             if 'range' in param:
                 param_ranges.append(param['range'])
-            # Otherwise, it's a dynamic entity; get its IDs from the global state.
             else:
                 param_type = param['type']
                 ids = entity_id_ranges.get(param_type, [])
