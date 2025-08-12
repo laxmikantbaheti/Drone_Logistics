@@ -13,55 +13,116 @@ from mlpro.bf.systems import System
 
 class Constraint(ABC):
     """
-    Abstract base class for a pluggable constraint rule.
+    Abstract base class for a pluggable constraint rule. It is now a simple
+    container for the get_invalidations logic.
     """
 
     @abstractmethod
     def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
                           p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
+        """
+        Generates the invalidation map for this specific rule, but only for the
+        action types it is explicitly told to check.
+        """
         pass
 
 
-# --- Concrete Constraint Implementations (Placeholders for now) ---
+# --- Concrete Constraint Implementations ---
 
 class OrderAssignableConstraint(Constraint):
+    """Invalidates actions if an order is not in an assignable state."""
+
     def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
-                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
+        invalidation_map = defaultdict(set)
+        action_indices_to_check = action_index.get_actions_of_type(list(p_actions_to_check))
+
+        for order in global_state.orders.values():
+            order_id = order.get_id()
+            order_actions = action_index.actions_involving_entity.get(('Order', order_id), set())
+            relevant_actions = action_indices_to_check.intersection(order_actions)
+            if not relevant_actions: continue
+
+            for status in ["assigned", "in_transit", "delivered", "cancelled"]:
+                state_tuple = ('Order', order_id, 'status', status)
+                invalidation_map[state_tuple].update(relevant_actions)
+        return invalidation_map
 
 
 class VehicleAvailableConstraint(Constraint):
+    """Invalidates actions if a vehicle is not available."""
+
     def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
-                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
+        invalidation_map = defaultdict(set)
+        action_indices_to_check = action_index.get_actions_of_type(list(p_actions_to_check))
+
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+        all_vehicles = list(global_state.trucks.values()) + list(global_state.drones.values())
+
+        for vehicle in all_vehicles:
+            entity_type = "Truck" if isinstance(vehicle, Truck) else "Drone"
+            vehicle_id = vehicle.get_id()
+            vehicle_actions = action_index.actions_involving_entity.get((entity_type, vehicle_id), set())
+            relevant_actions = action_indices_to_check.intersection(vehicle_actions)
+            if not relevant_actions: continue
+
+            for status in ["en_route", "maintenance", "broken_down"]:
+                state_tuple = (entity_type, vehicle_id, 'status', status)
+                invalidation_map[state_tuple].update(relevant_actions)
+        return invalidation_map
 
 
 class VehicleCapacityConstraint(Constraint):
+    """Invalidates actions if a vehicle is at full capacity."""
+
     def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
-                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
+                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
+        invalidation_map = defaultdict(set)
+        action_indices_to_check = action_index.get_actions_of_type(list(p_actions_to_check))
+
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+        all_vehicles = list(global_state.trucks.values()) + list(global_state.drones.values())
+
+        for vehicle in all_vehicles:
+            if hasattr(vehicle, 'cargo_manifest') and hasattr(vehicle, 'max_payload_capacity') and len(
+                    vehicle.cargo_manifest) >= vehicle.max_payload_capacity:
+                entity_type = "Truck" if isinstance(vehicle, Truck) else "Drone"
+                vehicle_id = vehicle.get_id()
+                vehicle_actions = action_index.actions_involving_entity.get((entity_type, vehicle_id), set())
+                relevant_actions = action_indices_to_check.intersection(vehicle_actions)
+                if not relevant_actions: continue
+
+                state_tuple = (entity_type, vehicle_id, 'capacity', 'full')
+                invalidation_map[state_tuple].update(relevant_actions)
+        return invalidation_map
 
 
 class HubIsActiveConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
-                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex', p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
+        return {}
 
 
 class VehicleAtNodeConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
-                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex', p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
+        return {}
 
 
 class OrderAtNodeConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
-                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex', p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
+        return {}
 
 
 class OrderInCargoConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
-                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex', p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
+        return {}
 
 
 class DroneBatteryConstraint(Constraint):
-    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex',
-                          p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]: return {}
+    def get_invalidations(self, global_state: 'GlobalState', action_index: 'ActionIndex', p_actions_to_check: Set['ActionType']) -> Dict[Tuple, Set[int]]:
+        return {}
 
 
 # -------------------------------------------------------------------------------------------------
@@ -69,8 +130,26 @@ class DroneBatteryConstraint(Constraint):
 # -------------------------------------------------------------------------------------------------
 
 class ActionIndex:
-    # ... (Implementation would go here) ...
-    pass
+    def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
+        self.actions_by_type: Dict['ActionType', Set[int]] = defaultdict(set)
+        self.actions_involving_entity: Dict[Tuple, Set[int]] = defaultdict(set)
+        self._build_indexes(global_state, action_map)
+
+    def _build_indexes(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
+        for action_tuple, action_index in action_map.items():
+            action_type = action_tuple[0]
+            self.actions_by_type[action_type].add(action_index)
+            if not action_type.params: continue
+            for i, param_def in enumerate(action_type.params):
+                entity_type = param_def['type']
+                entity_id = action_tuple[i + 1]
+                self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
+
+    def get_actions_of_type(self, action_types: List['ActionType']) -> Set[int]:
+        ids = set()
+        for action_type in action_types:
+            ids.update(self.actions_by_type[action_type])
+        return ids
 
 
 # -------------------------------------------------------------------------------------------------

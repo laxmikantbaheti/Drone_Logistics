@@ -31,7 +31,7 @@ from ddls_src.entities.vehicles.drone import Drone
 class LogisticsSystem(System, EventManager):
     """
     The top-level MLPro System that IS the entire logistics simulation engine.
-    It now dynamically generates its action map at runtime.
+    It now dynamically generates its action map and a permanent mask at runtime.
     """
 
     C_TYPE = 'Logistics System'
@@ -63,6 +63,7 @@ class LogisticsSystem(System, EventManager):
         self.action_map = {}
         self._reverse_action_map = {}
         self.action_space_size = 0
+        self._permanent_mask = None  # To hold the scenario's static mask
 
         self.global_state: GlobalState = None
         self.network: Network = None
@@ -100,6 +101,12 @@ class LogisticsSystem(System, EventManager):
 
         self.action_map, self.action_space_size = generate_action_map(self.global_state)
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
+
+        # Create the permanent mask for this scenario
+        self._permanent_mask = np.ones(self.action_space_size, dtype=bool)
+        for action_tuple, idx in self.action_map.items():
+            if not action_tuple[0].active:
+                self._permanent_mask[idx] = False
 
         self.network = Network(self.global_state)
         self.global_state.network = self.network
@@ -199,7 +206,9 @@ class LogisticsSystem(System, EventManager):
 
     def get_current_mask(self) -> np.ndarray:
         if self.state_action_mapper:
-            return self.state_action_mapper.generate_mask()
+            dynamic_mask = self.state_action_mapper.generate_mask()
+            # Combine the dynamic mask with the permanent scenario mask
+            return np.logical_and(self._permanent_mask, dynamic_mask)
         return np.ones(len(self.action_map), dtype=bool)
 
     def _update_state(self):
