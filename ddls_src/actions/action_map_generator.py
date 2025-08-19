@@ -1,5 +1,5 @@
 import itertools
-from .base import SimulationActions, ActionType
+from ddls_src.actions.base import SimulationActions, ActionType
 from typing import Dict, Tuple, Any
 
 
@@ -11,12 +11,13 @@ def generate_action_map(global_state: 'GlobalState') -> Tuple[Dict[Tuple, int], 
     """
     Programmatically generates the global flattened action map and action space size
     at runtime based on the entities that actually exist in the global_state.
-    This version generates the COMPLETE map, ignoring the 'active' flag.
+    This version generates the COMPLETE map, ignoring the 'active' flag, to ensure
+    a static action space size for any given scenario configuration.
     """
     action_map = {}
     current_index = 0
 
-    # 1. Get the actual ID ranges from the global_state for dynamic parameters
+    # 1. Get the actual ID ranges from the global_state
     entity_id_ranges = {
         'Order': list(global_state.orders.keys()),
         'Truck': list(global_state.trucks.keys()),
