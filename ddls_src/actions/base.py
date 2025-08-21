@@ -41,6 +41,7 @@ class ActionIndex:
         pass
 
 
+
 # -------------------------------------------------------------------------------------------------
 # -- Part 3: Class-based Action Blueprint (The Central Source of Truth)
 # -------------------------------------------------------------------------------------------------
@@ -194,6 +195,11 @@ class SimulationActions:
     # ---------------------------------------------------------------------------------------------
     NO_OPERATION = ActionType("NO_OPERATION", [], False, None)
 
+    def __init__(self):
+        self.actions = self.get_all_actions()
+        self.action_map = None
+        self.action_space_size = None
+
     @classmethod
     def get_all_actions(cls):
         all_actions = [getattr(cls, attr) for attr in dir(cls)
@@ -268,7 +274,10 @@ class SimulationActions:
                     current_index += 1
 
         action_space_size = len(action_map)
+        self.action_map = action_map
+        self.action_space_size = action_space_size
         return action_map, action_space_size
+
 
 
 #

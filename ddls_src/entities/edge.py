@@ -4,7 +4,7 @@ from datetime import timedelta
 # MLPro Imports
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
-
+from mlpro.bf.events import Event
 
 class Edge(System):
     """
@@ -14,7 +14,10 @@ class Edge(System):
 
     C_TYPE = 'Edge'
     C_NAME = 'Edge'
-
+    C_EVENT_ENTITY_STATE_CHANGE = "Entity State Updated"
+    C_DIM_ACTIVE = "Edge Availability"
+    C_DIM_LENGTH = "Length"
+    C_DIM_TIME_FACTOR = "TIme Factor"
     def __init__(self,
                  p_id: int,
                  p_name: str = '',
@@ -62,9 +65,20 @@ class Edge(System):
         Defines the state and action spaces for an Edge system.
         """
         state_space = MSpace()
-        state_space.add_dim(Dimension('traffic_factor', 'R', 'Traffic Factor', p_boundaries=[1.0, 10.0]))
-        state_space.add_dim(Dimension('is_blocked', 'Z', 'Is Blocked (0=no, 1=yes)', p_boundaries=[0, 1]))
-        state_space.add_dim(Dimension('drone_impact', 'R', 'Drone Impact Factor', p_boundaries=[1.0, 10.0]))
+        state_space.add_dim(
+            Dimension('availability',
+                      'Z',
+                      Edge.C_DIM_ACTIVE,
+                      p_boundaries=[0,1]))
+        state_space.add_dim(
+            Dimension('len',
+                      "R",
+                      Edge.C_DIM_LENGTH))
+        state_space.add_dim(
+            Dimension("xt",
+                      "R",
+                      Edge.C_DIM_TIME_FACTOR)
+        )
 
         action_space = MSpace()
         action_space.add_dim(Dimension(p_name_short='edge_action',
@@ -132,6 +146,7 @@ class Edge(System):
         self._state.set_value(self._state.get_related_set().get_dim_by_name("traffic_factor").get_id(), self.current_traffic_factor)
         self._state.set_value(self._state.get_related_set().get_dim_by_name("is_blocked").get_id(), 1 if self.is_blocked else 0)
         self._state.set_value(self._state.get_related_set().get_dim_by_name("drone_impact").get_id(), self.drone_flight_impact_factor)
+        self._raise_event(p_event_id=Edge.C_EVENT_ENTITY_STATE_CHANGE, p_event_object=Event(self))
 
     # Public methods for getting dynamic travel times
     def get_current_travel_time(self) -> float:

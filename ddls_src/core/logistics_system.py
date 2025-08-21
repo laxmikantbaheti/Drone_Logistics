@@ -1,3 +1,4 @@
+import random
 from typing import Dict, Any, List, Tuple
 from datetime import timedelta
 import numpy as np
@@ -74,7 +75,7 @@ class LogisticsSystem(System, EventManager):
         self.network_manager: NetworkManager = None
         self.order_generator: OrderGenerator = None
         self.state_action_mapper: StateActionMapper = None
-
+        self.constraint_manager = None
         self._state = State(self._state_space)
         self.reset()
 
@@ -133,7 +134,7 @@ class LogisticsSystem(System, EventManager):
 
         self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
 
-        self.register_event_handler(self.C_EVENT_NEW_ORDER, self.state_action_mapper.handle_new_order_event)
+        self.register_event_handler(self.C_EVENT_NEW_ORDER, self._handle_new_order_request)
 
         managers = {
             'SupplyChainManager': self.supply_chain_manager,
@@ -206,9 +207,10 @@ class LogisticsSystem(System, EventManager):
 
     def get_current_mask(self) -> np.ndarray:
         if self.state_action_mapper:
-            dynamic_mask = self.state_action_mapper.generate_mask()
+            dynamic_mask = self.state_action_mapper.generate_masks()
             # Combine the dynamic mask with the permanent scenario mask
-            return np.logical_and(self._permanent_mask, dynamic_mask)
+            # return np.logical_and(self._permanent_mask, dynamic_mask)
+            return dynamic_mask
         return np.ones(len(self.action_map), dtype=bool)
 
     def _update_state(self):
@@ -222,6 +224,9 @@ class LogisticsSystem(System, EventManager):
     def _handle_new_order_request(self, p_event_id, p_event_object):
         self.global_state.add_orders(p_orders=p_event_object.get_data()['p_orders'])
         self.state_action_mapper.add_order(p_oredrs= p_event_object.get_data()['p_orders'])
+
+    def get_masks(self):
+        return self.state_action_mapper.generate_masks()
 
 # -------------------------------------------------------------------------
 # -- Validation Block
@@ -250,12 +255,17 @@ if __name__ == "__main__":
                                        config=sim_config)
 
     print("\n--- Running simulation for 3 cycles with NO_OPERATION ---")
-    no_op_idx = logistics_system.action_map.get((SimulationActions.NO_OPERATION,))
-    no_op_action = LogisticsAction(p_action_space=logistics_system.get_action_space(), p_values=[no_op_idx])
 
-    for i in range(3):
+    for i in range(100):
         print(f"\n--- Cycle {i + 1} ---")
-        logistics_system.simulate_reaction(p_state=None, p_action=no_op_action)
+        masks = logistics_system.get_masks()
+        valid_actions = [i for i in range(len(logistics_system.action_map))
+                         if masks[i] is True]
+        choice = random.choice(valid_actions)
+        act = logistics_system._reverse_action_map[choice]
+        action = LogisticsAction(p_action_space=logistics_system.get_action_space(),
+                                 p_values=[choice], p_data=act)
+        logistics_system.simulate_reaction(p_state=None, p_action=action)
         state = logistics_system.get_state()
         print(f"  - Current Time: {logistics_system.time_manager.get_current_time()}s")
         print(f"  - Total Orders: {state.get_value(state.get_related_set().get_dim_by_name('total_orders').get_id())}")

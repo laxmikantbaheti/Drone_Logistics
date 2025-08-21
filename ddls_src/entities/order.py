@@ -14,8 +14,25 @@ class Order(System):
 
     C_TYPE = 'Order'
     C_NAME = 'Order'
+    C_STATUS_PLACED = "Placed"
+    C_STATUS_ACCEPTED = "Accepted"
+    C_STATUS_ASSIGNED = "Assigned"
+    C_STATUS_EN_ROUTE = "En Route"
+    C_STATUS_DELIVERED = "Delivered"
+    C_STATUS_FAILED = "Failed"
+    C_VALID_DELIVERY_STATES = [C_STATUS_PLACED,
+                               C_STATUS_ACCEPTED,
+                               C_STATUS_ASSIGNED,
+                               C_STATUS_EN_ROUTE,
+                               C_STATUS_DELIVERED,
+                               C_STATUS_FAILED]
+    C_DIM_DELIVERY_STATUS = "Delivery Status"
+    C_DIM_PRIORITY = "Priority"
+
 
     def __init__(self,
+                 p_pickup_node_id,
+                 p_delivery_node_id,
                  p_id: int,
                  p_name: str = '',
                  p_visualize: bool = False,
@@ -47,7 +64,8 @@ class Order(System):
         self.time_received: float = p_kwargs.get('time_received', 0.0)
         self.SLA_deadline: float = p_kwargs.get('SLA_deadline', 0.0)
         self.priority: int = p_kwargs.get('priority', 1)
-
+        self.pickup_node_id = p_pickup_node_id
+        self.delivery_node_id = p_delivery_node_id
         # Internal dynamic attributes
         self.status: str = "pending"
         self.assigned_vehicle_id: Optional[int] = None
@@ -65,10 +83,14 @@ class Order(System):
         """
         state_space = MSpace()
         # Status: 0=pending, 1=accepted, 2=assigned, 3=in_transit, 4=at_micro_hub, 5=delivered, 6=cancelled, 7=flagged
-        state_space.add_dim(Dimension('status', 'Z', 'Order Status', p_boundaries=[0, 7]))
-        state_space.add_dim(Dimension('priority', 'Z', 'Priority Level', p_boundaries=[1, 3]))
         state_space.add_dim(
-            Dimension('assigned_vehicle_id', 'Z', 'Assigned Vehicle ID (-1 for none)', p_boundaries=[-1, 999]))
+            Dimension('status',
+                      'Z',
+                      Order.C_DIM_DELIVERY_STATUS,
+                      p_boundaries=[0, len(Order.C_VALID_DELIVERY_STATES)]))
+        state_space.add_dim(
+            Dimension('priority',
+                      'Z', Order.C_DIM_PRIORITY))
 
         action_space = MSpace()  # Orders are passive, no actions
 
@@ -139,3 +161,9 @@ class Order(System):
 
     def get_SLA_remaining(self, current_time: float) -> float:
         return self.SLA_deadline - current_time
+
+    def get_pickup_node_id(self):
+        return self.pickup_node_id
+
+    def get_delivery_node_id(self):
+        return self.delivery_node_id

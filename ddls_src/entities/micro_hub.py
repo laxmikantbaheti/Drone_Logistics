@@ -18,6 +18,13 @@ class MicroHub(Node):
 
     C_TYPE = 'Micro-Hub'
     C_NAME = 'Micro-Hub'
+    C_DIM_OPERATIONAL_AVAILABILITY = "Operational Availability"
+    C_DIM_CHARGING_SLOTS = "Charging Slots"
+    C_DIM_AVAILABLE_CHARGING_SLOTS = "Available Charging Slots"
+    C_DIM_DRONE_CAPACITY = "Drone Capacity"
+    C_DIM_AVAILABLE_DRONE_CAPACITY = "Available Drone Capacity"
+    C_DIM_CARGO_CAPACITY = "Cargo Capacity"
+    C_DIM_CURRENT_CARGO = "Current Cargo"
 
     def __init__(self,
                  p_id: int,
@@ -67,12 +74,41 @@ class MicroHub(Node):
         state_space, _ = Node.setup_spaces()
 
         state_space.add_dim(
-            Dimension('op_status', 'Z', 'Operational Status (0=inactive, 1=active)', p_boundaries=[0, 1]))
-        state_space.add_dim(Dimension('occupied_slots', 'Z', 'Occupied Charging Slots', p_boundaries=[0, 99]))
+            Dimension('op_status',
+                      'Z',
+                      MicroHub.C_DIM_OPERATIONAL_AVAILABILITY,
+                      p_boundaries=[0, 1]))
         state_space.add_dim(
-            Dimension('blocked_launches', 'Z', 'Blocked for Launches (0=no, 1=yes)', p_boundaries=[0, 1]))
+            Dimension('occupied_slots',
+                      'Z',
+                      'Occupied Charging Slots',
+                      p_boundaries=[0, 99]))
         state_space.add_dim(
-            Dimension('blocked_recoveries', 'Z', 'Blocked for Recoveries (0=no, 1=yes)', p_boundaries=[0, 1]))
+            Dimension("Available Slots",
+                      "Z",
+                      MicroHub.C_DIM_AVAILABLE_CHARGING_SLOTS,
+                      p_boundaries=[0, 99]))
+        state_space.add_dim(
+            Dimension("Cargo Cap.",
+                      "Z",
+                      MicroHub.C_DIM_CARGO_CAPACITY))
+        state_space.add_dim(
+            Dimension("Curr. Cargo",
+                      "Z",
+                      MicroHub.C_DIM_CURRENT_CARGO))
+        state_space.add_dim(
+            Dimension("Drone Cap.",
+                      "Z",
+                      MicroHub.C_DIM_DRONE_CAPACITY))
+        state_space.add_dim(
+            Dimension("Ava. Drone Cap.",
+                      "Z",
+                      MicroHub.C_DIM_AVAILABLE_DRONE_CAPACITY)
+        )
+        # state_space.add_dim(
+        #     Dimension('blocked_launches', 'Z', 'Blocked for Launches (0=no, 1=yes)', p_boundaries=[0, 1]))
+        # state_space.add_dim(
+        #     Dimension('blocked_recoveries', 'Z', 'Blocked for Recoveries (0=no, 1=yes)', p_boundaries=[0, 1]))
 
         # Define a single-dimension, discrete action space for the MicroHub
         action_space = MSpace()

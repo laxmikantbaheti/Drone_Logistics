@@ -15,6 +15,10 @@ class Node(System):
 
     C_TYPE = 'Node'
     C_NAME = 'Node'
+    C_DIM_AVAILABILITY = "Availability"
+    C_DIM_AERIAL_CAPACITY = "Aerial Capacity"
+    C_DIM_NUM_PICKUP_PACKAGES = "Pickup Packages"
+    C_DIM_NUM_DELIVERY_PACKAGES = "Delivery Packages"
 
     def __init__(self,
                  p_id: int,
@@ -65,7 +69,22 @@ class Node(System):
         A node is passive, so its action space is empty.
         """
         state_space = MSpace()
-        state_space.add_dim(Dimension('num_packages', 'Z', 'Number of packages', p_boundaries=[0, 9999]))
+        state_space.add_dim(
+            Dimension("availability",
+                      "Z",
+                      Node.C_DIM_AVAILABILITY))
+        state_space.add_dim(
+            Dimension("aerial cap.",
+                      "Z",
+                      Node.C_DIM_AERIAL_CAPACITY))
+        state_space.add_dim(
+            Dimension('num_pickup_packages',
+                      'Z',
+                      Node.C_DIM_NUM_PICKUP_PACKAGES))
+        state_space.add_dim(
+            Dimension("del packages",
+                      "Z",
+                      Node.C_DIM_NUM_DELIVERY_PACKAGES))
 
         action_space = MSpace()
 

@@ -83,14 +83,16 @@
     "orders": [
         {
             "id": 0,
-            "customer_node_id": 1,
+            "p_pickup_node_id": 0,
+            "p_delivery_node_id": 1,
             "time_received": 0.0,
             "SLA_deadline": 1800.0,
             "priority": 1
         },
         {
             "id": 1,
-            "customer_node_id": 2,
+            "p_pickup_node_id": 0,
+            "p_delivery_node_id": 2,
             "time_received": 0.0,
             "SLA_deadline": 2400.0,
             "priority": 2

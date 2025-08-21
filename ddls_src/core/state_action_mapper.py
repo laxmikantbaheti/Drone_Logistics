@@ -53,13 +53,13 @@ class VehicleAvailableConstraint(Constraint):
     C_NAME = "VehicleAvailabilityConstraint"
     C_ASSOCIATED_ENTITIES = ["Vehicle"]
     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION,
-                          SimulationActions.DRONE_LOAD_ACTION,
+                          SimulationActions.LOAD_DRONE_ACTION,
                           SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE,
                           SimulationActions.TRUCK_TO_NODE,
                           SimulationActions.DRONE_TO_NODE,
                           SimulationActions.UNLOAD_TRUCK_ACTION,
-                          SimulationActions.DRONE_UNLOAD_ACTION]
+                          SimulationActions.UNLOAD_DRONE_ACTION]
     C_DEFAULT_EFFECT = True
 
     # def _handle_vehicle_availabiliy(self, p_event_id, p_event_object):
@@ -131,7 +131,7 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
         loc_vehicle = vehicle.get_current_location()
         nearest_node_vehicle = vehicle.get_nearest_node()
         next_delivery_order = vehicle.get_delivery_orders()[0]
-        node_next_delivery_order = next_delivery_order.get_delivery_node()
+        node_next_delivery_order = next_delivery_order.get_delivery_node_id()
         loc_node_next_delivery_order = node_next_delivery_order.get_location()
         if loc_vehicle == loc_node_next_delivery_order or node_next_delivery_order == nearest_node_vehicle:
             constraint_satisfied = True
@@ -176,8 +176,8 @@ class OrderRequestAssignabilityConstraint(Constraint):
             order = p_entity
             global_state = order.get_global_state()
             # order_requests = global_state.get_order_requests()
-            pick_up_node = order.get_pickup_node()
-            delivery_node = order.get_delivery_node()
+            pick_up_node = order.get_pickup_node_id()
+            delivery_node = order.get_delivery_node_id()
             order_requests = global_state.get_order_requests()[(pick_up_node, delivery_node)]
             if len(order_requests) == 0:
                 constraint_satisfied = False
@@ -366,7 +366,9 @@ class StateActionMapper:
         self.action_index = ActionIndex(global_state, action_map)
         self._invalidation_map: Dict[Tuple, Set[int]] = {}
         self.permanent_masks = set()
-        self.masks = []
+        self.masks = [False for i in range(len(action_map))]
+        self.permanent_valid_actions = list(self.action_index.get_actions_of_type([SimulationActions.NO_OPERATION]))
+        self.masks[self.permanent_valid_actions[0]] = True
 
     def update_masks(self, idx_to_mask, idx_to_unmask):
         if not len(self.masks):
