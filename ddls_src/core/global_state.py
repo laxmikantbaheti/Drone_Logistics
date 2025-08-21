@@ -1,3 +1,4 @@
+import itertools
 from typing import Dict, Any, List, Tuple
 
 
@@ -22,6 +23,10 @@ class MicroHub: pass
 
 
 class Network:  # Forward declaration for Network class
+    pass
+
+
+class OrderRequests:
     pass
 
 
@@ -53,8 +58,15 @@ class GlobalState:
         self.micro_hubs: Dict[int, MicroHub] = initial_entities.get('micro_hubs', {})
         self.current_time: float = initial_entities.get('initial_time', 0.0)  # Can be passed from builder config
         self.network: Network = None  # Reference to the Network graph structure, populated after entities
-
+        self.node_pairs = self.setup_node_pairs()
+        self.orders_by_nodes = self.setup_order_by_node_pairs()
         print("GlobalState initialized with provided entities.")
+
+    def setup_node_pairs(self):
+        node_ids = list(self.nodes.keys())
+        node_pairs_list = list(itertools.permutations(node_ids, 2))
+        node_pairs = {node_pair:(self.nodes[node_pair[0]], self.nodes[node_pair[1]]) for node_pair in node_pairs_list}
+        return node_pairs
 
     def get_entity(self, entity_type: str, entity_id: int) -> Any:
         """
@@ -114,6 +126,38 @@ class GlobalState:
             raise KeyError(f"Entity of type '{entity_type}' with ID '{entity_id}' not found for removal.")
         del entities_dict[entity_id]
         # print(f"Removed {entity_type} with ID {entity_id}")
+
+    def add_vehicles(self, p_vehicles:[]):
+        # TODO: Do this
+        pass
+
+    def remove_vehicles(self, p_vehicles:[]):
+        pass
+
+    def add_nodes(self, p_nodes:[Node]):
+        # Todo: Do this
+        pass
+
+    def remove_node(self, p_nodes:[Node]):
+        pass
+
+    def add_edge(self, p_edges:[Node]):
+        pass
+
+    def remove_edge(self, p_edges:[]):
+        pass
+
+    def add_orders(self, p_orders:[Order]):
+        pass
+
+    def remove_orders(self, p_orders:[]):
+        pass
+
+    def add_micro_hubs(self, p_micro_hubs:[]):
+        pass
+
+    def remove_micro_hub(self, p_micro_hubs:[]):
+        pass
 
     # --- Specific Getters (as per plan) ---
 
@@ -228,3 +272,15 @@ class GlobalState:
         # The actual implementation will depend on the final structure of the figure_data
         # and how the plotting library expects to receive updates (e.g., updating scatter points, line segments).
         print("GlobalState: Update plot data placeholder added to figure_data.")
+
+    def setup_order_by_node_pairs(self):
+        order_requests = {}
+        for ids,order in self.orders.items():
+            node_pick_up = order.get_pick_up_node().get_id()
+            node_delivery = order.get_delivery_node().get_id()
+            if (node_pick_up, node_delivery) not in order_requests.keys():
+                order_requests[(node_pick_up, node_delivery)] = [order]
+            else:
+                order_requests[(node_pick_up,node_delivery)].append(order)
+
+

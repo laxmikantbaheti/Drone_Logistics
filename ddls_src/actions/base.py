@@ -37,6 +37,9 @@ class ActionIndex:
             ids.update(self.actions_by_type[action_type])
         return ids
 
+    def _handle_new_entity(self):
+        pass
+
 
 # -------------------------------------------------------------------------------------------------
 # -- Part 3: Class-based Action Blueprint (The Central Source of Truth)
@@ -46,7 +49,7 @@ class ActionType:
     """
     A simple data class to hold the blueprint for a single action type.
     """
-    _id_counter = 0
+    _id_counter = 1
     _id_map = {}
 
     def __init__(self, name: str, params: List, is_automatic: bool, handler: str, active: bool = True):
@@ -74,18 +77,20 @@ class SimulationActions:
     # -- Core Actions (Active for Demonstration)
     # ---------------------------------------------------------------------------------------------
     ACCEPT_ORDER = ActionType(name="ACCEPT_ORDER",
-                              params=[{'name': 'order_id', 'type': 'Order'}],
+                              # params=[{'name': 'order_id', 'type': 'Order'}],
+                              params=[{'name':'pick_up_drop', "type":"Node Pair"}],
                               is_automatic=False,
-                              handler="SupplyChainManager")
+                              handler="SupplyChainManager",
+                              active=False)
 
     ASSIGN_ORDER_TO_TRUCK = ActionType(name="ASSIGN_ORDER_TO_TRUCK",
-                                       params=[{'name': 'order_id', 'type': 'Order'},
+                                       params=[{'name': 'pick_up_drop', 'type': 'Node Pair'},
                                                {'name': 'truck_id', 'type': 'Truck'}],
                                        is_automatic=False,
                                        handler="SupplyChainManager")
 
     ASSIGN_ORDER_TO_DRONE = ActionType(name="ASSIGN_ORDER_TO_DRONE",
-                                       params=[{'name': 'order_id', 'type': 'Order'},
+                                       params=[{'name': 'pick_up_drop', 'type': 'Node Pair'},
                                                {'name': 'drone_id', 'type': 'Drone'}],
                                        is_automatic=False,
                                        handler="SupplyChainManager")
@@ -102,13 +107,13 @@ class SimulationActions:
                                      is_automatic=True,
                                      handler="ResourceManager")
 
-    DRONE_LOAD_ACTION = ActionType(name="DRONE_LOAD_ACTION",
+    LOAD_DRONE_ACTION = ActionType(name="LOAD_DRONE",
                                    params=[{'name': 'drone_id', 'type': 'Drone'},
                                            {'name': 'order_id', 'type': 'Order'}],
                                    is_automatic=True,
                                    handler="ResourceManager")
 
-    DRONE_UNLOAD_ACTION = ActionType(name="DRONE_UNLOAD_ACTION",
+    UNLOAD_DRONE_ACTION = ActionType(name="UNLOAD_DRONE",
                                      params=[{'name': 'drone_id', 'type': 'Drone'},
                                              {'name': 'order_id', 'type': 'Order'}],
                                      is_automatic=True,
@@ -191,7 +196,18 @@ class SimulationActions:
 
     @classmethod
     def get_all_actions(cls):
-        return [getattr(cls, attr) for attr in dir(cls) if isinstance(getattr(cls, attr), ActionType)]
+        all_actions = [getattr(cls, attr) for attr in dir(cls)
+                       if (isinstance(getattr(cls, attr), ActionType) and getattr(cls, attr).active)]
+        all_actions.sort(key = lambda x: x.id)
+        return all_actions
+
+    @classmethod
+    def get_actions_by_manager(cls, p_manager_name):
+        actions_by_manager = [getattr(cls, attr) for attr in dir(cls)
+                              if (isinstance(getattr(cls, attr), ActionType)
+                                  and getattr(cls, attr).active and (getattr(cls,attr).handler == p_manager_name))]
+        actions_by_manager.sort(key=lambda x: x.id)
+        return actions_by_manager
 
     def generate_action_map(self, global_state: 'GlobalState') -> Tuple[Dict[Tuple, int], int]:
         """
@@ -211,6 +227,7 @@ class SimulationActions:
             'Node': list(global_state.nodes.keys()),
             'MicroHub': list(global_state.micro_hubs.keys()),
             'Vehicle': list(global_state.trucks.keys()) + list(global_state.drones.keys()),
+            'Node Pair': global_state.node_pairs
         }
 
         # 2. Iterate through each action defined in our blueprint
@@ -241,6 +258,7 @@ class SimulationActions:
                 continue
 
             # 4. Generate all unique combinations of parameter values
+            # Handling special invalid case of same-node delivery requests.
             param_combinations = list(itertools.product(*param_ranges))
 
             for combo in param_combinations:
@@ -277,14 +295,22 @@ if __name__ == "__main__":
             self.orders = {0: MockEntity(p_id=0, status='pending'), 1: MockEntity(p_id=1, status='delivered')}
             self.trucks = {101: MockEntity(p_id=101, status='idle', current_node=5)}
             self.drones = {201: MockEntity(p_id=201, status='idle', battery=0.1)}
-            self.nodes = {5: MockEntity(p_id=5, status='active')}
+            self.nodes = {5: MockEntity(p_id=5, status='active'), 6: MockEntity(p_id=6, status="active")}
             self.micro_hubs = {}
             self.nodes[5].packages_held = [0]
+            self.node_pairs = self.get_node_pairs()
             def get_all_entities(self, type):
                 return getattr(self, type + 's', {})
 
             self.get_all_entities = get_all_entities
             GlobalState.__init__(self)
+
+        def get_node_pairs(self):
+            node_pairs = []
+            node_ids = self.nodes.keys()
+            node_pairs = list(itertools.permutations(node_ids))
+            return node_pairs
+
 
     mock_gs = MockGlobalState()
 #
@@ -335,3 +361,4 @@ if __name__ == "__main__":
     action_index = ActionIndex(mock_gs, maps)
     print(action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK]))
     print(action_index.get_actions_of_type([SimulationActions.DRONE_TO_NODE]))
+    print([action.name for action in actions.get_actions_by_manager(p_manager_name='NetworkManager')])

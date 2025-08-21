@@ -219,6 +219,9 @@ class LogisticsSystem(System, EventManager):
             self._state.set_value(state_space.get_dim_by_name("delivered_orders").get_id(),
                                   sum(1 for o in orders if o.status == 'delivered'))
 
+    def _handle_new_order_request(self, p_event_id, p_event_object):
+        self.global_state.add_orders(p_orders=p_event_object.get_data()['p_orders'])
+        self.state_action_mapper.add_order(p_oredrs= p_event_object.get_data()['p_orders'])
 
 # -------------------------------------------------------------------------
 # -- Validation Block

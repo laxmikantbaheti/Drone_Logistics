@@ -15,6 +15,7 @@ class Vehicle: pass
 class Order: pass
 class Truck: pass
 class Drone: pass
+class MicroHub: pass
 class Node: pass
 class Edge: pass
 class Network: pass
@@ -143,6 +144,46 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
             actions_by_entity = p_action_index.actions_involving_entity[(type(vehicle), vehicle.get_id())]
             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
             return invalidation_idx
+
+
+class OrderRequestAssignabilityConstraint(Constraint):
+    C_NAME = "OrderTripAssignabilityConstraint"
+    C_ASSOCIATED_ENTITIES = ["Order","Vehicle", "Node"]
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+        invalidation_idx = []
+        if ((not isinstance(p_entity, Vehicle))
+                or (not isinstance(p_entity, MicroHub))
+                or (not isinstance(p_entity, Order))):
+            raise TypeError("The \"Order Request Assignability Constraint\" is only applicable to a vehicle "
+                            "or a Micro-Hub.")
+        if isinstance(p_entity, Vehicle):
+            vehicle = p_entity
+            if (vehicle.get_state() in ["En Route", "Charging"]) and (not vehicle.get_availability()):
+                constraint_satisfied = False
+                actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+                                                                      SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
+                                                                      SimulationActions.ASSIGN_ORDER_TO_DRONE])
+                actions_by_entity = p_action_index.actions_involving_entity[(type(vehicle), vehicle.get_id())]
+                invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+                return invalidation_idx
+        if isinstance(p_entity, MicroHub):
+            micro_hub = p_entity
+            if micro_hub.get_state() in ["offline"]:
+                invalidation_idx = list(p_action_index.actions_involving_entity[(type(micro_hub), micro_hub.get_id())])
+                return invalidation_idx
+        if isinstance(p_entity, Order):
+            order = p_entity
+            global_state = order.get_global_state()
+            # order_requests = global_state.get_order_requests()
+            pick_up_node = order.get_pickup_node()
+            delivery_node = order.get_delivery_node()
+            order_requests = global_state.get_order_requests()[(pick_up_node, delivery_node)]
+            if len(order_requests) == 0:
+                constraint_satisfied = False
+                invalidation_idx = list(p_action_index.actions_involving_entity[("Node Pair",(pick_up_node, delivery_node))])
+                return invalidation_idx
+        return invalidation_idx
 
 
 class OrderAssignableConstraint(Constraint):
@@ -299,16 +340,21 @@ class ConstraintManager(EventManager):
         # We are not checking for unmasking, since we are now checking constraints on entity state. So we always start
         # with completely unmasked version of the actions related to that entity.
         # ids_to_unmask = set()
+        # Unmask all actions related to the entity
+        related_actions = self.action_index.actions_involving_entity[(type(entity), entity.get_id())]
         constraints_to_check = self.get_constraints_by_entity(entity)
         for constraint in constraints_to_check:
             idx = constraint.get_invalidations(p_entity=entity,
                                                p_action_index=self.action_index)
             idx_to_mask.update()
-
+        idx_to_unmask = related_actions.difference(idx_to_mask)
         if idx_to_mask:
             self._raise_event(p_event_id=ConstraintManager.C_EVENT_MASK_UPDATED,
                               p_event_object=Event(p_raising_object=self,
-                                                   idx_to_mask=idx_to_mask))
+                                                   idx_to_mask=idx_to_mask,
+                                                   idx_to_unmask=idx_to_unmask))
+
+
 # -------------------------------------------------------------------------
 # -- StateActionMapper (Now Fully Self-Configuring)
 # -------------------------------------------------------------------------
@@ -327,6 +373,7 @@ class StateActionMapper:
             raise ValueError("Error in instantiation of process masks.")
         for idx in idx_to_mask:
             self.masks[idx] = False
+        idx_to_unmask = idx_to_unmask.difference(self.permanent_masks)
         for idx in idx_to_unmask:
             self.masks[idx] = True
 
@@ -341,8 +388,6 @@ class StateActionMapper:
 
     def generate_masks(self):
         return self.masks
-
-
 
 
 # -------------------------------------------------------------------------
