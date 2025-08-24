@@ -1,13 +1,13 @@
 from typing import Dict, Any, List, Tuple, Optional
 
 # Import entity classes
-from ...entities.node import Node
-from ...entities.edge import Edge
-from ...entities.order import Order
-from ...entities.vehicles.base import Vehicle
-from ...entities.vehicles.truck import Truck
-from ...entities.vehicles.drone import Drone
-from ...entities.micro_hub import MicroHub
+from ddls_src.entities.node import Node
+from ddls_src.entities.edge import Edge
+from ddls_src.entities.order import Order
+from ddls_src.entities.vehicles.base import Vehicle
+from ddls_src.entities.vehicles.truck import Truck
+from ddls_src.entities.vehicles.drone import Drone
+from ddls_src.entities.micro_hub import MicroHub
 
 
 class ScenarioGenerator:

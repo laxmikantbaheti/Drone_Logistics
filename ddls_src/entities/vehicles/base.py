@@ -5,14 +5,14 @@ from datetime import timedelta
 # MLPro Imports
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
-
+from ddls_src.entities.base import LogisticEntity
 
 # Forward declaration for NetworkManager
 class NetworkManager:
     pass
 
 
-class Vehicle(System, ABC):
+class Vehicle(LogisticEntity, ABC):
     """
     Abstract base class for all vehicles, refactored as an MLPro System.
     It now explicitly stores the list of nodes in its current route for
@@ -21,6 +21,15 @@ class Vehicle(System, ABC):
 
     C_TYPE = 'Vehicle'
     C_NAME = 'Vehicle'
+
+    C_TRIP_STATE_IDLE = "Idle"
+    C_TRIP_STATE_EN_ROUTE = "En Route"
+    C_VALID_TRIP_STATES = [C_TRIP_STATE_IDLE, C_TRIP_STATE_EN_ROUTE]
+    C_DIM_TRIP_STATE = ["trip","Trip Status",C_VALID_TRIP_STATES]
+    C_DIM_AVAILABLE = ["ava", "Is Available", [True, False]]
+    C_DIM_AT_NODE = ["node_bool", "At Node", [True, False]]
+    C_DIM_CURRENT_CARGO = ["cargo", "Current Cargo", []]
+    C_DIS_DIMS = [C_DIM_TRIP_STATE, C_DIM_AVAILABLE, C_DIM_AT_NODE, C_DIM_CURRENT_CARGO]
 
     def __init__(self,
                  p_id: int,
@@ -55,6 +64,8 @@ class Vehicle(System, ABC):
         self.route_nodes: List[int] = []
 
         self._state = State(self._state_space)
+        self.delivery_orders = []
+        self.pickup_orders = []
         self.reset()
 
     @staticmethod
@@ -63,11 +74,15 @@ class Vehicle(System, ABC):
         Defines the state and action spaces for a generic Vehicle system.
         """
         state_space = MSpace()
-        state_space.add_dim(Dimension('status', 'Z', 'Vehicle Status', p_boundaries=[0, 6]))
-        state_space.add_dim(
-            Dimension('current_node_id', 'Z', 'Current Node ID (-1 for en-route)', p_boundaries=[-1, 999]))
-        state_space.add_dim(Dimension('cargo_count', 'Z', 'Number of packages in cargo', p_boundaries=[0, 99]))
 
+
+        state_space.add_dim(Dimension('loc x',
+                                      "R",
+                                      "Current Location X"))
+
+        state_space.add_dim(Dimension('loc y',
+                                      "R",
+                                      "Current Location Y"))
         action_space = MSpace()
         action_space.add_dim(
             Dimension(p_name_short='target_node', p_base_set='Z', p_name_long='Target Node ID', p_boundaries=[0, 999]))
@@ -84,6 +99,7 @@ class Vehicle(System, ABC):
         self.current_route = []
         self.route_progress = 0.0
         self.route_nodes = []  # Clear the route nodes on reset
+        self.delivery_orders = []
         self._update_state()
 
     def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
@@ -172,10 +188,10 @@ class Vehicle(System, ABC):
         state_space = self._state.get_related_set()
         status_map = {"idle": 0, "en_route": 1, "loading": 2, "unloading": 3, "charging": 4, "maintenance": 5,
                       "broken_down": 6}
-        self._state.set_value(state_space.get_dim_by_name("status").get_id(), status_map.get(self.status, 0))
-        self._state.set_value(state_space.get_dim_by_name("current_node_id").get_id(),
+        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_TRIP_STATE[0]).get_id(), status_map.get(self.status, 0))
+        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_AT_NODE[0]).get_id(),
                               self.current_node_id if self.current_node_id is not None else -1)
-        self._state.set_value(state_space.get_dim_by_name("cargo_count").get_id(), len(self.cargo_manifest))
+        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_CURRENT_CARGO[0]).get_id(), len(self.cargo_manifest))
 
     def set_route(self, route: List[int]):
         """
@@ -201,6 +217,35 @@ class Vehicle(System, ABC):
         self.route_progress = 0.0
         self.current_node_id = None
         self._update_state()
+
+    def get_current_location(self):
+        return self.get_state_value_by_dim_name("loc x"), self.get_state_value_by_dim_name("loc y")
+
+    def get_delivery_orders(self):
+        return self.delivery_orders
+
+    def assign_orders(self, p_orders:list):
+        if p_orders:
+            self.delivery_orders.append(p_orders)
+
+    def unload_order(self, p_order):
+        if p_order:
+            self.delivery_orders.remove(p_order)
+
+    def get_current_node(self):
+        return self.current_node_id
+
+    def get_cargo_capacity(self):
+        return self.max_payload_capacity
+
+    def get_current_cargo_size(self):
+        return len(self.cargo_manifest)
+
+    def get_current_cargo(self):
+        return self.cargo_manifest
+
+    def get_pickup_orders(self):
+        return self.pickup_orders
 
 
 # -------------------------------------------------------------------------

@@ -18,13 +18,22 @@ class MicroHub(Node):
 
     C_TYPE = 'Micro-Hub'
     C_NAME = 'Micro-Hub'
-    C_DIM_OPERATIONAL_AVAILABILITY = "Operational Availability"
-    C_DIM_CHARGING_SLOTS = "Charging Slots"
-    C_DIM_AVAILABLE_CHARGING_SLOTS = "Available Charging Slots"
-    C_DIM_DRONE_CAPACITY = "Drone Capacity"
-    C_DIM_AVAILABLE_DRONE_CAPACITY = "Available Drone Capacity"
-    C_DIM_CARGO_CAPACITY = "Cargo Capacity"
-    C_DIM_CURRENT_CARGO = "Current Cargo"
+    C_DIM_OPERATIONAL_AVAILABILITY = ["ava","Operational Availability", []]
+    C_DIM_CHARGING_SLOTS = ["ch_slots","Charging Slots", []]
+    C_DIM_AVAILABLE_CHARGING_SLOTS = ["available_slots","Available Charging Slots", []]
+    C_DIM_DRONE_CAPACITY = ["drone_capacity","Drone Capacity", []]
+    C_DIM_AVAILABLE_DRONE_CAPACITY = ["available_drone_capacity","Available Drone Capacity", []]
+    C_DIM_PACKAGE_CAPACITY = ["carg_cap","Cargo Capacity", []]
+    C_DIM_NUM_PICKUP_PACKAGES = ["pickup", "Pickup Packages", []]
+    C_DIM_NUM_DELIVERY_PACKAGES = ["delivery", "Delivery Packages", []]
+    C_DIS_DIMS = [C_DIM_OPERATIONAL_AVAILABILITY,
+                  C_DIM_CHARGING_SLOTS,
+                  C_DIM_AVAILABLE_CHARGING_SLOTS,
+                  C_DIM_DRONE_CAPACITY,
+                  C_DIM_AVAILABLE_DRONE_CAPACITY,
+                  C_DIM_PACKAGE_CAPACITY,
+                  C_DIM_NUM_PICKUP_PACKAGES,
+                  C_DIM_NUM_DELIVERY_PACKAGES]
 
     def __init__(self,
                  p_id: int,
@@ -57,7 +66,6 @@ class MicroHub(Node):
                          p_logging=p_logging,
                          **p_kwargs)
 
-
         self.is_blocked_for_launches: bool = False
         self.is_blocked_for_recoveries: bool = False
         self.is_package_transfer_unavailable: bool = False
@@ -73,38 +81,6 @@ class MicroHub(Node):
         """
         state_space, _ = Node.setup_spaces()
 
-        state_space.add_dim(
-            Dimension('op_status',
-                      'Z',
-                      MicroHub.C_DIM_OPERATIONAL_AVAILABILITY,
-                      p_boundaries=[0, 1]))
-        state_space.add_dim(
-            Dimension('occupied_slots',
-                      'Z',
-                      'Occupied Charging Slots',
-                      p_boundaries=[0, 99]))
-        state_space.add_dim(
-            Dimension("Available Slots",
-                      "Z",
-                      MicroHub.C_DIM_AVAILABLE_CHARGING_SLOTS,
-                      p_boundaries=[0, 99]))
-        state_space.add_dim(
-            Dimension("Cargo Cap.",
-                      "Z",
-                      MicroHub.C_DIM_CARGO_CAPACITY))
-        state_space.add_dim(
-            Dimension("Curr. Cargo",
-                      "Z",
-                      MicroHub.C_DIM_CURRENT_CARGO))
-        state_space.add_dim(
-            Dimension("Drone Cap.",
-                      "Z",
-                      MicroHub.C_DIM_DRONE_CAPACITY))
-        state_space.add_dim(
-            Dimension("Ava. Drone Cap.",
-                      "Z",
-                      MicroHub.C_DIM_AVAILABLE_DRONE_CAPACITY)
-        )
         # state_space.add_dim(
         #     Dimension('blocked_launches', 'Z', 'Blocked for Launches (0=no, 1=yes)', p_boundaries=[0, 1]))
         # state_space.add_dim(
@@ -173,14 +149,10 @@ class MicroHub(Node):
         Helper method to synchronize all internal attributes with the formal MLPro state object.
         """
         super()._update_state()
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('op_status').get_id(),
+        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_AVAILABILITY[0]).get_id(),
                               1 if self.operational_status == 'active' else 0)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('occupied_slots').get_id(),
-                              len(self.charging_slots) - len(self.get_available_charging_slots()))
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('blocked_launches').get_id(),
-                              1 if self.is_blocked_for_launches else 0)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('blocked_recoveries').get_id(),
-                              1 if self.is_blocked_for_recoveries else 0)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_AVAILABLE_CHARGING_SLOTS[0]).get_id(),
+                              len(self.get_available_charging_slots()))
 
     # Business logic for charging slots remains, as this is managed internally
     # based on other actions (like a drone requesting a charge).
@@ -200,3 +172,4 @@ class MicroHub(Node):
 
     def get_available_charging_slots(self) -> List[int]:
         return [slot_id for slot_id, drone_id in self.charging_slots.items() if drone_id is None]
+

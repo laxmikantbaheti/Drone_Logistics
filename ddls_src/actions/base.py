@@ -28,6 +28,7 @@ class ActionIndex:
             if not action_type.params: continue
             for i, param_def in enumerate(action_type.params):
                 entity_type = param_def['type']
+                # if entity_type == "Order":
                 entity_id = action_tuple[i + 1]
                 self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
 
@@ -67,6 +68,9 @@ class ActionType:
     @classmethod
     def get_by_id(cls, action_id: int):
         return cls._id_map.get(action_id)
+
+    def __repr__(self):
+        return self.name
 
 
 class SimulationActions:

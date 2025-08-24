@@ -125,8 +125,11 @@ class SupplyChainManager(System):
         action_kwargs = p_action.data
 
         try:
-            order_id = action_kwargs['order_id']
-            order: 'Order' = self.global_state.get_entity("order", order_id)
+            if "order" in action_kwargs.keys():
+                order_id = action_kwargs['order_id']
+                order: 'Order' = self.global_state.get_entity("order", order_id)
+            else:
+                node_pair = action_kwargs.get("pick_up_drop")
 
             if action_type == SimulationActions.ACCEPT_ORDER:
                 if order.status == "pending":

@@ -140,6 +140,9 @@ class Network:
         print(f"Path calculated for {vehicle_type} from {start_node_id} to {end_node_id}: {path}")
         return path
 
+    def calculate_distance(self, p_node_1, p_node_2):
+        return 10
+
     # --- Plotting Methods ---
     def initialize_plot_data(self, figure_data: Dict[str, Any]) -> None:
         """

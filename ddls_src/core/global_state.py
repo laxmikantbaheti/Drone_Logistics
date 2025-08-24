@@ -275,12 +275,14 @@ class GlobalState:
 
     def setup_order_by_node_pairs(self):
         order_requests = {}
-        for ids,order in self.orders.items():
+        for ids,order in self.orders.items() :
             node_pick_up = order.get_pickup_node_id()
             node_delivery = order.get_delivery_node_id()
             if (node_pick_up, node_delivery) not in order_requests.keys():
                 order_requests[(node_pick_up, node_delivery)] = [order]
             else:
                 order_requests[(node_pick_up,node_delivery)].append(order)
+        return order_requests
 
-
+    def get_order_requests(self):
+        return self.orders_by_nodes

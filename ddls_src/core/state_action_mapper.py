@@ -8,17 +8,20 @@ from ddls_src.actions.base import SimulationActions
 from mlpro.bf.systems import System  # Import System for mock object inheritance
 from mlpro.bf.events import Event, EventManager  # Import Event for type hinting
 from ddls_src.actions.base import ActionIndex
+from ddls_src.entities.base import LogisticEntity
+from ddls_src.entities import *
+from mlpro.bf.various import Log
 
-# Forward declarations
-class GlobalState: pass
-class Vehicle: pass
-class Order: pass
-class Truck: pass
-class Drone: pass
-class MicroHub: pass
-class Node: pass
-class Edge: pass
-class Network: pass
+# # Forward declarations
+# class GlobalState: pass
+# class Vehicle: pass
+# class Order: pass
+# class Truck: pass
+# class Drone: pass
+# class MicroHub: pass
+# class Node: pass
+# class Edge: pass
+# class Network: pass
 
 # -------------------------------------------------------------------------------------------------
 # -- Part 1: Pluggable Constraint Architecture (Unified)
@@ -51,15 +54,10 @@ class Constraint(ABC, EventManager):
 class VehicleAvailableConstraint(Constraint):
 
     C_NAME = "VehicleAvailabilityConstraint"
-    C_ASSOCIATED_ENTITIES = ["Vehicle"]
-    C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION,
-                          SimulationActions.LOAD_DRONE_ACTION,
-                          SimulationActions.ASSIGN_ORDER_TO_TRUCK,
-                          SimulationActions.ASSIGN_ORDER_TO_DRONE,
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.TRUCK_TO_NODE,
-                          SimulationActions.DRONE_TO_NODE,
-                          SimulationActions.UNLOAD_TRUCK_ACTION,
-                          SimulationActions.UNLOAD_DRONE_ACTION]
+                          SimulationActions.DRONE_TO_NODE]
     C_DEFAULT_EFFECT = True
 
     # def _handle_vehicle_availabiliy(self, p_event_id, p_event_object):
@@ -83,7 +81,7 @@ class VehicleAvailableConstraint(Constraint):
                             "corresponding constraint configurations.")
 
         vehicle = p_entity
-        if vehicle.get_availability():
+        if vehicle.get_state_value_by_dim_name(Vehicle.C_DIM_AVAILABLE[0]):
             constraint_satisfied = True
             # We only return the actions to be masked. If none, we return an empty list
             return invalidation_idx
@@ -92,22 +90,19 @@ class VehicleAvailableConstraint(Constraint):
 
             actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                                                                   SimulationActions.TRUCK_TO_NODE,
-                                                                  SimulationActions.DRONE_TO_NODE,
-                                                                  SimulationActions.LOAD_TRUCK_ACTION,
-                                                                  SimulationActions.UNLOAD_TRUCK_ACTION,
-                                                                  SimulationActions.DRONE_LOAD_ACTION,
-                                                                  SimulationActions.DRONE_UNLOAD_ACTION,
-                                                                  SimulationActions.LAUNCH_DRONE,
-                                                                  SimulationActions.DRONE_LANDING])
+                                                                  SimulationActions.DRONE_TO_NODE])
 
-            actions_by_entity = p_action_index.actions_involving_entity[(type(vehicle), vehicle.get_id())]
+            actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             invalidation_idx = list(actions_by_type.intersection(actions_by_entity))
             return invalidation_idx
 
 
 class VehicleAtDeliveryNodeConstraint(Constraint):
     C_NAME = "VehicleAtDeliveryNodeConstraint"
-    C_ASSOCIATED_ENTITIES = ["Vehicle"]
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
+    C_ACTIONS_AFFECTED = [SimulationActions.UNLOAD_TRUCK_ACTION,
+                          SimulationActions.UNLOAD_DRONE_ACTION,
+                          SimulationActions.DRONE_LANDING]
     # def _handle_vehicle_node_arrival(self, p_event_id, p_event_object):
     #     constraint_satisfied = False
     #     vehicle = p_event_object.get_data()['Vehicle']
@@ -123,53 +118,60 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
 
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
         invalidation_idx = []
-        if not isinstance(p_entity, Vehicle):
+        if not (isinstance(p_entity, Drone) or isinstance(p_entity, Truck)):
             raise TypeError("Vehicle Availability Constraint can only be applied to vehicle entity. Please check the "
                             "corresponding constraint configurations.")
 
         vehicle = p_entity
         loc_vehicle = vehicle.get_current_location()
-        nearest_node_vehicle = vehicle.get_nearest_node()
-        next_delivery_order = vehicle.get_delivery_orders()[0]
-        node_next_delivery_order = next_delivery_order.get_delivery_node_id()
-        loc_node_next_delivery_order = node_next_delivery_order.get_location()
-        if loc_vehicle == loc_node_next_delivery_order or node_next_delivery_order == nearest_node_vehicle:
-            constraint_satisfied = True
-            return invalidation_idx
+        node_vehicle = vehicle.get_current_node()
+        # nearest_node_vehicle = vehicle.global_state.network.get_nearest_node(loc_vehicle)
+        delivery_orders = vehicle.get_delivery_orders()
+        if len(delivery_orders):
+            next_delivery_order = delivery_orders[0]
+            node_next_delivery_order = next_delivery_order.get_delivery_node_id()
+            # loc_node_next_delivery_order = node_next_delivery_order.get_location()
+            if node_next_delivery_order == node_vehicle:
+                constraint_satisfied = True
+                return invalidation_idx
         else:
             constraint_satisfied = False
             actions_by_type = p_action_index.get_actions_of_type([SimulationActions.UNLOAD_TRUCK_ACTION,
-                                                                  SimulationActions.DRONE_UNLOAD_ACTION,
+                                                                  SimulationActions.UNLOAD_DRONE_ACTION,
                                                                   SimulationActions.DRONE_LANDING])
-            actions_by_entity = p_action_index.actions_involving_entity[(type(vehicle), vehicle.get_id())]
+            actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
             return invalidation_idx
 
 
 class OrderRequestAssignabilityConstraint(Constraint):
     C_NAME = "OrderTripAssignabilityConstraint"
-    C_ASSOCIATED_ENTITIES = ["Order","Vehicle", "Node"]
-
+    C_ASSOCIATED_ENTITIES = ["Order","Truck", "Drone", "Micro-Hub"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+                          SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
+                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
         invalidation_idx = []
-        if ((not isinstance(p_entity, Vehicle))
-                or (not isinstance(p_entity, MicroHub))
-                or (not isinstance(p_entity, Order))):
+        if not (isinstance(p_entity, Vehicle)
+                or isinstance(p_entity, MicroHub)
+                or isinstance(p_entity, Node)
+                or isinstance(p_entity, Order)):
             raise TypeError("The \"Order Request Assignability Constraint\" is only applicable to a vehicle "
                             "or a Micro-Hub.")
-        if isinstance(p_entity, Vehicle):
+        if isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
             vehicle = p_entity
-            if (vehicle.get_state() in ["En Route", "Charging"]) and (not vehicle.get_availability()):
+            if ((vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in ["En Route", "Charging"]) or
+                    (not vehicle.get_state_value_by_dim_name(vehicle.C_DIM_AVAILABLE[0]))):
                 constraint_satisfied = False
                 actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                                                                       SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
                                                                       SimulationActions.ASSIGN_ORDER_TO_DRONE])
-                actions_by_entity = p_action_index.actions_involving_entity[(type(vehicle), vehicle.get_id())]
+                actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
                 invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
                 return invalidation_idx
         if isinstance(p_entity, MicroHub):
             micro_hub = p_entity
-            if micro_hub.get_state() in ["offline"]:
+            if micro_hub.get_state_value_by_dim_name(MicroHub.C_DIM_AVAILABILITY[0]) not in [0]:
                 invalidation_idx = list(p_action_index.actions_involving_entity[(type(micro_hub), micro_hub.get_id())])
                 return invalidation_idx
         if isinstance(p_entity, Order):
@@ -189,6 +191,9 @@ class OrderRequestAssignabilityConstraint(Constraint):
 class OrderAssignableConstraint(Constraint):
     C_NAME = "OrderAssignableConstraint"
     C_ASSOCIATED_ENTITIES = ["Order"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+                          SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
+                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
     # def _handle_order_state_change(self, p_event_id, p_event_object):
     #     constraint_satisfied = True
@@ -212,19 +217,17 @@ class OrderAssignableConstraint(Constraint):
             constraint_satisfied = False
             actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                                                                   SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
-                                                                  SimulationActions.ASSIGN_ORDER_TO_DRONE,
-                                                                  SimulationActions.LOAD_TRUCK_ACTION,
-                                                                  SimulationActions.UNLOAD_TRUCK_ACTION,
-                                                                  SimulationActions.DRONE_LOAD_ACTION,
-                                                                  SimulationActions.DRONE_UNLOAD_ACTION])
-            actions_by_entity = p_action_index.actions_involving_entity[(type(order), order.get_id())]
-            invalidation_idx = list(actions_by_entity.intersection(actions_by_entity))
+                                                                  SimulationActions.ASSIGN_ORDER_TO_DRONE])
+            actions_by_entity = p_action_index.actions_involving_entity[(order.C_NAME, order.get_id())]
+            invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
             return invalidation_idx
 
 
 class VehicleCapacityConstraint(Constraint):
     C_NAME = "VehicleAtDeliveryNodeConstraint"
-    C_ASSOCIATED_ENTITIES = ["Vehicle"]
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
     # def _handle_vehicle_cargo_change(self, p_event_id, p_event_object):
     #     constraint_satisfied = True
@@ -241,7 +244,7 @@ class VehicleCapacityConstraint(Constraint):
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
         invalidation_idx = []
         vehicle = p_entity
-        vehicle_capacity = vehicle.get_config()['Capacity']
+        vehicle_capacity = vehicle.get_cargo_capacity()
         current_cargo_size = vehicle.get_current_cargo_size()
         if vehicle_capacity - current_cargo_size >= 1:
             constraint_satisfied = True
@@ -250,14 +253,15 @@ class VehicleCapacityConstraint(Constraint):
             constraint_satisfied = False
             actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                                                                   SimulationActions.ASSIGN_ORDER_TO_DRONE])
-            actions_by_entity = p_action_index.actions_involving_entity[(type(vehicle), vehicle.get_id())]
+            actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
             return invalidation_idx
 
 
 class TripWithinRangeConstraint(Constraint):
     C_NAME = "TripWithinRangeConstraint"
-    C_ASSOCIATED_ENTITIES = ["Vehicle"]
+    C_ASSOCIATED_ENTITIES = ["Drone"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_DRONE]
     # def _handle_trip_assingment_request(self, p_event_id, p_event_object):
     #     constraint_satisfied = True
     #     vehicle = p_event_object.get_data()['Vehicle']
@@ -272,59 +276,90 @@ class TripWithinRangeConstraint(Constraint):
             raise ValueError("The \'Trip Within Range Constraint\' is currently only applicable to Drones. Trucks can "
                              "carry trips without range limits.")
         available_range = drone.get_remaining_range()
-        if "orders" not in p_kwargs.keys():
-            raise ValueError("An additional parameter \"orders\" is required for the \"TripWithinRangeConstraint\". "
-                             "Please provide this parameter as data in the corresponding event")
-        orders = p_kwargs['orders']
+
+        orders = drone.global_state.orders
         orders_not_in_range = []
-        for order in orders:
-            loc_pick_up = order.get_pickup_location()
-            loc_delivery = order.get_delivery_location()
-            distance = drone.get_network().calculate_distance(loc_pick_up, loc_delivery)
+        for order in orders.values():
+            loc_pick_up = order.get_pickup_node_id()
+            loc_delivery = order.get_delivery_node_id()
+            distance = drone.global_state.network.calculate_distance(loc_pick_up, loc_delivery)
             if distance < available_range:
                 constraint_satisfied = True
             else:
                 constraint_satisfied = False
                 orders_not_in_range.append(order)
         actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_DRONE])
-        actions_by_drone = p_action_index.actions_involving_entity[(type(drone), drone.get_id())]
+        actions_by_drone = p_action_index.actions_involving_entity[(drone.C_NAME, drone.get_id())]
         actions_by_orders = []
         for order in orders_not_in_range:
-            actions_by_orders.append(p_action_index.actions_involving_entity[(type(order), order.get_id())])
+            actions_by_orders.append(p_action_index.actions_involving_entity[(order.C_NAME, order.get_id())])
         invalidation_idx = list(actions_by_drone.intersection(actions_by_type, actions_by_orders))
         return invalidation_idx
 
 
+class VehicleRoutingConstraint(Constraint):
+    C_NAME = "Vehicle Routing Constraint"
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "Node"]
+    C_ACTIONS_AFFECTED = [SimulationActions.TRUCK_TO_NODE,
+                          SimulationActions.DRONE_TO_NODE]
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+        if isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
+            invalidation_idx = []
+            vehicle = p_entity
+            pickup_nodes = [orders.get_id() for orders in vehicle.get_pickup_orders()]
+            delivery_requests = [orders.get_id() for orders in vehicle.get_delivery_orders()]
+            invalidation_idx = p_action_index.get_actions_of_type([SimulationActions.TRUCK_TO_NODE,
+                                                                   SimulationActions.DRONE_TO_NODE])
+            idx_to_unmask = set()
+            for nd in pickup_nodes+delivery_requests:
+                idx_to_unmask.update(p_action_index.actions_involving_entity[("Node", nd)])
+
+            invalidation_idx = list(invalidation_idx.difference(idx_to_unmask))
+            return invalidation_idx
+        elif isinstance(p_entity, Node):
+            return []
+
+
 class ConstraintManager(EventManager):
 
+    C_NAME = "Constraint Manager"
     C_EVENT_MASK_UPDATED = "New Masks Necessary"
 
     def __init__(self,
-                 p_entity_constraint_config:dict, action_index:ActionIndex):
+                 action_index: ActionIndex,
+                 action_map):
 
         EventManager.__init__(self)
-        self.constraint_config = p_entity_constraint_config.copy()
+        # self.constraint_config = p_entity_constraint_config.copy()
+        # self.entity_constraints = {}
+        # constraints = set()
+        # for entity, constraints in self.constraint_config.items():
+        #     constraints.update(constraints)
+        # for constraint_class in Constraint.__subclasses__():
+        #
+        # self.constraints = []
+        # self.constraint_names = []
+        # for constraint in constraints:
+        #     self.constraints.append(constraint.__call__())
+        #     self.constraint_names.append(constraint.C_NAME)
         self.entity_constraints = {}
-        constraints = set()
-        for entity, constraints in self.constraint_config.items():
-            constraints.update(constraints)
-
-        self.constraints = []
-        self.constraint_names = []
-        for constraint in constraints:
-            self.constraints.append(constraint.__call__())
-            self.constraint_names.append(constraint.C_NAME)
         self.setup_constraint_entity_map()
         self.action_index = action_index
+        self.action_map = action_map
 
     def setup_constraint_entity_map(self):
         """
 
         :return:
         """
-        self.entity_constraints = []
-        for entity in self.constraint_config.keys():
-            self.entity_constraints[entity] = [self.constraints[self.constraint_names.index(entity)]]
+        self.entity_constraints = {}
+        for con in Constraint.__subclasses__():
+            for entity in con.C_ASSOCIATED_ENTITIES:
+                if entity in self.entity_constraints:
+                    self.entity_constraints[entity].append(con.__call__())
+                else:
+                    self.entity_constraints[entity] = [con.__call__()]
 
     def get_constraints_by_entity(self, p_entity):
         """
@@ -332,23 +367,37 @@ class ConstraintManager(EventManager):
         :param p_entity:
         :return:
         """
-        return self.entity_constraints[p_entity.C_NAME]
+        if p_entity.C_NAME in self.entity_constraints.keys():
+            return self.entity_constraints[p_entity.C_NAME]
+        return []
 
-    def _handle_entity_state_change(self, p_event_id, p_event_object):
+    def handle_entity_state_change(self, p_event_id, p_event_object):
         entity = p_event_object.get_raising_object()
         idx_to_mask = set()
         # We are not checking for unmasking, since we are now checking constraints on entity state. So we always start
         # with completely unmasked version of the actions related to that entity.
         # ids_to_unmask = set()
         # Unmask all actions related to the entity
-        related_actions = self.action_index.actions_involving_entity[(type(entity), entity.get_id())]
+        related_actions = set()
+        related_actions_by_entity = self.action_index.actions_involving_entity[(entity.C_NAME, entity.get_id())]
+
+        if isinstance(entity, Order):
+            pickup_node = entity.get_pickup_node_id()
+            delivery_node = entity.get_delivery_node_id()
+            related_actions_by_entity.update(self.action_index.actions_involving_entity[("Node Pair", (pickup_node, delivery_node))])
         constraints_to_check = self.get_constraints_by_entity(entity)
+        related_actions_by_constraint = set()
         for constraint in constraints_to_check:
+            self.log(Log.C_LOG_TYPE_I, f"Checking constraint: {constraint.C_NAME}")
             idx = constraint.get_invalidations(p_entity=entity,
                                                p_action_index=self.action_index)
-            idx_to_mask.update()
+            if idx is None:
+                print(constraint)
+            idx_to_mask.update(idx)
+            related_actions_by_constraint.update(self.action_index.get_actions_of_type(constraint.C_ACTIONS_AFFECTED))
+        related_actions = related_actions_by_constraint.intersection(related_actions_by_entity)
         idx_to_unmask = related_actions.difference(idx_to_mask)
-        if idx_to_mask:
+        if len(idx_to_mask) or len(idx_to_unmask):
             self._raise_event(p_event_id=ConstraintManager.C_EVENT_MASK_UPDATED,
                               p_event_object=Event(p_raising_object=self,
                                                    idx_to_mask=idx_to_mask,
@@ -379,7 +428,7 @@ class StateActionMapper:
         for idx in idx_to_unmask:
             self.masks[idx] = True
 
-    def _handle_new_masks_event(self, p_event_id, p_event_object):
+    def handle_new_masks_event(self, p_event_id, p_event_object):
         raising_object = p_event_object.get_raising_object()
         if isinstance(raising_object, ConstraintManager):
             idx_to_mask = p_event_object.get_data()['idx_to_mask']
@@ -396,81 +445,84 @@ class StateActionMapper:
 # -- Validation Block (Expanded for Larger Instances)
 # -------------------------------------------------------------------------
 if __name__ == '__main__':
-    # 1. Create a more comprehensive set of Mock Objects for the test
-    from ddls_src.entities.order import Order
-    from ddls_src.entities.vehicles.truck import Truck
+    # # 1. Create a more comprehensive set of Mock Objects for the test
+    # from ddls_src.entities.order import Order
+    # from ddls_src.entities.vehicles.truck import Truck
+    #
+    #
+    # class MockOrder(Order):
+    #     def __init__(self, p_id, status):
+    #         super().__init__(p_id=p_id, customer_node_id=0, time_received=0, SLA_deadline=0)
+    #         self.status = status
+    #
+    #
+    # class MockTruck(Truck):
+    #     def __init__(self, p_id, status, cargo_count=0, capacity=1):
+    #         super().__init__(p_id=p_id, start_node_id=0)
+    #         self.status = status
+    #         self.cargo_manifest = [0] * cargo_count
+    #         self.max_payload_capacity = capacity
+    #
+    #
+    # class MockGlobalState:
+    #     def __init__(self):
+    #         self.orders = {
+    #             0: MockOrder(p_id=0, status='pending'),
+    #             1: MockOrder(p_id=1, status='delivered'),
+    #             2: MockOrder(p_id=2, status='pending'),
+    #             3: MockOrder(p_id=3, status='cancelled')
+    #         }
+    #         self.trucks = {
+    #             101: MockTruck(p_id=101, status='idle', cargo_count=0, capacity=2),
+    #             102: MockTruck(p_id=102, status='en_route'),
+    #             103: MockTruck(p_id=103, status='idle', cargo_count=2, capacity=2),  # This truck is full
+    #             104: MockTruck(p_id=104, status='maintenance')
+    #         }
+    #         self.drones = {}
+    #         self.micro_hubs = {}
+    #
+    #
+    # mock_gs = MockGlobalState()
+    #
+    # # Create a more comprehensive mock action map for the test
+    # mock_action_map = {
+    #     (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 101): 0,
+    #     (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 2, 101): 1,
+    #     (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 1, 101): 2,
+    #     (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 3, 101): 3,
+    #     (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 102): 4,
+    #     (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 104): 5,
+    #     (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 103): 6,
+    # }
+    #
+    # print("--- Validating Self-Configuring StateActionMapper (Large Instance) ---")
+    #
+    # # 2. Instantiate the StateActionMapper
+    # mapper = StateActionMapper(mock_gs, mock_action_map)
+    #
+    # print("\n[A] Generated Invalidation Map (Rulebook):")
+    # pprint(mapper._invalidation_map)
+    #
+    # # 3. Generate the mask and perform assertions
+    # print("\n[B] Generating Mask and Running Assertions...")
+    # final_mask = mapper.generate_mask()
+    #
+    # print(f"  - Final Mask: {final_mask.astype(int)}")
+    #
+    # # Assertions for Valid Actions
+    # assert final_mask[0] == True, "Test Case 1 FAILED: Assigning pending order 0 to idle truck 101 should be valid"
+    # assert final_mask[1] == True, "Test Case 2 FAILED: Assigning pending order 2 to idle truck 101 should be valid"
+    # print("  - PASSED: All expected valid actions are correctly marked as valid.")
+    #
+    # # Assertions for Invalid Actions
+    # assert final_mask[2] == False, "Test Case 3 FAILED: Assigning delivered order 1 should be invalid"
+    # assert final_mask[3] == False, "Test Case 4 FAILED: Assigning cancelled order 3 should be invalid"
+    # assert final_mask[4] == False, "Test Case 5 FAILED: Assigning to busy truck 102 should be invalid"
+    # assert final_mask[5] == False, "Test Case 6 FAILED: Assigning to maintenance truck 104 should be invalid"
+    # assert final_mask[6] == False, "Test Case 7 FAILED: Assigning to full truck 103 should be invalid"
+    # print("  - PASSED: All expected invalid actions are correctly marked as invalid.")
+    #
+    # print("\n--- Validation Complete ---")
+    print([c.C_ASSOCIATED_ENTITIES for c in Constraint.__subclasses__()])
+    # print([c for c in LogisticEntity.__subclasses__()])
 
-
-    class MockOrder(Order):
-        def __init__(self, p_id, status):
-            super().__init__(p_id=p_id, customer_node_id=0, time_received=0, SLA_deadline=0)
-            self.status = status
-
-
-    class MockTruck(Truck):
-        def __init__(self, p_id, status, cargo_count=0, capacity=1):
-            super().__init__(p_id=p_id, start_node_id=0)
-            self.status = status
-            self.cargo_manifest = [0] * cargo_count
-            self.max_payload_capacity = capacity
-
-
-    class MockGlobalState:
-        def __init__(self):
-            self.orders = {
-                0: MockOrder(p_id=0, status='pending'),
-                1: MockOrder(p_id=1, status='delivered'),
-                2: MockOrder(p_id=2, status='pending'),
-                3: MockOrder(p_id=3, status='cancelled')
-            }
-            self.trucks = {
-                101: MockTruck(p_id=101, status='idle', cargo_count=0, capacity=2),
-                102: MockTruck(p_id=102, status='en_route'),
-                103: MockTruck(p_id=103, status='idle', cargo_count=2, capacity=2),  # This truck is full
-                104: MockTruck(p_id=104, status='maintenance')
-            }
-            self.drones = {}
-            self.micro_hubs = {}
-
-
-    mock_gs = MockGlobalState()
-
-    # Create a more comprehensive mock action map for the test
-    mock_action_map = {
-        (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 101): 0,
-        (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 2, 101): 1,
-        (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 1, 101): 2,
-        (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 3, 101): 3,
-        (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 102): 4,
-        (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 104): 5,
-        (SimulationActions.ASSIGN_ORDER_TO_TRUCK, 0, 103): 6,
-    }
-
-    print("--- Validating Self-Configuring StateActionMapper (Large Instance) ---")
-
-    # 2. Instantiate the StateActionMapper
-    mapper = StateActionMapper(mock_gs, mock_action_map)
-
-    print("\n[A] Generated Invalidation Map (Rulebook):")
-    pprint(mapper._invalidation_map)
-
-    # 3. Generate the mask and perform assertions
-    print("\n[B] Generating Mask and Running Assertions...")
-    final_mask = mapper.generate_mask()
-
-    print(f"  - Final Mask: {final_mask.astype(int)}")
-
-    # Assertions for Valid Actions
-    assert final_mask[0] == True, "Test Case 1 FAILED: Assigning pending order 0 to idle truck 101 should be valid"
-    assert final_mask[1] == True, "Test Case 2 FAILED: Assigning pending order 2 to idle truck 101 should be valid"
-    print("  - PASSED: All expected valid actions are correctly marked as valid.")
-
-    # Assertions for Invalid Actions
-    assert final_mask[2] == False, "Test Case 3 FAILED: Assigning delivered order 1 should be invalid"
-    assert final_mask[3] == False, "Test Case 4 FAILED: Assigning cancelled order 3 should be invalid"
-    assert final_mask[4] == False, "Test Case 5 FAILED: Assigning to busy truck 102 should be invalid"
-    assert final_mask[5] == False, "Test Case 6 FAILED: Assigning to maintenance truck 104 should be invalid"
-    assert final_mask[6] == False, "Test Case 7 FAILED: Assigning to full truck 103 should be invalid"
-    print("  - PASSED: All expected invalid actions are correctly marked as invalid.")
-
-    print("\n--- Validation Complete ---")

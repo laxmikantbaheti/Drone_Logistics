@@ -4,9 +4,10 @@ from datetime import timedelta
 # MLPro Imports
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
+from ddls_src.entities.base import LogisticEntity
 
 
-class Order(System):
+class Order(LogisticEntity):
     """
     Represents a customer order as an MLPro System.
     Tracks the lifecycle and assignment of a package for delivery.
@@ -26,8 +27,16 @@ class Order(System):
                                C_STATUS_EN_ROUTE,
                                C_STATUS_DELIVERED,
                                C_STATUS_FAILED]
-    C_DIM_DELIVERY_STATUS = "Delivery Status"
-    C_DIM_PRIORITY = "Priority"
+    C_DIM_DELIVERY_STATUS = ["delivery", "Delivery Status", C_VALID_DELIVERY_STATES]
+    C_DIM_PRIORITY = ["pri", "Priority", []]
+    C_DIM_PICKUP_NODE = ["p_node", "Pickup Node", []]
+    C_DIM_DELIVERY_NODE = ["d_node", "Delivery Node", []]
+    C_DIS_DIMS = [C_DIM_DELIVERY_STATUS,
+                               C_DIM_PRIORITY,
+                               C_DIM_PICKUP_NODE,
+                               C_DIM_DELIVERY_NODE]
+
+
 
 
     def __init__(self,
@@ -84,13 +93,13 @@ class Order(System):
         state_space = MSpace()
         # Status: 0=pending, 1=accepted, 2=assigned, 3=in_transit, 4=at_micro_hub, 5=delivered, 6=cancelled, 7=flagged
         state_space.add_dim(
-            Dimension('status',
-                      'Z',
-                      Order.C_DIM_DELIVERY_STATUS,
-                      p_boundaries=[0, len(Order.C_VALID_DELIVERY_STATES)]))
+            Dimension('w',
+                      'R',
+                      "Weight"))
         state_space.add_dim(
-            Dimension('priority',
-                      'Z', Order.C_DIM_PRIORITY))
+            Dimension("del_time",
+                      "R",
+                      "Delivery Window"))
 
         action_space = MSpace()  # Orders are passive, no actions
 
@@ -116,6 +125,7 @@ class Order(System):
 
         self._update_state()
         return self._state
+
     def _update_state(self):
         """
         Helper method to synchronize internal attributes with the formal MLPro state object.
@@ -124,16 +134,10 @@ class Order(System):
             "pending": 0, "accepted": 1, "assigned": 2, "in_transit": 3,
             "at_micro_hub": 4, "delivered": 5, "cancelled": 6, "flagged_re_delivery": 7
         }
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('status').get_id(),
+        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_DELIVERY_STATUS[0]).get_id(),
                               status_map.get(self.status, 0))
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('priority').get_id(),
+        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_PRIORITY[0]).get_id(),
                               self.priority)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name('assigned_vehicle_id').get_id(),
-                              self.assigned_vehicle_id if self.assigned_vehicle_id is not None else -1)
-
-
-
-
 
     # Public methods for managers to call
     def update_status(self, new_status: str):
@@ -167,3 +171,6 @@ class Order(System):
 
     def get_delivery_node_id(self):
         return self.delivery_node_id
+
+    def get_global_state(self):
+        return self.global_state

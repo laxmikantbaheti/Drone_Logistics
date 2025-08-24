@@ -21,12 +21,14 @@ from ddls_src.actions.base import SimulationActions, ActionType
 from ddls_src.scenarios.generators.data_loader import DataLoader
 from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
 from ddls_src.scenarios.generators.order_generator import OrderGenerator
-from ddls_src.core.state_action_mapper import StateActionMapper
+from ddls_src.core.state_action_mapper import StateActionMapper, ConstraintManager
 from ddls_src.core.logistics_simulation import TimeManager
 from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.entities.vehicles.truck import Truck
 from ddls_src.entities.vehicles.drone import Drone
+from ddls_src.entities import *
+from ddls_src.actions.base import SimulationActions, ActionIndex
 
 
 class LogisticsSystem(System, EventManager):
@@ -75,8 +77,10 @@ class LogisticsSystem(System, EventManager):
         self.network_manager: NetworkManager = None
         self.order_generator: OrderGenerator = None
         self.state_action_mapper: StateActionMapper = None
-        self.constraint_manager = None
+        self.constraint_manager:ConstraintManager = None
         self._state = State(self._state_space)
+        self.actions = SimulationActions()
+        self.action_index = None
         self.reset()
 
     @staticmethod
@@ -96,11 +100,12 @@ class LogisticsSystem(System, EventManager):
     def _reset(self, p_seed=None):
         raw_entity_data = self.data_loader.load_initial_simulation_data()
         self.scenario_generator = ScenarioGenerator(raw_entity_data)
-        initial_entities = self.scenario_generator.build_entities()
+        self.entities = self.scenario_generator.build_entities()
 
-        self.global_state = GlobalState(initial_entities)
+        self.global_state = GlobalState(initial_entities=self.entities)
 
-        self.action_map, self.action_space_size = generate_action_map(self.global_state)
+        self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+        self.action_index = ActionIndex(self.global_state, self.action_map)
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
 
         # Create the permanent mask for this scenario
@@ -111,7 +116,7 @@ class LogisticsSystem(System, EventManager):
 
         self.network = Network(self.global_state)
         self.global_state.network = self.network
-
+        self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
         all_entity_dicts = [
             self.global_state.orders, self.global_state.trucks,
             self.global_state.drones, self.global_state.micro_hubs,
@@ -120,6 +125,9 @@ class LogisticsSystem(System, EventManager):
         for entity_dict in all_entity_dicts:
             for entity in entity_dict.values():
                 entity.global_state = self.global_state
+
+        self.constraint_manager = ConstraintManager(action_index=self.action_index, action_map=self.action_map)
+        self.setup_events()
 
         self.supply_chain_manager = SupplyChainManager(p_id='scm', global_state=self.global_state,
                                                        p_automatic_logic_config=self.automatic_logic_config)
@@ -132,8 +140,6 @@ class LogisticsSystem(System, EventManager):
 
         self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
 
-        self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
-
         self.register_event_handler(self.C_EVENT_NEW_ORDER, self._handle_new_order_request)
 
         managers = {
@@ -143,7 +149,7 @@ class LogisticsSystem(System, EventManager):
         }
         self.action_manager = ActionManager(self.global_state, managers, self.action_map)
 
-        initial_sim_time = initial_entities.get('initial_time', 0.0)
+        initial_sim_time = self.entities.get('initial_time', 0.0)
         self.time_manager.reset_time(new_initial_time=initial_sim_time)
         self.global_state.current_time = initial_sim_time
 
@@ -227,6 +233,18 @@ class LogisticsSystem(System, EventManager):
 
     def get_masks(self):
         return self.state_action_mapper.generate_masks()
+
+    def setup_events(self):
+        self.constraint_manager.register_event_handler(p_event_id=ConstraintManager.C_EVENT_MASK_UPDATED,
+                                                       p_event_handler=self.state_action_mapper.handle_new_masks_event)
+
+        for entities in self.entities.values():
+            if isinstance(entities, Dict):
+                for entity in entities.values():
+                    if isinstance(entity, LogisticEntity):
+                        entity.register_event_handler(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
+                                                      self.constraint_manager.handle_entity_state_change)
+
 
 # -------------------------------------------------------------------------
 # -- Validation Block

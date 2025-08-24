@@ -4,9 +4,10 @@ from datetime import timedelta
 # MLPro Imports - Assuming mlpro is in the python path
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
+from ddls_src.entities.base import LogisticEntity
 
 
-class Node(System):
+class Node(LogisticEntity):
     """
     Represents a location in the simulation network as an MLPro System.
     Nodes can be various types like depots, customer locations, or junctions.
@@ -15,10 +16,15 @@ class Node(System):
 
     C_TYPE = 'Node'
     C_NAME = 'Node'
-    C_DIM_AVAILABILITY = "Availability"
-    C_DIM_AERIAL_CAPACITY = "Aerial Capacity"
-    C_DIM_NUM_PICKUP_PACKAGES = "Pickup Packages"
-    C_DIM_NUM_DELIVERY_PACKAGES = "Delivery Packages"
+    C_DIM_AVAILABILITY = ["ava","Availability", [True, False]]
+    C_DIM_DRONE_HANDLING_CAPACITY = ["dro","Drone Handling Capacity", []]
+    C_DIM_AVAILABLE_DRONES = ["curr_dro", "Available Drones", []]
+    C_DIM_NUM_PICKUP_PACKAGES = ["pickup", "Pickup Packages", []]
+    C_DIM_NUM_DELIVERY_PACKAGES = ["delivery","Delivery Packages", []]
+    C_DIS_DIMS = [C_DIM_AVAILABILITY,
+                  C_DIM_DRONE_HANDLING_CAPACITY,
+                  C_DIM_NUM_PICKUP_PACKAGES,
+                  C_DIM_NUM_DELIVERY_PACKAGES]
 
     def __init__(self,
                  p_id: int,
@@ -69,22 +75,6 @@ class Node(System):
         A node is passive, so its action space is empty.
         """
         state_space = MSpace()
-        state_space.add_dim(
-            Dimension("availability",
-                      "Z",
-                      Node.C_DIM_AVAILABILITY))
-        state_space.add_dim(
-            Dimension("aerial cap.",
-                      "Z",
-                      Node.C_DIM_AERIAL_CAPACITY))
-        state_space.add_dim(
-            Dimension('num_pickup_packages',
-                      'Z',
-                      Node.C_DIM_NUM_PICKUP_PACKAGES))
-        state_space.add_dim(
-            Dimension("del packages",
-                      "Z",
-                      Node.C_DIM_NUM_DELIVERY_PACKAGES))
 
         action_space = MSpace()
 
@@ -95,7 +85,8 @@ class Node(System):
         Resets the node's internal state (clears held packages) and updates the formal state object.
         """
         self.packages_held = []
-        self._state.set_value(self._state.get_related_set().get_dim_by_name("num_packages").get_id(), 0)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_NUM_PICKUP_PACKAGES[0]).get_id(), 0)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_NUM_DELIVERY_PACKAGES[0]).get_id(), 0)
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
@@ -129,7 +120,7 @@ class Node(System):
 
     def _update_state(self):
         """Helper method to synchronize the internal list of packages with the formal MLPro state object."""
-        self._state.set_value(self._state.get_related_set().get_dim_by_name("num_packages").get_id(),
+        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_NUM_PICKUP_PACKAGES[0]).get_id(),
                               len(self.packages_held))
 
     def get_packages(self) -> List[int]:

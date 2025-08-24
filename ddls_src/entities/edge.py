@@ -5,8 +5,10 @@ from datetime import timedelta
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
 from mlpro.bf.events import Event
+from ddls_src.entities.base import LogisticEntity
 
-class Edge(System):
+
+class Edge(LogisticEntity):
     """
     Represents a connection between two nodes as an MLPro System.
     Edges have dynamic properties like traffic that can be altered via actions.
@@ -15,9 +17,13 @@ class Edge(System):
     C_TYPE = 'Edge'
     C_NAME = 'Edge'
     C_EVENT_ENTITY_STATE_CHANGE = "Entity State Updated"
-    C_DIM_ACTIVE = "Edge Availability"
-    C_DIM_LENGTH = "Length"
-    C_DIM_TIME_FACTOR = "TIme Factor"
+    C_DIM_ACTIVE = ["ava","Edge Availability",[True, False]]
+    C_DIM_LENGTH = ["len","Length",[]]
+    C_DIM_TIME_FACTOR = ["xt","Time Factor",[]]
+    C_DIS_DIMS = [C_DIM_ACTIVE,
+                  C_DIM_LENGTH,
+                  C_DIM_TIME_FACTOR]
+
     def __init__(self,
                  p_id: int,
                  p_name: str = '',
@@ -65,20 +71,7 @@ class Edge(System):
         Defines the state and action spaces for an Edge system.
         """
         state_space = MSpace()
-        state_space.add_dim(
-            Dimension('availability',
-                      'Z',
-                      Edge.C_DIM_ACTIVE,
-                      p_boundaries=[0,1]))
-        state_space.add_dim(
-            Dimension('len',
-                      "R",
-                      Edge.C_DIM_LENGTH))
-        state_space.add_dim(
-            Dimension("xt",
-                      "R",
-                      Edge.C_DIM_TIME_FACTOR)
-        )
+
 
         action_space = MSpace()
         action_space.add_dim(Dimension(p_name_short='edge_action',
@@ -143,9 +136,8 @@ class Edge(System):
         # self._state.set_value('is_blocked', 1 if self.is_blocked else 0)
         # self._state.set_value('drone_impact', self.drone_flight_impact_factor)
 
-        self._state.set_value(self._state.get_related_set().get_dim_by_name("traffic_factor").get_id(), self.current_traffic_factor)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name("is_blocked").get_id(), 1 if self.is_blocked else 0)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name("drone_impact").get_id(), self.drone_flight_impact_factor)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_TIME_FACTOR[0]).get_id(), self.current_traffic_factor)
+        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_ACTIVE[0]).get_id(), 1 if self.is_blocked else 0)
         self._raise_event(p_event_id=Edge.C_EVENT_ENTITY_STATE_CHANGE, p_event_object=Event(self))
 
     # Public methods for getting dynamic travel times

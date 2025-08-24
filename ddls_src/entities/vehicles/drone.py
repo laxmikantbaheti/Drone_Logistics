@@ -63,7 +63,18 @@ class Drone(Vehicle):
         """
         state_space, _ = Vehicle.setup_spaces()
 
-        state_space.add_dim(Dimension('battery_level', 'R', 'Current Battery Level (0.0-1.0)', p_boundaries=[0, 1]))
+        state_space.add_dim(Dimension('battery_level',
+                                      'R',
+                                      'Current Battery Level',
+                                      p_boundaries=[0, 1]))
+
+        state_space.add_dim(Dimension("altitude",
+                                      "R",
+                                      "Current Altitude"))
+
+        state_space.add_dim(Dimension("speed,"
+                                      "R",
+                                      "Current Speed"))
 
         action_space = MSpace()
         action_space.add_dim(Dimension(p_name_short='drone_action',
@@ -174,6 +185,12 @@ class Drone(Vehicle):
         state_space = self._state.get_related_set()
         self._state.set_value(state_space.get_dim_by_name("battery_level").get_id(), self.battery_level)
 
+    def calculate_remaining_range(self):
+        return 100
+
+    def get_remaining_range(self):
+        return self.calculate_remaining_range()
+
     def _load_order(self, order_id: int) -> bool:
         try:
             order: 'Order' = self.global_state.get_entity("order", order_id)
@@ -191,6 +208,8 @@ class Drone(Vehicle):
             return True
         except KeyError:
             return False
+    #
+    # def update_discrete_states(self, p_dim_name):
 
     def _unload_order(self, order_id: int) -> bool:
         try:
