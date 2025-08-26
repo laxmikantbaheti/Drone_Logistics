@@ -9,22 +9,23 @@ from mlpro.bf.math import MSpace, Dimension
 
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.actions.base import SimulationActions, ActionType
+from ddls_src.core.global_state import GlobalState
+from ddls_src.entities import *
 
-
-# Forward declarations
-class GlobalState: pass
-
-
-class Order: pass
-
-
-class Truck: pass
-
-
-class Drone: pass
-
-
-class MicroHub: pass
+# # Forward declarations
+# class GlobalState: pass
+#
+#
+# class Order: pass
+#
+#
+# class Truck: pass
+#
+#
+# class Drone: pass
+#
+#
+# class MicroHub: pass
 
 
 class SupplyChainManager(System):
@@ -130,6 +131,8 @@ class SupplyChainManager(System):
                 order: 'Order' = self.global_state.get_entity("order", order_id)
             else:
                 node_pair = action_kwargs.get("pick_up_drop")
+                global_state: GlobalState = self.global_state
+                order:Order = global_state.get_order_requests()[node_pair][0]
 
             if action_type == SimulationActions.ACCEPT_ORDER:
                 if order.status == "pending":
@@ -147,30 +150,35 @@ class SupplyChainManager(System):
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_TRUCK:
                 truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
-                if order.status in ["pending", "accepted", "flagged_re_delivery"]:
-                    order.assign_vehicle(truck.get_id())
-                    return True
-                return False
+                assigned = self.assign_order(order, truck)
+                return assigned
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_DRONE:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
-                if order.status in ["pending", "accepted", "flagged_re_delivery"]:
-                    order.assign_vehicle(drone.get_id())
-                    return True
-                return False
+                assigned = self.assign_order(order, drone)
+                return assigned
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
                 hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
-                if order.status in ["pending", "accepted", "flagged_re_delivery"]:
-                    order.assign_micro_hub(hub.get_id())
-                    return True
-                return False
+                assigned = self.assign_order(order, hub)
+                return assigned
 
         except KeyError as e:
             self.log(self.C_LOG_TYPE_E, f"Action parameter missing: {e}")
             return False
 
         return False
+
+    def assign_order(self, p_order:Order, p_entity):
+        assigned = False
+        if isinstance(p_entity, MicroHub):
+            pass
+        else:
+            p_order.assign_vehicle(p_entity)
+            p_entity.assign_orders(p_order)
+            self.global_state.get_order_requests()[(p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)
+            assigned = True
+        return assigned
 
     def _update_state(self):
         """

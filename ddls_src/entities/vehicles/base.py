@@ -227,6 +227,7 @@ class Vehicle(LogisticEntity, ABC):
     def assign_orders(self, p_orders:list):
         if p_orders:
             self.delivery_orders.append(p_orders)
+            return True
 
     def unload_order(self, p_order):
         if p_order:
@@ -246,6 +247,7 @@ class Vehicle(LogisticEntity, ABC):
 
     def get_pickup_orders(self):
         return self.pickup_orders
+
 
 
 # -------------------------------------------------------------------------

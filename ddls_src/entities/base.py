@@ -41,3 +41,6 @@ class LogisticEntity(System):
 
     def get_state_value_by_dim_name(self, p_dim_name):
         return self._state.get_value(self._state.get_related_set().get_dim_by_name(p_dim_name).get_id())
+
+    def update_state_value_by_dim_name(self, p_dim_name, p_value):
+        self._state.set_value(self.get_state().get_related_set().get_dim_by_name(p_dim_name), p_value)
