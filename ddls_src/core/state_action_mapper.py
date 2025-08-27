@@ -102,7 +102,7 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
     C_ACTIONS_AFFECTED = [SimulationActions.UNLOAD_TRUCK_ACTION,
                           SimulationActions.UNLOAD_DRONE_ACTION,
-                          SimulationActions.DRONE_LANDING]
+                          SimulationActions.DRONE_LAND]
     # def _handle_vehicle_node_arrival(self, p_event_id, p_event_object):
     #     constraint_satisfied = False
     #     vehicle = p_event_object.get_data()['Vehicle']
@@ -138,7 +138,7 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
             constraint_satisfied = False
             actions_by_type = p_action_index.get_actions_of_type([SimulationActions.UNLOAD_TRUCK_ACTION,
                                                                   SimulationActions.UNLOAD_DRONE_ACTION,
-                                                                  SimulationActions.DRONE_LANDING])
+                                                                  SimulationActions.DRONE_LAND])
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
             return invalidation_idx

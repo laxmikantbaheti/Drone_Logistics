@@ -24,6 +24,7 @@ class LogisticEntity(System):
                          p_mode=System.C_MODE_SIM,
                          p_latency=timedelta(0, 0, 0))
         self.setup_discrete_spaces()
+        self.setup_event_string()
 
     def setup_discrete_spaces(self):
         for dim in self.C_DIS_DIMS:
@@ -35,12 +36,20 @@ class LogisticEntity(System):
     def _reset(self, p_seed=None):
         self.setup_discrete_spaces()
 
-    def register_event_handler(self, p_event_id:str, p_event_handler):
-        EventManager.register_event_handler(self, p_event_id, p_event_handler)
+    def register_event_handler_for_constraints(self, p_event_id:str, p_event_handler):
+        EventManager.register_event_handler(self, self.C_EVENT_ENTITY_STATE_CHANGE, p_event_handler)
         self._raise_event(self.C_EVENT_ENTITY_STATE_CHANGE, Event(self))
 
     def get_state_value_by_dim_name(self, p_dim_name):
         return self._state.get_value(self._state.get_related_set().get_dim_by_name(p_dim_name).get_id())
 
     def update_state_value_by_dim_name(self, p_dim_name, p_value):
-        self._state.set_value(self.get_state().get_related_set().get_dim_by_name(p_dim_name), p_value)
+        dim = self.get_state_space().get_dim_by_name(p_dim_name)
+        self.log(self.C_LOG_TYPE_S, f"{dim.get_name_long()} updated.")
+        self._state.set_value(dim.get_id(), p_value)
+
+    def raise_state_change_event(self):
+        self._raise_event(self.C_EVENT_ENTITY_STATE_CHANGE, Event(self))
+
+    def setup_event_string(self):
+        self.C_EVENT_ENTITY_STATE_CHANGE = f"{self.C_NAME} - {self._id}: State Change Event"

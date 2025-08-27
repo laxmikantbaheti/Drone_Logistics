@@ -242,7 +242,7 @@ class LogisticsSystem(System, EventManager):
             if isinstance(entities, Dict):
                 for entity in entities.values():
                     if isinstance(entity, LogisticEntity):
-                        entity.register_event_handler(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
+                        entity.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
                                                       self.constraint_manager.handle_entity_state_change)
 
 

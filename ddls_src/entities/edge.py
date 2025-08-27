@@ -138,7 +138,6 @@ class Edge(LogisticEntity):
 
         self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_TIME_FACTOR[0]).get_id(), self.current_traffic_factor)
         self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_ACTIVE[0]).get_id(), 1 if self.is_blocked else 0)
-        self._raise_event(p_event_id=Edge.C_EVENT_ENTITY_STATE_CHANGE, p_event_object=Event(self))
 
     # Public methods for getting dynamic travel times
     def get_current_travel_time(self) -> float:

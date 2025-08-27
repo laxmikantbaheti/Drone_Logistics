@@ -7,7 +7,7 @@ from .base import Vehicle
 # MLPro Imports
 from mlpro.bf.systems import State, Action
 from mlpro.bf.math import MSpace, Dimension
-from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.actions.base import SimulationActions
 
 
 # Forward declarations
@@ -28,6 +28,11 @@ class Drone(Vehicle):
 
     C_TYPE = 'Drone'
     C_NAME = 'Drone'
+
+    C_ACTION_DRONE_CHARGE = [SimulationActions.DRONE_CHARGE_ACTION]
+    C_ACTION_DRONE_TO_CHARGING_STATION = [SimulationActions.DRONE_TO_CHARGING_STATION]
+    C_ACTION_DRONE_LAUNCH = [SimulationActions.DRONE_LAUNCH]
+    C_ACTION_DRONE_LAND = [SimulationActions.DRONE_LAND]
 
     def __init__(self,
                  p_id: int,
@@ -112,32 +117,6 @@ class Drone(Vehicle):
 
         self._update_state()
         return self._state
-
-    def _check_and_perform_node_actions(self):
-        """
-        Checks for and executes automatic loading or unloading if the drone is idle at a node.
-        """
-        if self.status != 'idle' or self.current_node_id is None:
-            return
-
-        # Check for auto-unloading (delivery)
-        if self.automatic_logic_config.get(SimulationAction.DRONE_UNLOAD_ACTION, False):
-            for order_id in self.cargo_manifest:
-                order = self.global_state.get_entity("order", order_id)
-                if order.customer_node_id == self.current_node_id:
-                    print(f"  - AUTOMATIC LOGIC (Drone {self.id}): Unloading Order {order_id} at destination.")
-                    self._unload_order(order_id)
-                    return
-
-        # Check for auto-loading (pickup)
-        if self.automatic_logic_config.get(SimulationAction.DRONE_LOAD_ACTION, False):
-            current_node = self.global_state.get_entity("node", self.current_node_id)
-            for order_id in current_node.packages_held:
-                order = self.global_state.get_entity("order", order_id)
-                if order.assigned_vehicle_id == self.id:
-                    print(f"  - AUTOMATIC LOGIC (Drone {self.id}): Loading assigned Order {order_id}.")
-                    self._load_order(order_id)
-                    return
 
     def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
         if self.global_state is None: return False

@@ -136,16 +136,16 @@ class SimulationActions:
                                is_automatic=True,
                                handler="NetworkManager")
 
-    LAUNCH_DRONE = ActionType(name="LAUNCH_DRONE",
+    DRONE_LAUNCH = ActionType(name="LAUNCH_DRONE",
                               params=[{'name': 'drone_id', 'type': 'Drone'},
                                       {'name': 'order_id', 'type': 'Order'}],
                               is_automatic=True,
                               handler="NetworkManager")
 
-    DRONE_LANDING = ActionType(name="DRONE_LANDING_ACTION",
-                               params=[{'name': 'drone_id', 'type': 'Drone'}],
-                               is_automatic=True,
-                               handler="NetworkManager")
+    DRONE_LAND = ActionType(name="DRONE_LANDING_ACTION",
+                            params=[{'name': 'drone_id', 'type': 'Drone'}],
+                            is_automatic=True,
+                            handler="NetworkManager")
 
     # ---------------------------------------------------------------------------------------------
     # -- Secondary / Inactive Actions

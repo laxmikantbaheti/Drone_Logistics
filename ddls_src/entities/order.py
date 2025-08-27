@@ -5,7 +5,7 @@ from datetime import timedelta
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
 from ddls_src.entities.base import LogisticEntity
-
+from mlpro.bf.events import Event
 
 class Order(LogisticEntity):
     """
@@ -31,10 +31,12 @@ class Order(LogisticEntity):
     C_DIM_PRIORITY = ["pri", "Priority", []]
     C_DIM_PICKUP_NODE = ["p_node", "Pickup Node", []]
     C_DIM_DELIVERY_NODE = ["d_node", "Delivery Node", []]
+    C_DIM_ASSIGNED_VEHICLE = ["veh", "Assigned Vehicle", []]
     C_DIS_DIMS = [C_DIM_DELIVERY_STATUS,
-                               C_DIM_PRIORITY,
-                               C_DIM_PICKUP_NODE,
-                               C_DIM_DELIVERY_NODE]
+                  C_DIM_PRIORITY,
+                  C_DIM_PICKUP_NODE,
+                  C_DIM_DELIVERY_NODE,
+                  C_DIM_ASSIGNED_VEHICLE]
 
 
 
@@ -150,7 +152,8 @@ class Order(LogisticEntity):
     def assign_vehicle(self, vehicle_id: int):
         self.assigned_vehicle_id = vehicle_id
         self.status = "assigned"
-        self._update_state()
+        self.update_state_value_by_dim_name(self.C_DIM_ASSIGNED_VEHICLE[0], vehicle_id)
+        return True
 
     def unassign_vehicle(self):
         self.assigned_vehicle_id = None

@@ -187,7 +187,7 @@ class NetworkManager(System):
                                                **action_kwargs)
                 return truck.process_action(truck_action)
 
-            elif action_type in [SimulationActions.LAUNCH_DRONE, SimulationActions.DRONE_TO_NODE,
+            elif action_type in [SimulationActions.DRONE_LAUNCH, SimulationActions.DRONE_TO_NODE,
                                  SimulationActions.DRONE_TO_CHARGING_STATION]:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
                 drone_action = LogisticsAction(p_action_space=drone.get_action_space(), p_values=[action_id],
