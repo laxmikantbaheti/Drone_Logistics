@@ -102,7 +102,7 @@ class Drone(Vehicle):
             self._process_action(p_action, p_t_step)
 
         # --- Automatic Logic ---
-        self._check_and_perform_node_actions()
+        # self._check_and_perform_node_actions()
 
         # --- Continuous Processes ---
         time_seconds = p_t_step.total_seconds()

@@ -179,7 +179,7 @@ class LogisticsSystem(System, EventManager):
             self.action_manager.execute_action(action_tuple)
 
         print("  - Entering Automatic Action Loop...")
-        for i in range(self.C_MAX_AUTO_ACTIONS_PER_STEP):
+        while self._get_automatic_actions():
             automatic_actions_to_take = self._get_automatic_actions()
 
             if not automatic_actions_to_take:
@@ -190,8 +190,11 @@ class LogisticsSystem(System, EventManager):
             print(f"  - Executing Automatic Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
             self.action_manager.execute_action(auto_action_tuple)
         else:
+            # self.log(self.C_LOG_TYPE_W,
+            #          f"Automatic action loop reached max iterations ({self.C_MAX_AUTO_ACTIONS_PER_STEP}). Possible action storm.")
+
             self.log(self.C_LOG_TYPE_W,
-                     f"Automatic action loop reached max iterations ({self.C_MAX_AUTO_ACTIONS_PER_STEP}). Possible action storm.")
+                 "No more actions available.")
 
         timestep_duration = self.get_latency().total_seconds()
         t_step = p_t_step or timedelta(seconds=timestep_duration)

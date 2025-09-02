@@ -1,0 +1,46 @@
+# In file: ddls_src/howtos/howto_visual_scenario.py
+
+import os
+from ddls_src.scenarios.scenario import LogisticsScenario
+
+def run_visual_demo():
+    """
+    A clean script that demonstrates the full framework with live visualization.
+    """
+    print("======================================================")
+    print("=== Howto: Running the Visual Logistics Scenario   ===")
+    print("======================================================")
+
+    # 1. Define the simulation configuration
+    script_path = os.path.dirname(os.path.realpath(__file__))
+    config_file_path = os.path.join(script_path, '..', 'config', 'default_simulation_config.json')
+    config_file_path = os.path.normpath(config_file_path)
+
+    sim_config = {
+        "initial_time": 0.0,
+        "main_timestep_duration": 300.0,
+        "simulation_end_time": 7200.0, # Run for 2 hours
+        "data_loader_config": {
+            "generator_type": "random",
+            "generator_config": {
+                "base_scale_factor": 10,
+                "grid_size": [100.0, 100.0],
+            }
+        },
+        "new_order_config": {
+            "arrival_schedule": { "900.0": 2, "1800.0": 3, "3600.0": 4 }
+        }
+    }
+
+    # 2. Instantiate and run the Scenario with visualization enabled
+    scenario = LogisticsScenario(p_cycle_limit=100,
+                                 p_visualize=True, # <-- IMPORTANT
+                                 p_logging=True,
+                                 config=sim_config)
+
+    print("\n--- Starting Scenario Run ---")
+    scenario.run()
+    print("\n--- Scenario Finished ---")
+
+if __name__ == "__main__":
+    run_visual_demo()
