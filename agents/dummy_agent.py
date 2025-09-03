@@ -1,7 +1,7 @@
 import numpy as np
 from mlpro.bf.ml import Model
 from ddls_src.core.basics import LogisticsAction
-from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.actions.base import SimulationActions
 import random
 
 class DummyAgent(Model):
@@ -12,6 +12,7 @@ class DummyAgent(Model):
     C_NAME = 'DummyAgent'
 
     def __init__(self, p_logging=True):
+        self._no_op_idx = -1
         super().__init__(p_ada=False, p_logging=p_logging)
 
     def compute_action(self, p_state, p_action_mask) -> LogisticsAction:

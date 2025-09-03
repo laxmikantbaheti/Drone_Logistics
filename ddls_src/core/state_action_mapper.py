@@ -321,6 +321,27 @@ class VehicleRoutingConstraint(Constraint):
             return []
 
 
+class ConsolidationConstraint(Constraint):
+    C_NAME = "ConsolidationConstraint"
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
+    C_ACTIONS_AFFECTED = [SimulationActions.CONSOLIDATE_FOR_TRUCK,
+                          SimulationActions.CONSOLIDATE_FOR_DRONE]
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+        invalidation_idx = []
+        if not isinstance(p_entity, Vehicle):
+            return []
+
+        vehicle = p_entity
+
+        # A vehicle cannot be consolidated if it's already consolidated or if it's not idle.
+        if vehicle.consolidation_confirmed or vehicle.status != 'idle':
+            actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+            actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+            invalidation_idx = list(actions_by_type.intersection(actions_by_entity))
+
+        return invalidation_idx
+
 class ConstraintManager(EventManager):
 
     C_NAME = "Constraint Manager"

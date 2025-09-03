@@ -173,29 +173,52 @@ class NetworkManager(System):
 
     def _process_action(self, p_action: LogisticsAction) -> bool:
         """
-        Processes a command by creating a specific action for a vehicle and dispatching it.
+        Processes a command by calculating a route and setting it on a vehicle.
         """
         action_id = int(p_action.get_sorted_values()[0])
         action_type = ActionType.get_by_id(action_id)
         action_kwargs = p_action.data
 
         try:
-            # FIX: Use direct, type-safe comparisons with the ActionType objects
             if action_type in [SimulationActions.TRUCK_TO_NODE, SimulationActions.RE_ROUTE_TRUCK_TO_NODE]:
                 truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
-                truck_action = LogisticsAction(p_action_space=truck.get_action_space(), p_values=[action_id],
-                                               **action_kwargs)
-                return truck.process_action(truck_action)
+                destination_node_id = action_kwargs['destination_node_id']
+
+                # Pathfinding
+                path = self.network.calculate_shortest_path(
+                    start_node_id=truck.current_node_id,
+                    end_node_id=destination_node_id,
+                    vehicle_type='truck'
+                )
+
+                if path:
+                    truck.set_route(path)
+                    return True
+                return False
 
             elif action_type in [SimulationActions.DRONE_LAUNCH, SimulationActions.DRONE_TO_NODE,
                                  SimulationActions.DRONE_TO_CHARGING_STATION]:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
-                drone_action = LogisticsAction(p_action_space=drone.get_action_space(), p_values=[action_id],
-                                               **action_kwargs)
-                return drone.process_action(drone_action)
+                # Simplified for this example; a real implementation would determine the destination
+                destination_node_id = drone.start_node_id
+                if 'destination_node_id' in action_kwargs:
+                    destination_node_id = action_kwargs['destination_node_id']
+                elif 'station_id' in action_kwargs:
+                    destination_node_id = action_kwargs['station_id']
 
-        except KeyError as e:
-            self.log(self.C_LOG_TYPE_E, f"Action parameter missing: {e}")
+                path = self.network.calculate_shortest_path(
+                    start_node_id=drone.current_node_id,
+                    end_node_id=destination_node_id,
+                    vehicle_type='drone'
+                )
+
+                if path:
+                    drone.set_route(path)
+                    return True
+                return False
+
+        except (KeyError, AttributeError) as e:
+            self.log(self.C_LOG_TYPE_E, f"Action parameter missing or invalid: {e}")
             return False
 
         return False

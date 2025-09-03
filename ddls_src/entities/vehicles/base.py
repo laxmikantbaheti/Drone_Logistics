@@ -84,6 +84,7 @@ class Vehicle(LogisticEntity, ABC):
         self.delivery_orders = []
         self.pickup_orders = []
         self.reset()
+        self.consolidation_confirmed:bool = False
 
     @staticmethod
     def setup_spaces():
@@ -111,6 +112,7 @@ class Vehicle(LogisticEntity, ABC):
         Resets the vehicle to its initial state at its starting node.
         """
         self.status = "idle"
+        self.consolidation_confirmed = False
         self.current_node_id = self.start_node_id
         self.cargo_manifest = []
         self.current_route = []

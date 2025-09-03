@@ -234,8 +234,38 @@ class LogisticsSystem(System, EventManager):
         self.global_state.add_orders(p_orders=p_event_object.get_data()['p_orders'])
         self.state_action_mapper.add_order(p_oredrs= p_event_object.get_data()['p_orders'])
 
-    def get_masks(self):
-        return self.state_action_mapper.generate_masks()
+    def get_masks(self) -> np.ndarray:
+        """
+        Generates the complete system mask for ALL possible actions (automatic and non-automatic).
+        This is used internally by the system's automatic logic loop.
+        """
+        if self.state_action_mapper:
+            dynamic_mask = self.state_action_mapper.generate_masks()
+            return dynamic_mask
+        return np.ones(len(self.action_map), dtype=bool)
+
+    # --- NEW: Method to generate a mask specifically for the agent ---
+    def get_agent_mask(self) -> np.ndarray:
+        """
+        Generates a mask containing ONLY the valid non-automatic actions.
+        This is the mask that should be passed to the external agent.
+        """
+        system_mask = self.get_current_mask()
+        agent_mask = np.zeros(self.action_space_size, dtype=bool)
+
+        for action_tuple, idx in self.action_map.items():
+            action_type = action_tuple[0]
+            # If the action is NOT automatic AND is currently valid in the system...
+            if not self.automatic_logic_config.get(action_type, False) and system_mask[idx]:
+                # ...then make it visible to the agent.
+                agent_mask[idx] = True
+
+        # The NO_OPERATION action is always a valid choice for the agent to pass its turn.
+        no_op_idx = self.action_map.get((SimulationActions.NO_OPERATION,))
+        if no_op_idx is not None:
+            agent_mask[no_op_idx] = True
+
+        return agent_mask
 
     def setup_events(self):
         self.constraint_manager.register_event_handler(p_event_id=ConstraintManager.C_EVENT_MASK_UPDATED,

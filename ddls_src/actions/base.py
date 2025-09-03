@@ -81,6 +81,7 @@ class SimulationActions:
     # ---------------------------------------------------------------------------------------------
     # -- Core Actions (Active for Demonstration)
     # ---------------------------------------------------------------------------------------------
+
     ACCEPT_ORDER = ActionType(name="ACCEPT_ORDER",
                               # params=[{'name': 'order_id', 'type': 'Order'}],
                               params=[{'name':'pick_up_drop', "type":"Node Pair"}],
@@ -147,6 +148,17 @@ class SimulationActions:
                             is_automatic=True,
                             handler="NetworkManager")
 
+    CONSOLIDATE_FOR_TRUCK = ActionType(name="CONSOLIDATE_FOR_TRUCK",
+                                       params=[{'name': 'truck_id', 'type': 'Truck'}],
+                                       is_automatic=False,
+                                       handler="SupplyChainManager", active=True)
+
+    CONSOLIDATE_FOR_DRONE = ActionType(name="CONSOLIDATE_FOR_DRONE",
+                                       params=[{'name': 'drone_id', 'type': 'Drone'}],
+                                       is_automatic=False,
+                                       handler="SupplyChainManager",
+                                       active=True)
+
     # ---------------------------------------------------------------------------------------------
     # -- Secondary / Inactive Actions
     # ---------------------------------------------------------------------------------------------
@@ -163,10 +175,6 @@ class SimulationActions:
     REASSIGN_ORDER = ActionType("REASSIGN_ORDER",
                                 [{'name': 'order_id', 'type': 'Order'}, {'name': 'vehicle_id', 'type': 'Vehicle'}],
                                 False, "SupplyChainManager", active=False)
-    CONSOLIDATE_FOR_TRUCK = ActionType("CONSOLIDATE_FOR_TRUCK", [{'name': 'truck_id', 'type': 'Truck'}], False,
-                                       "SupplyChainManager", active=False)
-    CONSOLIDATE_FOR_DRONE = ActionType("CONSOLIDATE_FOR_DRONE", [{'name': 'drone_id', 'type': 'Drone'}], False,
-                                       "SupplyChainManager", active=False)
     DRONE_CHARGE_ACTION = ActionType("DRONE_CHARGE_ACTION",
                                      [{'name': 'drone_id', 'type': 'Drone'}, {'name': 'duration', 'type': 'int'}], True,
                                      "ResourceManager", active=False)
