@@ -54,7 +54,7 @@ class LogisticsScenario(Scenario):
         # --------------------------------------------------------
 
         new_state = self._system.get_state()
-        return False, new_state.get_broken(), new_state.get_success(), False
+        return new_state.get_success(), new_state.get_broken(), False, new_state.get_terminal()
 
     def _reset(self, p_seed):
         self.log(self.C_LOG_TYPE_I, "Resetting scenario...")
@@ -66,3 +66,10 @@ class LogisticsScenario(Scenario):
         if self._visualize:
             input("Simulation finished. Press Enter to close the plot...")
             self._system.network.close_plot()
+
+    def get_latency(self) -> timedelta:
+        latency = self._system.get_latency()
+        if latency is not None:
+            return latency
+        else:
+            return timedelta(0,0,0,0)

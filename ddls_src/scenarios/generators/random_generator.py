@@ -248,7 +248,7 @@ class RandomDataGenerator(BaseDataGenerator):
 
             data["orders"].append({
                 "id": order_id_counter + i,
-                "customer_node_id": customer_node_id,
+                "p_pick_up_node_id": customer_node_id,
                 "time_received": time_received,
                 "SLA_deadline": sla_deadline,
                 "priority": priority

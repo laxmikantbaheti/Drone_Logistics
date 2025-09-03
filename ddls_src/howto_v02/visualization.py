@@ -13,7 +13,7 @@ def run_visual_demo():
 
     # 1. Define the simulation configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
-    config_file_path = os.path.join(script_path, '..', 'config', 'default_simulation_config.json')
+    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data.json')
     config_file_path = os.path.normpath(config_file_path)
 
     sim_config = {
@@ -21,15 +21,12 @@ def run_visual_demo():
         "main_timestep_duration": 300.0,
         "simulation_end_time": 7200.0, # Run for 2 hours
         "data_loader_config": {
-            "generator_type": "random",
-            "generator_config": {
-                "base_scale_factor": 10,
-                "grid_size": [100.0, 100.0],
-            }
+            "generator_type": "json_file",
+            "generator_config": {"file_path": config_file_path}
         },
-        "new_order_config": {
-            "arrival_schedule": { "900.0": 2, "1800.0": 3, "3600.0": 4 }
-        }
+        # "new_order_config": {
+        #     "arrival_schedule": { "900.0": 2, "1800.0": 3, "3600.0": 4 }
+        # }
     }
 
     # 2. Instantiate and run the Scenario with visualization enabled

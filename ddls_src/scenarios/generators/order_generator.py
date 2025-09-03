@@ -54,6 +54,7 @@ class OrderGenerator:
                 new_order_data = {
                     'p_id': self._next_order_id,
                     'global_state': self.global_state,
+                    'p_pickup_node_id': random.choice(customer_nodes),
                     'p_delivery_node_id': random.choice(customer_nodes),
                     'time_received': current_time,
                     'SLA_deadline': current_time + random.uniform(1800, 7200),
@@ -65,7 +66,7 @@ class OrderGenerator:
 
                 # The generator's only job is to raise the event.
                 # The system that listens to the event will be responsible for adding the order to the state.
-                event = Event(p_raising_object=self, order=new_order)
+                event = Event(p_raising_object=self, p_orders=[new_order])
 
                 self.logistics_system._raise_event(self.logistics_system.C_EVENT_NEW_ORDER, event)
 

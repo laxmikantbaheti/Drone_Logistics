@@ -114,14 +114,14 @@ class Network:
 
         # 2. Draw vehicles from GlobalState
         # Trucks
-        truck_coords = [t.current_location_coords for t in self.global_state.trucks.values() if
-                        t.current_location_coords]
+        truck_coords = [t.get_current_location() for t in self.global_state.trucks.values() if
+                        t.get_current_location()]
         if truck_coords:
             x_trucks, y_trucks = zip(*truck_coords)
             self.ax.scatter(x_trucks, y_trucks, c='red', marker='s', s=120, label='Trucks', zorder=5)
         # Drones
-        drone_coords = [d.current_location_coords for d in self.global_state.drones.values() if
-                        d.current_location_coords]
+        drone_coords = [d.get_current_location() for d in self.global_state.drones.values() if
+                        d.get_current_location()]
         if drone_coords:
             x_drones, y_drones = zip(*drone_coords)
             self.ax.scatter(x_drones, y_drones, c='purple', marker='^', s=120, label='Drones', zorder=5)
