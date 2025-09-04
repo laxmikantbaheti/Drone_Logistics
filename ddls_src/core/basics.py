@@ -32,3 +32,6 @@ class LogisticsAction(Action):
         :return:
         """
         return self.get_sorted_values(), self.data
+
+    # def __repr__(self):
+    #     return None

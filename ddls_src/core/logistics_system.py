@@ -1,3 +1,5 @@
+# In file: ddls_src/core/logistics_system.py
+
 import random
 from typing import Dict, Any, List, Tuple
 from datetime import timedelta
@@ -16,31 +18,26 @@ from ddls_src.managers.action_manager import ActionManager
 from ddls_src.managers.supply_chain_manager import SupplyChainManager
 from ddls_src.managers.resource_manager.base import ResourceManager
 from ddls_src.managers.network_manager import NetworkManager
-from ddls_src.actions.action_map_generator import generate_action_map
-from ddls_src.actions.base import SimulationActions, ActionType
+from ddls_src.actions.base import SimulationActions, ActionType, ActionIndex
 from ddls_src.scenarios.generators.data_loader import DataLoader
 from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
 from ddls_src.scenarios.generators.order_generator import OrderGenerator
 from ddls_src.core.state_action_mapper import StateActionMapper, ConstraintManager
 from ddls_src.core.logistics_simulation import TimeManager
-from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
 from ddls_src.core.basics import LogisticsAction
-from ddls_src.entities.vehicles.truck import Truck
-from ddls_src.entities.vehicles.drone import Drone
 from ddls_src.entities import *
-from ddls_src.actions.base import SimulationActions, ActionIndex
 
 
 class LogisticsSystem(System, EventManager):
     """
     The top-level MLPro System that IS the entire logistics simulation engine.
-    It now dynamically generates its action map and a permanent mask at runtime.
+    It uses a two-phase cycle: a Decision Phase (action processing) and a
+    Progression Phase (time advancement).
     """
 
     C_TYPE = 'Logistics System'
     C_NAME = 'Logistics System'
     C_EVENT_NEW_ORDER = 'NEW_ORDER_CREATED'
-    C_MAX_AUTO_ACTIONS_PER_STEP = 20
 
     def __init__(self,
                  p_id=None,
@@ -59,25 +56,22 @@ class LogisticsSystem(System, EventManager):
                         p_latency=timedelta(seconds=self._config.get("main_timestep_duration", 60.0)))
         EventManager.__init__(self, p_logging=self.get_log_level())
 
-        self.automatic_logic_config = {action: action.is_automatic for action in SimulationActions.get_all_actions()}
+        # Initialize attributes
+        self.automatic_logic_config = {}
         self.time_manager = TimeManager(initial_time=self._config.get("initial_time", 0.0))
         self.data_loader = DataLoader(self._config.get("data_loader_config", {}))
-
-        self.action_map = {}
-        self._reverse_action_map = {}
-        self.action_space_size = 0
-        self._permanent_mask = None  # To hold the scenario's static mask
-
+        self.action_map: Dict[Tuple, int] = {}
+        self._reverse_action_map: Dict[int, Tuple] = {}
+        self.action_space_size: int = 0
         self.global_state: GlobalState = None
         self.network: Network = None
-        self.scenario_generator: ScenarioGenerator = None
         self.action_manager: ActionManager = None
         self.supply_chain_manager: SupplyChainManager = None
         self.resource_manager: ResourceManager = None
         self.network_manager: NetworkManager = None
         self.order_generator: OrderGenerator = None
         self.state_action_mapper: StateActionMapper = None
-        self.constraint_manager:ConstraintManager = None
+        self.constraint_manager: ConstraintManager = None
         self._state = State(self._state_space)
         self.actions = SimulationActions()
         self.action_index = None
@@ -88,19 +82,19 @@ class LogisticsSystem(System, EventManager):
         state_space = MSpace()
         state_space.add_dim(Dimension('total_orders', 'Z', 'Total Orders', p_boundaries=[0, 9999]))
         state_space.add_dim(Dimension('delivered_orders', 'Z', 'Delivered Orders', p_boundaries=[0, 9999]))
-
         action_space = MSpace()
         action_space.add_dim(Dimension(p_name_short='global_action',
                                        p_base_set='Z',
                                        p_name_long='Global Flattened Action ID',
-                                       p_boundaries=[0, 10000]))
-
+                                       p_boundaries=[0, 20000]))
         return state_space, action_space
 
     def _reset(self, p_seed=None):
+        self.automatic_logic_config = {action: action.is_automatic for action in self.actions.get_all_actions()}
+
         raw_entity_data = self.data_loader.load_initial_simulation_data()
-        self.scenario_generator = ScenarioGenerator(raw_entity_data)
-        self.entities = self.scenario_generator.build_entities()
+        scenario_generator = ScenarioGenerator(raw_entity_data)
+        self.entities = scenario_generator.build_entities()
 
         self.global_state = GlobalState(initial_entities=self.entities)
 
@@ -108,20 +102,12 @@ class LogisticsSystem(System, EventManager):
         self.action_index = ActionIndex(self.global_state, self.action_map)
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
 
-        # Create the permanent mask for this scenario
-        self._permanent_mask = np.ones(self.action_space_size, dtype=bool)
-        for action_tuple, idx in self.action_map.items():
-            if not action_tuple[0].active:
-                self._permanent_mask[idx] = False
-
         self.network = Network(self.global_state)
         self.global_state.network = self.network
         self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
-        all_entity_dicts = [
-            self.global_state.orders, self.global_state.trucks,
-            self.global_state.drones, self.global_state.micro_hubs,
-            self.global_state.nodes
-        ]
+
+        all_entity_dicts = [self.global_state.orders, self.global_state.trucks, self.global_state.drones,
+                            self.global_state.micro_hubs, self.global_state.nodes]
         for entity_dict in all_entity_dicts:
             for entity in entity_dict.values():
                 entity.global_state = self.global_state
@@ -134,20 +120,15 @@ class LogisticsSystem(System, EventManager):
         self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
         self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
                                               p_automatic_logic_config=self.automatic_logic_config)
+        managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
+                    'NetworkManager': self.network_manager}
+        self.action_manager = ActionManager(self.global_state, managers, self.action_map)
 
         for vehicle in list(self.global_state.trucks.values()) + list(self.global_state.drones.values()):
             vehicle.network_manager = self.network_manager
 
         self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
-
         self.register_event_handler(self.C_EVENT_NEW_ORDER, self._handle_new_order_request)
-
-        managers = {
-            'SupplyChainManager': self.supply_chain_manager,
-            'ResourceManager': self.resource_manager,
-            'NetworkManager': self.network_manager
-        }
-        self.action_manager = ActionManager(self.global_state, managers, self.action_map)
 
         initial_sim_time = self.entities.get('initial_time', 0.0)
         self.time_manager.reset_time(new_initial_time=initial_sim_time)
@@ -158,69 +139,83 @@ class LogisticsSystem(System, EventManager):
     def _get_automatic_actions(self) -> List[Tuple]:
         system_mask = self.get_current_mask()
         possible_action_indices = np.where(system_mask)[0]
-
         automatic_actions = []
         for index in possible_action_indices:
             action_tuple = self._reverse_action_map.get(index)
-            if action_tuple:
-                action_type = action_tuple[0]
-                if self.automatic_logic_config.get(action_type, False):
-                    automatic_actions.append(action_tuple)
-
+            if action_tuple and self.automatic_logic_config.get(action_tuple[0], False):
+                automatic_actions.append(action_tuple)
         return automatic_actions
 
-    def _simulate_reaction(self, p_state: State, p_action: LogisticsAction, p_t_step: timedelta = None) -> State:
+    def _run_automatic_action_loop(self):
+        i = 0
+        while True:
+            automatic_actions_to_take = self._get_automatic_actions()
+            if not automatic_actions_to_take:
+                self.log(self.C_LOG_TYPE_I, f"Auto-action loop stable after {i} iterations.")
+                break
+            auto_action_tuple = automatic_actions_to_take[0]
+            self.log(self.C_LOG_TYPE_I, f"  - Auto Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
+            self.action_manager.execute_action(auto_action_tuple)
+            i += 1
+            if i > 20:  # Safety break
+                self.log(self.C_LOG_TYPE_W, "Auto-action loop exceeded safety limit of 20 iterations.")
+                break
+
+    def process_action(self, p_action: LogisticsAction):
+        action_processed = False
         action_values, _ = p_action.get_sorted_values_with_data()
         action_index = int(action_values[0])
         action_tuple = self._reverse_action_map.get(action_index)
 
         if action_tuple and action_tuple[0] != SimulationActions.NO_OPERATION:
-            print(f"  - Executing Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
-            self.action_manager.execute_action(action_tuple)
+            self.log(self.C_LOG_TYPE_I, f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
+            action_processed = self.action_manager.execute_action(action_tuple)
 
-        print("  - Entering Automatic Action Loop...")
-        while self._get_automatic_actions():
-            automatic_actions_to_take = self._get_automatic_actions()
+        self._run_automatic_action_loop()
+        self._update_state()
+        return action_processed
 
-            if not automatic_actions_to_take:
-                print(f"  - No more automatic actions possible after {i} iterations. System is stable.")
-                break
 
-            auto_action_tuple = automatic_actions_to_take[0]
-            print(f"  - Executing Automatic Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
-            self.action_manager.execute_action(auto_action_tuple)
-        else:
-            # self.log(self.C_LOG_TYPE_W,
-            #          f"Automatic action loop reached max iterations ({self.C_MAX_AUTO_ACTIONS_PER_STEP}). Possible action storm.")
-
-            self.log(self.C_LOG_TYPE_W,
-                 "No more actions available.")
-
+    def advance_time(self, p_t_step: timedelta = None):
         timestep_duration = self.get_latency().total_seconds()
         t_step = p_t_step or timedelta(seconds=timestep_duration)
         self.time_manager.advance_time(timestep_duration)
         self.global_state.current_time = self.time_manager.get_current_time()
 
+        self.log(self.C_LOG_TYPE_I, f"Time advanced to {self.global_state.current_time}s.")
         self.order_generator.generate(self.global_state.current_time)
 
-        all_systems = list(self.global_state.trucks.values()) + \
-                      list(self.global_state.drones.values()) + \
-                      list(self.global_state.micro_hubs.values()) + \
-                      [self.supply_chain_manager, self.resource_manager, self.network_manager]
+        all_systems = (list(self.global_state.trucks.values()) +
+                       list(self.global_state.drones.values()) +
+                       list(self.global_state.micro_hubs.values()) +
+                       [self.supply_chain_manager, self.resource_manager, self.network_manager])
 
         for system in all_systems:
             system.simulate_reaction(p_state=None, p_action=None, p_t_step=t_step)
 
         self._update_state()
+
+    def _simulate_reaction(self, p_state: State, p_action: LogisticsAction) -> State:
+        self.process_action(p_action)
+        self.advance_time()
         return self._state
 
     def get_current_mask(self) -> np.ndarray:
         if self.state_action_mapper:
-            dynamic_mask = self.state_action_mapper.generate_masks()
-            # Combine the dynamic mask with the permanent scenario mask
-            # return np.logical_and(self._permanent_mask, dynamic_mask)
-            return dynamic_mask
+            return self.state_action_mapper.generate_masks()
         return np.ones(len(self.action_map), dtype=bool)
+
+    def get_agent_mask(self) -> np.ndarray:
+        system_mask = self.get_current_mask()
+        agent_mask = np.zeros(self.action_space_size, dtype=bool)
+        for action_tuple, idx in self.action_map.items():
+            action_type = action_tuple[0]
+            if not self.automatic_logic_config.get(action_type, False) and system_mask[idx]:
+                agent_mask[idx] = True
+        no_op_idx = self.action_map.get((SimulationActions.NO_OPERATION,))
+        if no_op_idx is not None:
+            agent_mask[no_op_idx] = True
+        return agent_mask
 
     def _update_state(self):
         if self.global_state:
@@ -232,51 +227,20 @@ class LogisticsSystem(System, EventManager):
 
     def _handle_new_order_request(self, p_event_id, p_event_object):
         self.global_state.add_orders(p_orders=p_event_object.get_data()['p_orders'])
-        self.state_action_mapper.add_order(p_oredrs= p_event_object.get_data()['p_orders'])
+        self.state_action_mapper.add_order(p_oredrs=p_event_object.get_data()['p_orders'])
 
-    def get_masks(self) -> np.ndarray:
-        """
-        Generates the complete system mask for ALL possible actions (automatic and non-automatic).
-        This is used internally by the system's automatic logic loop.
-        """
-        if self.state_action_mapper:
-            dynamic_mask = self.state_action_mapper.generate_masks()
-            return dynamic_mask
-        return np.ones(len(self.action_map), dtype=bool)
-
-    # --- NEW: Method to generate a mask specifically for the agent ---
-    def get_agent_mask(self) -> np.ndarray:
-        """
-        Generates a mask containing ONLY the valid non-automatic actions.
-        This is the mask that should be passed to the external agent.
-        """
-        system_mask = self.get_current_mask()
-        agent_mask = np.zeros(self.action_space_size, dtype=bool)
-
-        for action_tuple, idx in self.action_map.items():
-            action_type = action_tuple[0]
-            # If the action is NOT automatic AND is currently valid in the system...
-            if not self.automatic_logic_config.get(action_type, False) and system_mask[idx]:
-                # ...then make it visible to the agent.
-                agent_mask[idx] = True
-
-        # The NO_OPERATION action is always a valid choice for the agent to pass its turn.
-        no_op_idx = self.action_map.get((SimulationActions.NO_OPERATION,))
-        if no_op_idx is not None:
-            agent_mask[no_op_idx] = True
-
-        return agent_mask
+    def get_masks(self):
+        return self.state_action_mapper.generate_masks()
 
     def setup_events(self):
         self.constraint_manager.register_event_handler(p_event_id=ConstraintManager.C_EVENT_MASK_UPDATED,
                                                        p_event_handler=self.state_action_mapper.handle_new_masks_event)
-
         for entities in self.entities.values():
             if isinstance(entities, Dict):
                 for entity in entities.values():
                     if isinstance(entity, LogisticEntity):
                         entity.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
-                                                      self.constraint_manager.handle_entity_state_change)
+                                                                      self.constraint_manager.handle_entity_state_change)
 
 
 # -------------------------------------------------------------------------
@@ -286,7 +250,6 @@ if __name__ == "__main__":
     print("--- Validating LogisticsSystem ---")
 
     script_path = os.path.dirname(os.path.realpath(__file__))
-    # Go up two levels from core/ to the project root, then into config
     config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data.json')
     config_file_path = os.path.normpath(config_file_path)
 
@@ -305,21 +268,39 @@ if __name__ == "__main__":
                                        p_logging=True,
                                        config=sim_config)
 
-    print("\n--- Running simulation for 3 cycles with NO_OPERATION ---")
+    print("\n--- Running simulation for 20 cycles with Dummy Agent Logic ---")
 
-    for i in range(100):
+    no_op_idx = logistics_system.action_map.get((SimulationActions.NO_OPERATION,))
+
+    for i in range(20):
         print(f"\n--- Cycle {i + 1} ---")
-        masks = logistics_system.get_masks()
-        valid_actions = [i for i in range(len(logistics_system.action_map))
-                         if masks[i] is True]
-        choice = random.choice(valid_actions)
-        act = logistics_system._reverse_action_map[choice]
-        action = LogisticsAction(p_action_space=logistics_system.get_action_space(),
-                                 p_values=[choice], p_data=act)
-        logistics_system.simulate_reaction(p_state=None, p_action=action)
+
+        # --- Decision Phase ---
+        # A simple agent takes one action per cycle
+        agent_mask = logistics_system.get_agent_mask()
+        valid_actions = np.where(np.delete(agent_mask, no_op_idx))[0]
+
+        if len(valid_actions) > 0:
+            choice = random.choice(valid_actions)
+            act_tuple = logistics_system._reverse_action_map.get(choice)
+            print(f"Dummy Agent chooses: {act_tuple}")
+        else:
+            choice = no_op_idx
+            print("Dummy Agent chooses: NO_OPERATION")
+
+        action = LogisticsAction(p_action_space=logistics_system.get_action_space(), p_values=[choice])
+
+        logistics_system.process_action(action)
+
+        # --- Progression Phase ---
+        logistics_system.advance_time()
+
+        # --- Reporting ---
         state = logistics_system.get_state()
         print(f"  - Current Time: {logistics_system.time_manager.get_current_time()}s")
-        print(f"  - Total Orders: {state.get_value(state.get_related_set().get_dim_by_name('total_orders').get_id())}")
-        print(f"  - Delivered Orders: {state.get_value(state.get_related_set().get_dim_by_name('delivered_orders').get_id())}")
+        state_dim_total = state.get_related_set().get_dim_by_name('total_orders')
+        state_dim_delivered = state.get_related_set().get_dim_by_name('delivered_orders')
+        print(f"  - Total Orders: {state.get_value(state_dim_total.get_id())}")
+        print(f"  - Delivered Orders: {state.get_value(state_dim_delivered.get_id())}")
 
     print("\n--- Validation Complete: LogisticsSystem initialized and ran successfully. ---")
