@@ -116,9 +116,9 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
         # Check if the vehicle is at the delivery node for any of its delivery orders
         is_at_delivery_node = False
         if delivery_orders:
-            for order_id in delivery_orders:
+            for order_obj in delivery_orders:
                 try:
-                    order_obj = vehicle.global_state.get_entity("order", order_id)
+                    # order_obj = vehicle.global_state.get_entity("order", order_id)
                     node_next_delivery_order = order_obj.get_delivery_node_id()
 
                     if node_next_delivery_order == node_vehicle:

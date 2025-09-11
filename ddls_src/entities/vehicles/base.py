@@ -1,3 +1,4 @@
+# In ddls_src/entities/vehicles/base.py
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Any, Dict, Optional, Set
 from datetime import timedelta
@@ -9,6 +10,7 @@ from mlpro.bf.math import MSpace, Dimension
 from ddls_src.actions.action_enums import SimulationAction
 from ddls_src.actions.base import SimulationActions
 from ddls_src.entities.base import LogisticEntity
+
 
 # Forward declaration for NetworkManager
 class NetworkManager:
@@ -28,7 +30,7 @@ class Vehicle(LogisticEntity, ABC):
     C_TRIP_STATE_IDLE = "Idle"
     C_TRIP_STATE_EN_ROUTE = "En Route"
     C_VALID_TRIP_STATES = [C_TRIP_STATE_IDLE, C_TRIP_STATE_EN_ROUTE]
-    C_DIM_TRIP_STATE = ["trip","Trip Status",C_VALID_TRIP_STATES]
+    C_DIM_TRIP_STATE = ["trip", "Trip Status", C_VALID_TRIP_STATES]
     C_DIM_AVAILABLE = ["ava", "Is Available", [True, False]]
     C_DIM_AT_NODE = ["node_bool", "At Node", [True, False]]
     C_DIM_CURRENT_CARGO = ["cargo", "Current Cargo", []]
@@ -70,6 +72,9 @@ class Vehicle(LogisticEntity, ABC):
         self.max_speed: float = p_kwargs.get('max_speed', 0)
         self.network_manager: 'NetworkManager' = p_kwargs.get('network_manager')
 
+        # New: Current location coordinates
+        self.current_location_coords: Optional[Tuple[float, float]] = None
+
         # Internal dynamic attributes
         self.status: str = "idle"
         self.current_node_id: Optional[int] = self.start_node_id
@@ -84,7 +89,7 @@ class Vehicle(LogisticEntity, ABC):
         self.delivery_orders = []
         self.pickup_orders = []
         self.reset()
-        self.consolidation_confirmed:bool = False
+        self.consolidation_confirmed: bool = False
 
     @staticmethod
     def setup_spaces():
@@ -92,7 +97,6 @@ class Vehicle(LogisticEntity, ABC):
         Defines the state and action spaces for a generic Vehicle system.
         """
         state_space = MSpace()
-
 
         state_space.add_dim(Dimension('loc x',
                                       "R",
@@ -119,6 +123,13 @@ class Vehicle(LogisticEntity, ABC):
         self.route_progress = 0.0
         self.route_nodes = []  # Clear the route nodes on reset
         self.delivery_orders = []
+
+        # New: Reset coordinates to the start node
+        if self.global_state and self.start_node_id is not None:
+            self.current_location_coords = self.global_state.get_entity('node', self.start_node_id).coords
+        else:
+            self.current_location_coords = (0.0, 0.0)
+
         self._update_state()
 
     def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
@@ -181,6 +192,9 @@ class Vehicle(LogisticEntity, ABC):
 
         self.route_progress += time_to_move / travel_time
 
+        # New: Update coordinates based on progress
+        self._update_location_coords(start_node_id, end_node_id, self.route_progress)
+
         self.update_energy(-time_to_move)
 
         if self.route_progress >= 1.0:
@@ -189,11 +203,28 @@ class Vehicle(LogisticEntity, ABC):
             self.route_progress = 0.0
             if not self.current_route or len(self.current_route) < 2:
                 self.status = "idle"
-                self.route_nodes = []  # Clear route nodes upon completion
+                self.route_nodes = []
+
+            # New: Update coordinates to be exactly at the new node
+            self._update_location_coords(self.current_node_id, self.current_node_id, self.route_progress)
         else:
             self.current_node_id = None
 
-    @abstractmethod
+    def _update_location_coords(self, start_node_id, end_node_id, progress):
+        """
+        Updates the vehicle's location coordinates based on its progress along a route segment.
+        """
+        start_node = self.global_state.get_entity('node', start_node_id)
+        end_node = self.global_state.get_entity('node', end_node_id)
+
+        start_x, start_y = start_node.coords
+        end_x, end_y = end_node.coords
+
+        new_x = start_x + (end_x - start_x) * progress
+        new_y = start_y + (end_y - start_y) * progress
+
+        self.current_location_coords = (new_x, new_y)
+
     def update_energy(self, p_time_passed: float):
         """
         Abstract method for energy consumption.
@@ -207,10 +238,29 @@ class Vehicle(LogisticEntity, ABC):
         state_space = self._state.get_related_set()
         status_map = {"idle": 0, "en_route": 1, "loading": 2, "unloading": 3, "charging": 4, "maintenance": 5,
                       "broken_down": 6}
-        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_TRIP_STATE[0]).get_id(), status_map.get(self.status, 0))
+        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_TRIP_STATE[0]).get_id(),
+                              status_map.get(self.status, 0))
         self._state.set_value(state_space.get_dim_by_name(self.C_DIM_AT_NODE[0]).get_id(),
                               self.current_node_id if self.current_node_id is not None else -1)
-        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_CURRENT_CARGO[0]).get_id(), len(self.cargo_manifest))
+        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_CURRENT_CARGO[0]).get_id(),
+                              len(self.cargo_manifest))
+
+        # New: Update the location coordinates in the state
+        if self.current_location_coords:
+            self._state.set_value(state_space.get_dim_by_name('loc x').get_id(), self.current_location_coords[0])
+            self._state.set_value(state_space.get_dim_by_name('loc y').get_id(), self.current_location_coords[1])
+
+    def add_cargo(self, order_id: int):
+        """Adds a package to the vehicle's cargo manifest."""
+        if order_id not in self.cargo_manifest:
+            self.cargo_manifest.append(order_id)
+            self.raise_state_change_event()
+
+    def remove_cargo(self, order_id: int):
+        """Removes a package from the vehicle's cargo manifest."""
+        if order_id in self.cargo_manifest:
+            self.cargo_manifest.remove(order_id)
+            self.raise_state_change_event()
 
     def set_route(self, route: List[int]):
         """
@@ -238,6 +288,7 @@ class Vehicle(LogisticEntity, ABC):
         self.route_progress = 0.0
         self.current_node_id = None
         self._update_state()
+        self.raise_state_change_event()
 
     def get_current_location(self):
         return self.get_state_value_by_dim_name("loc x"), self.get_state_value_by_dim_name("loc y")
@@ -245,10 +296,10 @@ class Vehicle(LogisticEntity, ABC):
     def get_delivery_orders(self):
         return self.delivery_orders
 
-    def assign_orders(self, p_orders:list):
-        if p_orders is not None:
-            self.delivery_orders.extend(p_orders)
-            self.raise_state_change_event()
+    def assign_orders(self, p_orders: list):
+        if p_orders:
+            self.delivery_orders.append(p_orders)
+            self.raise_state_change_event()  # <-- Added event trigger
             return True
 
     def unload_order(self, p_order):
@@ -269,7 +320,6 @@ class Vehicle(LogisticEntity, ABC):
 
     def get_pickup_orders(self):
         return self.pickup_orders
-
 
 
 # -------------------------------------------------------------------------
