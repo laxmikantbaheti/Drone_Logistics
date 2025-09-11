@@ -142,6 +142,7 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
             return invalidation_idx
+        return invalidation_idx
 
 
 class OrderRequestAssignabilityConstraint(Constraint):

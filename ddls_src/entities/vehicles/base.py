@@ -245,7 +245,8 @@ class Vehicle(LogisticEntity, ABC):
 
     def assign_orders(self, p_orders:list):
         if p_orders is not None:
-            self.delivery_orders.append(p_orders)
+            self.delivery_orders.extend(p_orders)
+            self.raise_state_change_event()
             return True
 
     def unload_order(self, p_order):
