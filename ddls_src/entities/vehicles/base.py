@@ -233,6 +233,8 @@ class Vehicle(LogisticEntity, ABC):
         self.current_route = route
         self.route_nodes = route
         self.status = "en_route"
+        self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
+        self.raise_state_change_event()
         self.route_progress = 0.0
         self.current_node_id = None
         self._update_state()

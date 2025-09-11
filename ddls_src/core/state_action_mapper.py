@@ -327,14 +327,15 @@ class ConsolidationConstraint(Constraint):
 
         vehicle = p_entity
 
-        # A consolidation action is only valid if there is at least one assigned order.
-        if not vehicle.delivery_orders:
+        # Consolidation is only valid if the vehicle is not en-route and has assigned delivery orders.
+        is_ready_for_consolidation = (vehicle.status == "idle" and len(vehicle.delivery_orders) > 0)
+
+        if not is_ready_for_consolidation:
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             invalidation_idx = list(actions_by_type.intersection(actions_by_entity))
 
         return invalidation_idx
-
 class ConstraintManager(EventManager):
 
     C_NAME = "Constraint Manager"
