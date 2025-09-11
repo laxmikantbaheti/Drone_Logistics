@@ -329,13 +329,13 @@ class ConsolidationConstraint(Constraint):
 
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
         invalidation_idx = []
-        if not isinstance(p_entity, Vehicle):
-            return []
+        if not (isinstance(p_entity, Truck) or isinstance(p_entity, Drone)):
+            return invalidation_idx
 
         vehicle = p_entity
 
-        # A vehicle cannot be consolidated if it's already consolidated or if it's not idle.
-        if vehicle.consolidation_confirmed or vehicle.status != 'idle':
+        # A vehicle cannot be consolidated if its cargo is empty
+        if not vehicle.cargo_manifest:
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             invalidation_idx = list(actions_by_type.intersection(actions_by_entity))

@@ -233,6 +233,62 @@ class NetworkManager(System):
         self._state.set_value(state_space.get_dim_by_name("blocked_edges").get_id(),
                               sum(1 for e in edges if e.is_blocked))
 
+    def _simulate_reaction(self, p_state: State, p_action: LogisticsAction, p_t_step: timedelta = None) -> State:
+        """
+        Updates the manager's state and triggers automatic routing logic if enabled.
+        """
+        if p_action is not None:
+            self._process_action(p_action)
+
+        # The _check_and_route_vehicles method has been removed, as routing is now
+        # explicitly triggered by the 'consolidate' action in the SupplyChainManager.
+
+        self._update_state()
+        return self._state
+
+    def route_consolidated_vehicle(self, vehicle_id: int):
+        """
+        Calculates a multi-stop tour for a vehicle based on all orders in its cargo.
+        """
+        try:
+            vehicle = self.global_state.get_entity("truck",
+                                                   vehicle_id) if vehicle_id in self.global_state.trucks else self.global_state.get_entity(
+                "drone", vehicle_id)
+            vehicle_type_str = vehicle.C_NAME.lower()
+
+            if not vehicle.cargo_manifest:
+                self.log(self.C_LOG_TYPE_W, f"Vehicle {vehicle_id} has no cargo to consolidate.")
+                vehicle.set_route([])
+                return
+
+            # Start at the vehicle's current node
+            current_node = vehicle.current_node_id
+            route = [current_node]
+
+            # Get all delivery nodes for orders in cargo
+            delivery_nodes = []
+            for order_id in vehicle.cargo_manifest:
+                order = self.global_state.get_entity("order", order_id)
+                if order and order.customer_node_id not in delivery_nodes:
+                    delivery_nodes.append(order.customer_node_id)
+
+            # Simple heuristic: Visit delivery nodes in the order they were added
+            for next_destination in delivery_nodes:
+                path = self.network.calculate_shortest_path(current_node, next_destination, vehicle_type_str)
+                if path and len(path) > 1:
+                    route.extend(path[1:])  # Append the new path, excluding the start node
+                    current_node = next_destination
+
+            if len(route) > 1:
+                self.log(self.C_LOG_TYPE_I, f"Routing consolidated Vehicle {vehicle_id} on path {route}.")
+                vehicle.set_route(route)
+            else:
+                self.log(self.C_LOG_TYPE_W, f"Could not find a valid route for consolidated Vehicle {vehicle_id}.")
+                vehicle.set_route([])
+
+        except KeyError:
+            self.log(self.C_LOG_TYPE_E, f"Entity not found for consolidated routing: {vehicle_id}")
+
 
 # -------------------------------------------------------------------------
 # -- Validation Block

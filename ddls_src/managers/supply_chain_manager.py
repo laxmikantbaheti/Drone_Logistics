@@ -126,13 +126,34 @@ class SupplyChainManager(System):
         action_kwargs = p_action.data
 
         try:
+            if action_type == SimulationActions.CONSOLIDATE_FOR_TRUCK:
+                truck_id = action_kwargs['truck_id']
+                truck: 'Truck' = self.global_state.get_entity('truck', truck_id)
+                if truck and truck.status == 'idle' and len(truck.cargo_manifest) > 0:
+                    truck.consolidation_confirmed = True
+                    self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Truck {truck_id}. Starting route.")
+                    self.network_manager.route_consolidated_vehicle(truck_id)
+                    return True
+                return False
+
+            elif action_type == SimulationActions.CONSOLIDATE_FOR_DRONE:
+                drone_id = action_kwargs['drone_id']
+                drone: 'Drone' = self.global_state.get_entity('drone', drone_id)
+                if drone and drone.status == 'idle' and len(drone.cargo_manifest) > 0:
+                    drone.consolidation_confirmed = True
+                    self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Drone {drone_id}. Starting route.")
+                    self.network_manager.route_consolidated_vehicle(drone_id)
+                    return True
+                return False
+
+            # This block handles all actions that require an order or node_pair.
             if "order" in action_kwargs.keys():
                 order_id = action_kwargs['order_id']
                 order: 'Order' = self.global_state.get_entity("order", order_id)
             else:
                 node_pair = action_kwargs.get("pick_up_drop")
                 global_state: GlobalState = self.global_state
-                order:Order = global_state.get_order_requests()[node_pair][0]
+                order: Order = global_state.get_order_requests()[node_pair][0]
 
             if action_type == SimulationActions.ACCEPT_ORDER:
                 if order.status == "pending":
@@ -179,6 +200,7 @@ class SupplyChainManager(System):
             self.global_state.get_order_requests()[(p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)
             p_order.raise_state_change_event()
         return assigned
+
 
     def _update_state(self):
         """

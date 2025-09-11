@@ -244,7 +244,7 @@ class Vehicle(LogisticEntity, ABC):
         return self.delivery_orders
 
     def assign_orders(self, p_orders:list):
-        if p_orders:
+        if p_orders is not None:
             self.delivery_orders.append(p_orders)
             return True
 
