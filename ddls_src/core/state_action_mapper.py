@@ -327,8 +327,8 @@ class ConsolidationConstraint(Constraint):
 
         vehicle = p_entity
 
-        # A vehicle cannot be consolidated if its cargo is empty
-        if not vehicle.cargo_manifest:
+        # A consolidation action is only valid if there is at least one assigned order.
+        if not vehicle.delivery_orders:
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             invalidation_idx = list(actions_by_type.intersection(actions_by_entity))

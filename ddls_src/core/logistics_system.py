@@ -120,8 +120,13 @@ class LogisticsSystem(System, EventManager):
         self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
         self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
                                               p_automatic_logic_config=self.automatic_logic_config)
+
         managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
                     'NetworkManager': self.network_manager}
+
+        for manager in managers.values():
+            manager.system = self
+
         self.action_manager = ActionManager(self.global_state, managers, self.action_map)
 
         for vehicle in list(self.global_state.trucks.values()) + list(self.global_state.drones.values()):
