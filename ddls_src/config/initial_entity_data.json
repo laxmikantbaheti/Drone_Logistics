@@ -2,24 +2,16 @@
     "nodes": [
         {
             "id": 0,
-            "coords": [
-                0.0,
-                0.0
-            ],
+            "coords": [0.0, 0.0],
             "type": "depot",
             "is_loadable": true,
             "is_unloadable": true,
             "is_charging_station": true,
-            "packages_held": [
-                0
-            ]
+            "packages_held": []
         },
         {
             "id": 1,
-            "coords": [
-                10.0,
-                5.0
-            ],
+            "coords": [10.0, 5.0],
             "type": "customer",
             "is_loadable": false,
             "is_unloadable": true,
@@ -27,39 +19,139 @@
         },
         {
             "id": 2,
-            "coords": [
-                5.0,
-                20.0
-            ],
+            "coords": [5.0, 20.0],
             "type": "micro_hub",
             "is_loadable": true,
             "is_unloadable": true,
             "is_charging_station": true,
             "num_charging_slots": 2,
-            "packages_held": [
-                1
-            ]
+            "packages_held": []
+        },
+        {
+            "id": 3,
+            "coords": [25.0, 15.0],
+            "type": "customer",
+            "is_loadable": false,
+            "is_unloadable": true,
+            "is_charging_station": false
+        },
+        {
+            "id": 4,
+            "coords": [40.0, 10.0],
+            "type": "customer",
+            "is_loadable": false,
+            "is_unloadable": true,
+            "is_charging_station": false
+        },
+        {
+            "id": 5,
+            "coords": [15.0, 30.0],
+            "type": "micro_hub",
+            "is_loadable": true,
+            "is_unloadable": true,
+            "is_charging_station": true,
+            "num_charging_slots": 3,
+            "packages_held": []
+        },
+        {
+            "id": 6,
+            "coords": [35.0, 5.0],
+            "type": "customer",
+            "is_loadable": false,
+            "is_unloadable": true,
+            "is_charging_station": false
+        },
+        {
+            "id": 7,
+            "coords": [50.0, 25.0],
+            "type": "customer",
+            "is_loadable": false,
+            "is_unloadable": true,
+            "is_charging_station": false
+        },
+        {
+            "id": 8,
+            "coords": [60.0, 40.0],
+            "type": "depot",
+            "is_loadable": true,
+            "is_unloadable": true,
+            "is_charging_station": true,
+            "packages_held": []
+        },
+        {
+            "id": 9,
+            "coords": [45.0, 50.0],
+            "type": "micro_hub",
+            "is_loadable": true,
+            "is_unloadable": true,
+            "is_charging_station": true,
+            "num_charging_slots": 2,
+            "packages_held": []
+        },
+        {
+            "id": 10,
+            "coords": [20.0, 45.0],
+            "type": "customer",
+            "is_loadable": false,
+            "is_unloadable": true,
+            "is_charging_station": false
+        },
+        {
+            "id": 11,
+            "coords": [55.0, 60.0],
+            "type": "customer",
+            "is_loadable": false,
+            "is_unloadable": true,
+            "is_charging_station": false
         }
     ],
     "edges": [
-        {
-            "id": 0,
-            "start_node_id": 0,
-            "end_node_id": 1,
-            "length": 11.18,
-            "base_travel_time": 670.8
-        },
-        {
-            "id": 1,
-            "start_node_id": 1,
-            "end_node_id": 0,
-            "length": 11.18,
-            "base_travel_time": 670.8
-        }
+        {"id": 0, "start_node_id": 0, "end_node_id": 1, "length": 11.18, "base_travel_time": 670.8},
+        {"id": 1, "start_node_id": 1, "end_node_id": 0, "length": 11.18, "base_travel_time": 670.8},
+        {"id": 2, "start_node_id": 0, "end_node_id": 2, "length": 20.62, "base_travel_time": 1237.2},
+        {"id": 3, "start_node_id": 2, "end_node_id": 0, "length": 20.62, "base_travel_time": 1237.2},
+        {"id": 4, "start_node_id": 1, "end_node_id": 3, "length": 16.55, "base_travel_time": 993.0},
+        {"id": 5, "start_node_id": 3, "end_node_id": 1, "length": 16.55, "base_travel_time": 993.0},
+        {"id": 6, "start_node_id": 3, "end_node_id": 4, "length": 15.81, "base_travel_time": 948.6},
+        {"id": 7, "start_node_id": 4, "end_node_id": 3, "length": 15.81, "base_travel_time": 948.6},
+        {"id": 8, "start_node_id": 2, "end_node_id": 5, "length": 10.30, "base_travel_time": 618.0},
+        {"id": 9, "start_node_id": 5, "end_node_id": 2, "length": 10.30, "base_travel_time": 618.0},
+        {"id": 10, "start_node_id": 6, "end_node_id": 4, "length": 5.0, "base_travel_time": 300.0},
+        {"id": 11, "start_node_id": 4, "end_node_id": 6, "length": 5.0, "base_travel_time": 300.0},
+        {"id": 12, "start_node_id": 6, "end_node_id": 7, "length": 14.14, "base_travel_time": 848.4},
+        {"id": 13, "start_node_id": 7, "end_node_id": 6, "length": 14.14, "base_travel_time": 848.4},
+        {"id": 14, "start_node_id": 7, "end_node_id": 8, "length": 20.0, "base_travel_time": 1200.0},
+        {"id": 15, "start_node_id": 8, "end_node_id": 7, "length": 20.0, "base_travel_time": 1200.0},
+        {"id": 16, "start_node_id": 8, "end_node_id": 9, "length": 18.03, "base_travel_time": 1081.8},
+        {"id": 17, "start_node_id": 9, "end_node_id": 8, "length": 18.03, "base_travel_time": 1081.8},
+        {"id": 18, "start_node_id": 5, "end_node_id": 10, "length": 15.81, "base_travel_time": 948.6},
+        {"id": 19, "start_node_id": 10, "end_node_id": 5, "length": 15.81, "base_travel_time": 948.6},
+        {"id": 20, "start_node_id": 9, "end_node_id": 11, "length": 12.04, "base_travel_time": 722.4},
+        {"id": 21, "start_node_id": 11, "end_node_id": 9, "length": 12.04, "base_travel_time": 722.4},
+        {"id": 22, "start_node_id": 1, "end_node_id": 5, "length": 25.49, "base_travel_time": 1529.4},
+        {"id": 23, "start_node_id": 5, "end_node_id": 1, "length": 25.49, "base_travel_time": 1529.4},
+        {"id": 24, "start_node_id": 10, "end_node_id": 11, "length": 35.36, "base_travel_time": 2121.6},
+        {"id": 25, "start_node_id": 11, "end_node_id": 10, "length": 35.36, "base_travel_time": 2121.6}
     ],
     "trucks": [
         {
             "id": 101,
+            "start_node_id": 0,
+            "max_payload_capacity": 5,
+            "max_speed": 60.0,
+            "initial_fuel": 100.0,
+            "fuel_consumption_rate": 0.1
+        },
+        {
+            "id": 102,
+            "start_node_id": 8,
+            "max_payload_capacity": 5,
+            "max_speed": 60.0,
+            "initial_fuel": 100.0,
+            "fuel_consumption_rate": 0.1
+        },
+        {
+            "id": 103,
             "start_node_id": 0,
             "max_payload_capacity": 5,
             "max_speed": 60.0,
@@ -71,6 +163,16 @@
         {
             "id": 201,
             "start_node_id": 0,
+            "max_payload_capacity": 1,
+            "max_speed": 30.0,
+            "initial_battery": 1.0,
+            "battery_drain_rate_flying": 0.005,
+            "battery_drain_rate_idle": 0.001,
+            "battery_charge_rate": 0.01
+        },
+        {
+            "id": 202,
+            "start_node_id": 8,
             "max_payload_capacity": 1,
             "max_speed": 30.0,
             "initial_battery": 1.0,
@@ -92,7 +194,31 @@
         {
             "id": 1,
             "p_pickup_node_id": 0,
-            "p_delivery_node_id": 2,
+            "p_delivery_node_id": 3,
+            "time_received": 0.0,
+            "SLA_deadline": 2400.0,
+            "priority": 2
+        },
+        {
+            "id": 2,
+            "p_pickup_node_id": 0,
+            "p_delivery_node_id": 4,
+            "time_received": 0.0,
+            "SLA_deadline": 3000.0,
+            "priority": 1
+        },
+        {
+            "id": 3,
+            "p_pickup_node_id": 8,
+            "p_delivery_node_id": 7,
+            "time_received": 0.0,
+            "SLA_deadline": 1800.0,
+            "priority": 1
+        },
+        {
+            "id": 4,
+            "p_pickup_node_id": 8,
+            "p_delivery_node_id": 11,
             "time_received": 0.0,
             "SLA_deadline": 2400.0,
             "priority": 2

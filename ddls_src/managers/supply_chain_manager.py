@@ -132,7 +132,7 @@ class SupplyChainManager(System):
                 if truck and truck.status == 'idle' and len(truck.delivery_orders) > 0:
                     truck.consolidation_confirmed = True
                     self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Truck {truck_id}. Starting route.")
-                    self.system.network_manager.route_consolidated_vehicle(truck_id)
+                    self.system.network_manager.route_for_assigned_orders(truck_id)
                     return True
                 return False
 
@@ -142,7 +142,7 @@ class SupplyChainManager(System):
                 if drone and drone.status == 'idle' and len(drone.delivery_orders) > 0:
                     drone.consolidation_confirmed = True
                     self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Drone {drone_id}. Starting route.")
-                    self.system.network_manager.route_consolidated_vehicle(drone_id)
+                    self.system.network_manager.route_for_assigned_orders(drone_id)
                     return True
                 return False
 
