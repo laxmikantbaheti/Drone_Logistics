@@ -103,46 +103,38 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.UNLOAD_TRUCK_ACTION,
                           SimulationActions.UNLOAD_DRONE_ACTION,
                           SimulationActions.DRONE_LAND]
-    # def _handle_vehicle_node_arrival(self, p_event_id, p_event_object):
-    #     constraint_satisfied = False
-    #     vehicle = p_event_object.get_data()['Vehicle']
-    #     loc_vehicle = vehicle.get_current_location()
-    #     nearest_node_vehicle = vehicle.get_nearest_node()
-    #     next_delivery_order = vehicle.get_delivery_orders()[0]
-    #     node_next_delivery_order = next_delivery_order.get_delivery_node()
-    #     loc_node_next_delivery_order = node_next_delivery_order.get_location()
-    #     if loc_vehicle == loc_node_next_delivery_order or node_next_delivery_order == nearest_node_vehicle:
-    #         constraint_satisfied = True
-    #     else:
-    #         return False
 
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
         invalidation_idx = []
         if not (isinstance(p_entity, Drone) or isinstance(p_entity, Truck)):
-            raise TypeError("Vehicle Availability Constraint can only be applied to vehicle entity. Please check the "
-                            "corresponding constraint configurations.")
+            raise TypeError("Vehicle At Delivery Node Constraint can only be applied to a vehicle entity.")
 
         vehicle = p_entity
-        loc_vehicle = vehicle.get_current_location()
         node_vehicle = vehicle.get_current_node()
-        # nearest_node_vehicle = vehicle.global_state.network.get_nearest_node(loc_vehicle)
         delivery_orders = vehicle.get_delivery_orders()
-        if len(delivery_orders):
-            next_delivery_order = delivery_orders[0]
-            node_next_delivery_order = next_delivery_order.get_delivery_node_id()
-            # loc_node_next_delivery_order = node_next_delivery_order.get_location()
-            if node_next_delivery_order == node_vehicle:
-                constraint_satisfied = True
-                return invalidation_idx
-        else:
-            constraint_satisfied = False
-            actions_by_type = p_action_index.get_actions_of_type([SimulationActions.UNLOAD_TRUCK_ACTION,
-                                                                  SimulationActions.UNLOAD_DRONE_ACTION,
-                                                                  SimulationActions.DRONE_LAND])
-            actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
-            invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
-            return invalidation_idx
-        return invalidation_idx
+
+        # Check if the vehicle is at the delivery node for any of its delivery orders
+        is_at_delivery_node = False
+        if delivery_orders:
+            for order_id in delivery_orders:
+                try:
+                    order_obj = vehicle.global_state.get_entity("order", order_id)
+                    node_next_delivery_order = order_obj.get_delivery_node_id()
+
+                    if node_next_delivery_order == node_vehicle:
+                        is_at_delivery_node = True
+                        break  # Found a match, no need to check other orders
+                except KeyError:
+                    continue  # Order not found, skip it
+
+        if is_at_delivery_node:
+            # The constraint is satisfied, so we don't return any invalidations.
+            return []
+
+        # If no orders or the vehicle is not at a delivery node for any of them, mask the actions.
+        actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+        actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+        return list(actions_by_entity.intersection(actions_by_type))
 
 
 class OrderRequestAssignabilityConstraint(Constraint):
