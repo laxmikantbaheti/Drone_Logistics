@@ -150,8 +150,8 @@ class Drone(Vehicle):
         self.battery_level -= battery_consumed
         self.battery_level = max(0.0, self.battery_level)
 
-        if self.battery_level <= 0.0 and self.status != "broken_down":
-            self.status = "broken_down"
+        # if self.battery_level <= 0.0 and self.status != "broken_down":
+        #     self.status = "broken_down"
 
     def charge(self, p_time_passed: float):
         if self.status == "charging":

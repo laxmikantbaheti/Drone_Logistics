@@ -102,7 +102,8 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
     C_ACTIONS_AFFECTED = [SimulationActions.UNLOAD_TRUCK_ACTION,
                           SimulationActions.UNLOAD_DRONE_ACTION,
-                          SimulationActions.DRONE_LAND]
+                          SimulationActions.DRONE_LAND,
+                          SimulationActions.DRONE_LAUNCH]
 
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
         invalidation_idx = []
@@ -136,6 +137,46 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
         actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
         return list(actions_by_entity.intersection(actions_by_type))
 
+
+class VehicleAtPickUpNodeConstraint(Constraint):
+    C_NAME = "VehicleAtPickUpNodeConstraint"
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
+    C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION,
+                          SimulationActions.LOAD_DRONE_ACTION,
+                          SimulationActions.DRONE_LAUNCH,
+                          SimulationActions.DRONE_LAND]
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+        invalidation_idx = []
+        if not (isinstance(p_entity, Drone) or isinstance(p_entity, Truck)):
+            raise TypeError("Vehicle At Delivery Node Constraint can only be applied to a vehicle entity.")
+
+        vehicle = p_entity
+        node_vehicle = vehicle.get_current_node()
+        pickup_orders = vehicle.get_pickup_orders()
+
+        # Check if the vehicle is at the delivery node for any of its delivery orders
+        is_at_pickup_node = False
+        if pickup_orders:
+            for order_obj in pickup_orders:
+                try:
+                    # order_obj = vehicle.global_state.get_entity("order", order_id)
+                    node_next_delivery_order = order_obj.get_delivery_node_id()
+
+                    if node_next_delivery_order == node_vehicle:
+                        is_at_pickup_node = True
+                        break  # Found a match, no need to check other orders
+                except KeyError:
+                    continue  # Order not found, skip it
+
+        if is_at_pickup_node:
+            # The constraint is satisfied, so we don't return any invalidations.
+            return []
+
+        # If no orders or the vehicle is not at a delivery node for any of them, mask the actions.
+        actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+        actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+        return list(actions_by_entity.intersection(actions_by_type))
 
 class OrderRequestAssignabilityConstraint(Constraint):
     C_NAME = "OrderTripAssignabilityConstraint"
@@ -328,7 +369,7 @@ class ConsolidationConstraint(Constraint):
         vehicle = p_entity
 
         # Consolidation is only valid if the vehicle is not en-route and has assigned delivery orders.
-        is_ready_for_consolidation = (vehicle.status == "idle" and len(vehicle.delivery_orders) > 0)
+        is_ready_for_consolidation = (vehicle.status == "idle" and len(vehicle.pickup_orders) > 0)
 
         if not is_ready_for_consolidation:
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)

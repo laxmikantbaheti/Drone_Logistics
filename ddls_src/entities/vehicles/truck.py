@@ -139,8 +139,8 @@ class Truck(Vehicle):
         fuel_consumed = self.fuel_consumption_rate * abs(p_time_passed)
         self.fuel_level -= fuel_consumed
         self.fuel_level = max(0.0, self.fuel_level)
-        if self.fuel_level <= 0.0:
-            self.status = "broken_down"
+        # if self.fuel_level <= 0.0:
+        #     self.status = "broken_down"
 
     def _update_state(self):
         super()._update_state()

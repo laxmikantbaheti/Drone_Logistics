@@ -85,7 +85,7 @@ class SimulationActions:
     ACCEPT_ORDER = ActionType(name="ACCEPT_ORDER",
                               # params=[{'name': 'order_id', 'type': 'Order'}],
                               params=[{'name':'pick_up_drop', "type":"Node Pair"}],
-                              is_automatic=False,
+                              is_automatic=True,
                               handler="SupplyChainManager",
                               active=False)
 
