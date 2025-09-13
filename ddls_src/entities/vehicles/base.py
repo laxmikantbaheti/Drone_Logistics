@@ -298,8 +298,9 @@ class Vehicle(LogisticEntity, ABC):
 
     def assign_orders(self, p_orders: list):
         if p_orders:
-            self.delivery_orders.append(p_orders)
-            self.raise_state_change_event()  # <-- Added event trigger
+            for ord in p_orders:
+                self.delivery_orders.append(ord)
+                self.raise_state_change_event()  # <-- Added event trigger
             return True
 
     def unload_order(self, p_order):

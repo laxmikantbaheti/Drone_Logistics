@@ -1,6 +1,6 @@
 {
     "initial_time": 0.0,
-    "main_timestep_duration": 300.0,
+    "main_timestep_duration": 30.0,
     "simulation_end_time": 3600.0,
 
     "data_loader_config": {

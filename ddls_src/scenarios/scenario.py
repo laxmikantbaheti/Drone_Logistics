@@ -65,7 +65,7 @@ class LogisticsScenario(Scenario):
         # 1. Decision Phase
         self.log(self.C_LOG_TYPE_I, "Entering Decision Phase...")
 
-        while True:
+        while not all(self._system.get_masks()):
             current_state = self._system.get_state()
             # --- MODIFIED: Get the mask for the agent ---
             agent_mask = self._system.get_agent_mask()

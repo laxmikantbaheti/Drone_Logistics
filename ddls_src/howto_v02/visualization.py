@@ -18,7 +18,7 @@ def run_visual_demo():
 
     sim_config = {
         "initial_time": 0.0,
-        "main_timestep_duration": 300.0,
+        "main_timestep_duration": 60.0,
         "simulation_end_time": 7200.0, # Run for 2 hours
         "data_loader_config": {
             "generator_type": "json_file",
