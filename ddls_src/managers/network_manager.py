@@ -267,7 +267,7 @@ class NetworkManager(System):
 
             # Gather all pickup and delivery locations for assigned orders
             all_stops = []
-            for order in vehicle.delivery_orders:
+            for order in vehicle.pickup_orders:
                 # order = self.global_state.get_entity("order", order_id)
                 if order:
                     # A consolidated trip needs to visit pickup locations for orders not yet in cargo

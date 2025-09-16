@@ -129,7 +129,7 @@ class SupplyChainManager(System):
             if action_type == SimulationActions.CONSOLIDATE_FOR_TRUCK:
                 truck_id = action_kwargs['truck_id']
                 truck: 'Truck' = self.global_state.get_entity('truck', truck_id)
-                if truck and truck.status == 'idle' and len(truck.delivery_orders) > 0:
+                if truck and truck.status == 'idle' and len(truck.pickup_orders) > 0:
                     truck.consolidation_confirmed = True
                     self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Truck {truck_id}. Starting route.")
                     self.system.network_manager.route_for_assigned_orders(truck_id)
@@ -139,7 +139,7 @@ class SupplyChainManager(System):
             elif action_type == SimulationActions.CONSOLIDATE_FOR_DRONE:
                 drone_id = action_kwargs['drone_id']
                 drone: 'Drone' = self.global_state.get_entity('drone', drone_id)
-                if drone and drone.status == 'idle' and len(drone.delivery_orders) > 0:
+                if drone and drone.status == 'idle' and len(drone.pickup_orders) > 0:
                     drone.consolidation_confirmed = True
                     self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Drone {drone_id}. Starting route.")
                     self.system.network_manager.route_for_assigned_orders(drone_id)
