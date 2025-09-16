@@ -108,9 +108,9 @@ class Network:
         self.ax.clear()
 
         # 1. Draw the network graph
-        node_color_list = [self.node_colors.get(node, 'gray') for node in self.graph.nodes()]
-        nx.draw(self.graph, self.node_positions, ax=self.ax, node_color=node_color_list,
-                with_labels=True, node_size=250, font_size=8, arrows=True)
+        # node_color_list = [self.node_colors.get(node, 'gray') for node in self.graph.nodes()]
+        nx.draw(self.graph, self.node_positions, ax=self.ax, node_color='grey',
+                with_labels=True, node_size=100, font_size=8, arrows=True)
 
         # 2. Draw vehicles from GlobalState
         # Trucks

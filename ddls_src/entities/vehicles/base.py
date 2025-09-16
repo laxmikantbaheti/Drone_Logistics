@@ -263,8 +263,6 @@ class Vehicle(LogisticEntity, ABC):
 
         if self.route_progress >= 1.0:
             self.current_node_id = end_node_id
-            self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
-            self.raise_state_change_event()
             self.current_edge = None
             self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
             self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
