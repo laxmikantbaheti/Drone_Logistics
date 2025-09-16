@@ -183,7 +183,24 @@ class Vehicle(LogisticEntity, ABC):
 
 
         if action_type == SimulationActions.UNLOAD_TRUCK_ACTION:
-            pass
+            action_id = int(p_action.get_sorted_values()[0])
+            action_type = ActionType.get_by_id(action_id)
+            action_kwargs = p_action.data
+
+            if action_type == SimulationActions.LOAD_TRUCK_ACTION:
+                truck_id = action_kwargs["truck_id"]
+                order_id = action_kwargs["order_id"]
+                truck = self.global_state.get_entity("truck", truck_id)
+                order = self.global_state.get_entity("order", order_id)
+                if order not in truck.delivery_orders:
+                    raise ValueError(
+                        "The order is not in the cargo of the vehicle. The order is not in the delivery orders.")
+                else:
+                    truck.delivery_orders.remove(order)
+                    truck.remove_cargo(order)
+                    self.log(self.C_LOG_TYPE_I, f"{order_id} is unloaded from the truck {truck_id}.")
+                    self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
+                    self.raise_state_change_event()
 
         if action_type == SimulationActions.LOAD_DRONE_ACTION:
             pass
