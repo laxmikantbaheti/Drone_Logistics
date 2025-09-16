@@ -265,12 +265,12 @@ class Vehicle(LogisticEntity, ABC):
             self.current_node_id = end_node_id
             self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
             self.raise_state_change_event()
-            self.current_route.pop(0)
-            self.route_progress = 0.0
             self.current_edge = None
             self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
             self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
             self.raise_state_change_event()
+            self.current_route.pop(0)
+            self.route_progress = 0.0
             if not self.current_route or len(self.current_route) < 2:
                 self.status = "idle"
                 self.route_nodes = []
@@ -391,6 +391,7 @@ class Vehicle(LogisticEntity, ABC):
 
     def get_pickup_orders(self):
         return self.pickup_orders
+
 
 
 # -------------------------------------------------------------------------
