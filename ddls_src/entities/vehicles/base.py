@@ -8,9 +8,11 @@ from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
 
 from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.actions.action_mapping import truck_id
 from ddls_src.actions.base import SimulationActions
+from ddls_src.core.basics import LogisticsAction
 from ddls_src.entities.base import LogisticEntity
-
+from ddls_src.actions.base import SimulationActions, ActionType
 
 # Forward declaration for NetworkManager
 class NetworkManager:
@@ -29,7 +31,10 @@ class Vehicle(LogisticEntity, ABC):
 
     C_TRIP_STATE_IDLE = "Idle"
     C_TRIP_STATE_EN_ROUTE = "En Route"
-    C_VALID_TRIP_STATES = [C_TRIP_STATE_IDLE, C_TRIP_STATE_EN_ROUTE]
+    C_TRIP_STATE_HALT = "Halted"
+    C_TRIP_STATE_LOADING = "Loading"
+    C_TRIP_STATE_UNLOADING = "Unloading"
+    C_VALID_TRIP_STATES = [C_TRIP_STATE_IDLE, C_TRIP_STATE_EN_ROUTE, C_TRIP_STATE_HALT]
     C_DIM_TRIP_STATE = ["trip", "Trip Status", C_VALID_TRIP_STATES]
     C_DIM_AVAILABLE = ["ava", "Is Available", [True, False]]
     C_DIM_AT_NODE = ["node_bool", "At Node", [True, False]]
@@ -132,30 +137,72 @@ class Vehicle(LogisticEntity, ABC):
 
         self._update_state()
 
-    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+    def _process_action(self, p_action: LogisticsAction, p_t_step: timedelta = None) -> bool:
         """
         Processes a "go to node" action. Calculates and sets the vehicle's route.
         """
-        if self.status not in ["idle", "loading", "unloading"]:
-            self.log(self.C_LOG_TYPE_W,
-                     f'Vehicle {self.get_id()} is busy (status: {self.status}) and cannot start a new route.')
-            return False
+        # if self.status not in ["idle", "loading", "unloading"]:
+        #     self.log(self.C_LOG_TYPE_W,
+        #              f'Vehicle {self.get_id()} is busy (status: {self.status}) and cannot start a new route.')
+        #     return False
+        #
+        # target_node_id = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        #
+        # if self.current_node_id is None:
+        #     self.log(self.C_LOG_TYPE_E, f'Vehicle {self.get_id()} is en-route and cannot start a new route this way.')
+        #     return False
+        #
+        # path = self.network_manager.network.calculate_shortest_path(self.current_node_id, target_node_id,
+        #                                                             self.C_NAME.lower())
+        #
+        # if not path:
+        #     self.log(self.C_LOG_TYPE_W, f'No path found from {self.current_node_id} to {target_node_id}.')
+        #     return False
+        #
+        # self.set_route(path)
+        # return True
 
-        target_node_id = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        action_id = int(p_action.get_sorted_values()[0])
+        action_type = ActionType.get_by_id(action_id)
+        action_kwargs = p_action.data
 
-        if self.current_node_id is None:
-            self.log(self.C_LOG_TYPE_E, f'Vehicle {self.get_id()} is en-route and cannot start a new route this way.')
-            return False
+        if action_type == SimulationActions.LOAD_TRUCK_ACTION:
+            truck_id = action_kwargs["truck_id"]
+            order_id = action_kwargs["order_id"]
+            truck = self.global_state.get_entity("truck", truck_id)
+            order = self.global_state.get_entity("order", order_id)
+            if order not in truck.pick_up_orders:
+                raise ValueError("The order is not assigned to the vehicle. The order is not in the pick up orders.")
+            else:
+                truck.pick_up_orders.remove(order)
+                truck.delivery_orders.append(order)
+                truck.add_cargo(order)
+                self.log(self.C_LOG_TYPE_I, f"{order_id} is loaded in the truck {truck_id}.")
+                self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
+                self.raise_state_change_event()
 
-        path = self.network_manager.network.calculate_shortest_path(self.current_node_id, target_node_id,
-                                                                    self.C_NAME.lower())
 
-        if not path:
-            self.log(self.C_LOG_TYPE_W, f'No path found from {self.current_node_id} to {target_node_id}.')
-            return False
+        if action_type == SimulationActions.UNLOAD_TRUCK_ACTION:
+            pass
 
-        self.set_route(path)
-        return True
+        if action_type == SimulationActions.LOAD_DRONE_ACTION:
+            pass
+
+        if action_type == SimulationActions.UNLOAD_DRONE_ACTION:
+            pass
+
+        if action_type == SimulationActions.TRUCK_TO_NODE:
+            pass
+
+        if action_type == SimulationActions.DRONE_TO_NODE:
+            pass
+
+        if action_type == SimulationActions.DRONE_LAUNCH:
+            pass
+
+        if action_type == SimulationActions.DRONE_LAND:
+            pass
+
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
@@ -199,10 +246,13 @@ class Vehicle(LogisticEntity, ABC):
 
         if self.route_progress >= 1.0:
             self.current_node_id = end_node_id
+            self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
+            self.raise_state_change_event()
             self.current_route.pop(0)
             self.route_progress = 0.0
             self.current_edge = None
             self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
+            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
             self.raise_state_change_event()
             if not self.current_route or len(self.current_route) < 2:
                 self.status = "idle"
@@ -253,16 +303,16 @@ class Vehicle(LogisticEntity, ABC):
             self._state.set_value(state_space.get_dim_by_name('loc x').get_id(), self.current_location_coords[0])
             self._state.set_value(state_space.get_dim_by_name('loc y').get_id(), self.current_location_coords[1])
 
-    def add_cargo(self, order_id: int):
+    def add_cargo(self, order: int):
         """Adds a package to the vehicle's cargo manifest."""
-        if order_id not in self.cargo_manifest:
-            self.cargo_manifest.append(order_id)
+        if order not in self.cargo_manifest:
+            self.cargo_manifest.append(order)
             self.raise_state_change_event()
 
-    def remove_cargo(self, order_id: int):
+    def remove_cargo(self, order: int):
         """Removes a package from the vehicle's cargo manifest."""
-        if order_id in self.cargo_manifest:
-            self.cargo_manifest.remove(order_id)
+        if order in self.cargo_manifest:
+            self.cargo_manifest.remove(order)
             self.raise_state_change_event()
 
     def set_route(self, route: List[int]):
