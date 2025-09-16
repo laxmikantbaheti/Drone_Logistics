@@ -92,7 +92,7 @@ class Drone(Vehicle):
     def _reset(self, p_seed=None):
         super()._reset(p_seed)
         self.battery_level = self.initial_battery
-        self._update_state()
+        # self._update_state()
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
@@ -160,7 +160,7 @@ class Drone(Vehicle):
             self.battery_level = min(self.battery_level, self.max_battery_capacity)
 
     def _update_state(self):
-        super()._update_state()
+        # super()._update_state()
         state_space = self._state.get_related_set()
         self._state.set_value(state_space.get_dim_by_name("battery_level").get_id(), self.battery_level)
 

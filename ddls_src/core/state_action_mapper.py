@@ -369,7 +369,8 @@ class ConsolidationConstraint(Constraint):
         vehicle = p_entity
 
         # Consolidation is only valid if the vehicle is not en-route and has assigned delivery orders.
-        is_ready_for_consolidation = (vehicle.status == "idle" and len(vehicle.pickup_orders) > 0)
+        is_ready_for_consolidation = (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) == vehicle.C_TRIP_STATE_IDLE
+                                      and len(vehicle.pickup_orders) > 0)
 
         if not is_ready_for_consolidation:
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)

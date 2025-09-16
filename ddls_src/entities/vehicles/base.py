@@ -121,6 +121,7 @@ class Vehicle(LogisticEntity, ABC):
         Resets the vehicle to its initial state at its starting node.
         """
         self.status = "idle"
+        self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
         self.consolidation_confirmed = False
         self.current_node_id = self.start_node_id
         self.cargo_manifest = []
@@ -135,7 +136,7 @@ class Vehicle(LogisticEntity, ABC):
         else:
             self.current_location_coords = (0.0, 0.0)
 
-        self._update_state()
+        # self._update_state()
 
     def _process_action(self, p_action: LogisticsAction, p_t_step: timedelta = None) -> bool:
         """
@@ -228,10 +229,11 @@ class Vehicle(LogisticEntity, ABC):
         if p_action is not None:
             self._process_action(p_action, p_t_step)
 
-        if self.status == "en_route" and self.current_route and len(self.current_route) >= 2:
+        if (self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) == self.C_TRIP_STATE_EN_ROUTE
+                and self.current_route and len(self.current_route) >= 2):
             self._move_along_route(p_t_step.total_seconds())
 
-        self._update_state()
+        # self._update_state()
         return self._state
 
     def _move_along_route(self, delta_time: float):
@@ -303,20 +305,21 @@ class Vehicle(LogisticEntity, ABC):
         """
         Synchronizes internal attributes with the formal MLPro state object.
         """
-        state_space = self._state.get_related_set()
-        status_map = {"idle": 0, "en_route": 1, "loading": 2, "unloading": 3, "charging": 4, "maintenance": 5,
-                      "broken_down": 6}
-        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_TRIP_STATE[0]).get_id(),
-                              status_map.get(self.status, 0))
-        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_AT_NODE[0]).get_id(),
-                              self.current_node_id if self.current_node_id is not None else -1)
-        self._state.set_value(state_space.get_dim_by_name(self.C_DIM_CURRENT_CARGO[0]).get_id(),
-                              len(self.cargo_manifest))
-
-        # New: Update the location coordinates in the state
-        if self.current_location_coords:
-            self._state.set_value(state_space.get_dim_by_name('loc x').get_id(), self.current_location_coords[0])
-            self._state.set_value(state_space.get_dim_by_name('loc y').get_id(), self.current_location_coords[1])
+        # state_space = self._state.get_related_set()
+        # status_map = {"idle": 0, "en_route": 1, "loading": 2, "unloading": 3, "charging": 4, "maintenance": 5,
+        #               "broken_down": 6}
+        # self._state.set_value(state_space.get_dim_by_name(self.C_DIM_TRIP_STATE[0]).get_id(),
+        #                       status_map.get(self.status, 0))
+        # self._state.set_value(state_space.get_dim_by_name(self.C_DIM_AT_NODE[0]).get_id(),
+        #                       self.current_node_id if self.current_node_id is not None else -1)
+        # self._state.set_value(state_space.get_dim_by_name(self.C_DIM_CURRENT_CARGO[0]).get_id(),
+        #                       len(self.cargo_manifest))
+        #
+        # # New: Update the location coordinates in the state
+        # if self.current_location_coords:
+        #     self._state.set_value(state_space.get_dim_by_name('loc x').get_id(), self.current_location_coords[0])
+        #     self._state.set_value(state_space.get_dim_by_name('loc y').get_id(), self.current_location_coords[1])
+        pass
 
     def add_cargo(self, order: int):
         """Adds a package to the vehicle's cargo manifest."""
@@ -340,6 +343,7 @@ class Vehicle(LogisticEntity, ABC):
             self.current_route = []
             self.route_nodes = []
             self.status = "idle"
+            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
             # FIX: An idle vehicle must be at a node. Restore its last known location.
             # In this context, the last known valid location is the start of the previous route.
             if self.current_node_id is None and self.route_nodes:
@@ -355,7 +359,7 @@ class Vehicle(LogisticEntity, ABC):
         self.raise_state_change_event()
         self.route_progress = 0.0
         self.current_node_id = None
-        self._update_state()
+        # self._update_state()
         self.raise_state_change_event()
 
     def get_current_location(self):

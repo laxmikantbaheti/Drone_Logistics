@@ -70,7 +70,7 @@ class Truck(Vehicle):
     def _reset(self, p_seed=None):
         super()._reset(p_seed)
         self.fuel_level = self.initial_fuel
-        self._update_state()
+        # self._update_state()
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
@@ -85,7 +85,7 @@ class Truck(Vehicle):
         # Call parent's simulation for movement
         super()._simulate_reaction(p_state, None, p_t_step)
 
-        self._update_state()
+        # self._update_state()
         return self._state
 
     def _check_and_perform_node_actions(self):
@@ -143,7 +143,7 @@ class Truck(Vehicle):
         #     self.status = "broken_down"
 
     def _update_state(self):
-        super()._update_state()
+        # super()._update_state()
         state_space = self._state.get_related_set()
         self._state.set_value(state_space.get_dim_by_name("fuel_level").get_id(), self.fuel_level)
 
