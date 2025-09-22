@@ -92,7 +92,9 @@ class Vehicle(LogisticEntity, ABC):
 
         self._state = State(self._state_space)
         self.delivery_orders = []
+        self.delivery_node_ids = []
         self.pickup_orders = []
+        self.pickup_node_ids = []
         self.reset()
         self.consolidation_confirmed: bool = False
 
@@ -133,8 +135,12 @@ class Vehicle(LogisticEntity, ABC):
         # New: Reset coordinates to the start node
         if self.global_state and self.start_node_id is not None:
             self.current_location_coords = self.global_state.get_entity('node', self.start_node_id).coords
+            self.update_state_value_by_dim_name("loc x", self.current_location_coords[0])
+            self.update_state_value_by_dim_name("loc y", self.current_location_coords[1])
         else:
             self.current_location_coords = (0.0, 0.0)
+            self.update_state_value_by_dim_name("loc x", self.current_location_coords[0])
+            self.update_state_value_by_dim_name("loc y", self.current_location_coords[1])
 
         # self._update_state()
 
@@ -172,15 +178,16 @@ class Vehicle(LogisticEntity, ABC):
             order_id = action_kwargs["order_id"]
             truck = self.global_state.get_entity("truck", truck_id)
             order = self.global_state.get_entity("order", order_id)
-            if order not in truck.pick_up_orders:
+            if order not in truck.pickup_orders:
                 raise ValueError("The order is not assigned to the vehicle. The order is not in the pick up orders.")
             else:
-                truck.pick_up_orders.remove(order)
+                truck.pickup_orders.remove(order)
                 truck.delivery_orders.append(order)
                 truck.add_cargo(order)
                 self.log(self.C_LOG_TYPE_I, f"{order_id} is loaded in the truck {truck_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
                 self.raise_state_change_event()
+                return True
 
 
         if action_type == SimulationActions.UNLOAD_TRUCK_ACTION:
@@ -199,10 +206,11 @@ class Vehicle(LogisticEntity, ABC):
                 else:
                     truck.delivery_orders.remove(order)
                     truck.remove_cargo(order)
+                    order.set_enroute()
                     self.log(self.C_LOG_TYPE_I, f"{order_id} is unloaded from the truck {truck_id}.")
                     self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
                     self.raise_state_change_event()
-
+                    return True
         if action_type == SimulationActions.LOAD_DRONE_ACTION:
             pass
 
@@ -266,9 +274,12 @@ class Vehicle(LogisticEntity, ABC):
         if self.route_progress >= 1.0:
             self.current_node_id = end_node_id
             self.current_edge = None
-            self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
-            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
-            self.raise_state_change_event()
+            if end_node_id in self.pickup_node_ids or end_node_id in self.delivery_node_ids:
+                self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
+                self.raise_state_change_event()
+            else:
+                self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
+
             self.current_route.pop(0)
             self.route_progress = 0.0
             if not self.current_route or len(self.current_route) < 2:
@@ -294,6 +305,8 @@ class Vehicle(LogisticEntity, ABC):
         new_y = start_y + (end_y - start_y) * progress
 
         self.current_location_coords = (new_x, new_y)
+        self.update_state_value_by_dim_name("loc x", new_x)
+        self.update_state_value_by_dim_name('loc y', new_y)
 
     def update_energy(self, p_time_passed: float):
         """
@@ -372,6 +385,7 @@ class Vehicle(LogisticEntity, ABC):
         if p_orders:
             for ord in p_orders:
                 self.pickup_orders.append(ord)
+                self.pickup_node_ids.append(ord.get_pickup_node_id())
                 self.raise_state_change_event()  # <-- Added event trigger
             return True
 

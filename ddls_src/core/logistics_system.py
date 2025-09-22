@@ -111,6 +111,7 @@ class LogisticsSystem(System, EventManager):
         for entity_dict in all_entity_dicts:
             for entity in entity_dict.values():
                 entity.global_state = self.global_state
+                entity.reset()
 
         self.constraint_manager = ConstraintManager(action_index=self.action_index, action_map=self.action_map)
         self.setup_events()

@@ -159,10 +159,10 @@ class Drone(Vehicle):
             self.battery_level += battery_charged
             self.battery_level = min(self.battery_level, self.max_battery_capacity)
 
-    def _update_state(self):
-        # super()._update_state()
-        state_space = self._state.get_related_set()
-        self._state.set_value(state_space.get_dim_by_name("battery_level").get_id(), self.battery_level)
+    # def _update_state(self):
+    #     # super()._update_state()
+    #     state_space = self._state.get_related_set()
+    #     self._state.set_value(state_space.get_dim_by_name("battery_level").get_id(), self.battery_level)
 
     def calculate_remaining_range(self):
         return 100

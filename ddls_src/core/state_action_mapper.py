@@ -161,9 +161,9 @@ class VehicleAtPickUpNodeConstraint(Constraint):
             for order_obj in pickup_orders:
                 try:
                     # order_obj = vehicle.global_state.get_entity("order", order_id)
-                    node_next_delivery_order = order_obj.get_delivery_node_id()
+                    node_next_pickup_order = order_obj.get_pickup_node_id()
 
-                    if node_next_delivery_order == node_vehicle:
+                    if node_next_pickup_order == node_vehicle:
                         is_at_pickup_node = True
                         break  # Found a match, no need to check other orders
                 except KeyError:
@@ -171,7 +171,12 @@ class VehicleAtPickUpNodeConstraint(Constraint):
 
         if is_at_pickup_node:
             # The constraint is satisfied, so we don't return any invalidations.
-            return []
+            actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+            actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+            relevant_orders = [o.get_id() for o in vehicle.pickup_orders if o.get_pickup_node_id()==node_vehicle]
+            actions_to_mask = actions_by_entity.intersection(actions_by_type)
+            actions_to_mask = list(actions_to_mask.difference(relevant_orders))
+            return actions_to_mask
 
         # If no orders or the vehicle is not at a delivery node for any of them, mask the actions.
         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
@@ -378,6 +383,44 @@ class ConsolidationConstraint(Constraint):
             invalidation_idx = list(actions_by_type.intersection(actions_by_entity))
 
         return invalidation_idx
+
+
+# class LoadUnloadConstraint(Constraint):
+#     C_NAME = "LoadUnloadConstraint"
+#     C_ASSOCIATED_ENTITIES = ["Order"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_DRONE_ACTION,
+#                           SimulationActions.LOAD_TRUCK_ACTION,
+#                           SimulationActions.UNLOAD_DRONE_ACTION,
+#                           SimulationActions.UNLOAD_TRUCK_ACTION]
+#
+#
+#     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+#
+#         invalidation_idx = []
+#         constraint_satisfied = False
+#
+#         if not isinstance(p_entity, Order):
+#             raise TypeError("The load unload constraint is only to be monitored for the state of the Order entitties.")
+#
+#         order = p_entity
+#         vehicle_id = p_entity.get_assigned_vehicle_id()
+#         if order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_STATUS[0]) in [order.C_STATUS_EN_ROUTE,
+#                                                                                  order.C_STATUS_FAILED,
+#                                                                                  order.C_STATUS_DELIVERED]:
+#
+#             actions_by_entity = p_action_index.actions_involving_entity["Order", order.get_id()]
+#             actions_by_type = p_action_index.get_actions_of_type([SimulationActions.LOAD_DRONE_ACTION,
+#                                                                   SimulationActions.UNLOAD_DRONE_ACTION,
+#                                                                   SimulationActions.LOAD_TRUCK_ACTION,
+#                                                                   SimulationActions.UNLOAD_TRUCK_ACTION])
+#
+#             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+#
+#             return invalidation_idx
+#
+#         return invalidation_idx
+
+
 class ConstraintManager(EventManager):
 
     C_NAME = "Constraint Manager"

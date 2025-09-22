@@ -114,24 +114,24 @@ class Truck(Vehicle):
                     self._load_order(order_id)
                     return  # Only do one action per cycle
 
-    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
-        if self.global_state is None: return False
-
-        # action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
-        action_value = p_action.get_sorted_values()[0]
-        action_kwargs = p_action.get_kwargs()
-
-        if action_value == 0:  # GO_TO_NODE
-            return super()._process_action(p_action, p_t_step)
-
-        try:
-            order_id = action_kwargs['order_id']
-            if action_value == 1:  # LOAD_ORDER
-                return self._load_order(order_id)
-            elif action_value == 2:  # UNLOAD_ORDER
-                return self._unload_order(order_id)
-        except KeyError:
-            return False
+    # def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+    #     if self.global_state is None: return False
+    #
+    #     # action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+    #     action_value = p_action.get_sorted_values()[0]
+    #     action_kwargs = p_action.get_kwargs()
+    #
+    #     if action_value == 0:  # GO_TO_NODE
+    #         return super()._process_action(p_action, p_t_step)
+    #
+    #     try:
+    #         order_id = action_kwargs['order_id']
+    #         if action_value == 1:  # LOAD_ORDER
+    #             return self._load_order(order_id)
+    #         elif action_value == 2:  # UNLOAD_ORDER
+    #             return self._unload_order(order_id)
+    #     except KeyError:
+    #         return False
 
         return False
 
@@ -142,10 +142,10 @@ class Truck(Vehicle):
         # if self.fuel_level <= 0.0:
         #     self.status = "broken_down"
 
-    def _update_state(self):
-        # super()._update_state()
-        state_space = self._state.get_related_set()
-        self._state.set_value(state_space.get_dim_by_name("fuel_level").get_id(), self.fuel_level)
+    # def _update_state(self):
+    #     # super()._update_state()
+    #     state_space = self._state.get_related_set()
+    #     self._state.set_value(state_space.get_dim_by_name("fuel_level").get_id(), self.fuel_level)
 
     def _load_order(self, order_id: int) -> bool:
         try:

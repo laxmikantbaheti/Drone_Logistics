@@ -382,4 +382,5 @@ if __name__ == "__main__":
     action_index = ActionIndex(mock_gs, maps)
     print(action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK]))
     print(action_index.get_actions_of_type([SimulationActions.DRONE_TO_NODE]))
+    print(action_index.actions_involving_entity["Order", 0])
     print([action.name for action in actions.get_actions_by_manager(p_manager_name='NetworkManager')])

@@ -5,6 +5,9 @@ from datetime import timedelta
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
 
+from ddls_src.actions.action_mapping import truck_id
+from ddls_src.actions.base import SimulationActions, ActionType
+from ddls_src.core.basics import LogisticsAction
 
 # Forward declarations for GlobalState and refactored entities
 class GlobalState: pass
@@ -83,37 +86,57 @@ class FleetManager(System):
         self._update_state()
         return self._state
 
-    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+    def _process_action(self, p_action: LogisticsAction, p_t_step: timedelta = None) -> bool:
         """
         Processes a command by dispatching it to the correct vehicle entity.
         """
-        action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
-        action_kwargs = p_action.get_kwargs()
+        action_id = int(p_action.get_sorted_values()[0])
+        action_type = ActionType.get_by_id(action_id)
+        action_kwargs = p_action.data
+        # action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        # action_kwargs = p_action.get_kwargs()
 
         try:
-            if action_value == 0:  # LOAD_TRUCK
-                truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
-                truck_action = Action(p_action_space=truck.get_action_space(), p_values=[1],
-                                      **action_kwargs)  # 1 = LOAD_ORDER
-                return truck.process_action(truck_action)
+            if action_type == SimulationActions.LOAD_TRUCK_ACTION:
+                truck_id = action_kwargs["truck_id"]
+                truck = self.global_state.get_entity('truck', truck_id)
+                return truck.process_action(p_action)
 
-            elif action_value == 1:  # UNLOAD_TRUCK
-                truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
-                truck_action = Action(p_action_space=truck.get_action_space(), p_values=[2],
-                                      **action_kwargs)  # 2 = UNLOAD_ORDER
-                return truck.process_action(truck_action)
+            # if action_value == 0:  # LOAD_TRUCK
+            #     truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
+            #     truck_action = Action(p_action_space=truck.get_action_space(), p_values=[1],
+            #                           **action_kwargs)  # 1 = LOAD_ORDER
+            #     return truck.process_action(truck_action)
 
-            elif action_value == 2:  # LOAD_DRONE
-                drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
-                drone_action = Action(p_action_space=drone.get_action_space(), p_values=[1],
-                                      **action_kwargs)  # 1 = LOAD_ORDER
-                return drone.process_action(drone_action)
+            elif action_type == SimulationActions.UNLOAD_TRUCK_ACTION:
+                truck_id = action_kwargs['truck_id']
+                truck = self.global_state.get_entity("truck", truck_id)
+                return truck.process_action(p_action)
 
-            elif action_value == 3:  # UNLOAD_DRONE
-                drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
-                drone_action = Action(p_action_space=drone.get_action_space(), p_values=[2],
-                                      **action_kwargs)  # 2 = UNLOAD_ORDER
-                return drone.process_action(drone_action)
+            # elif action_value == 1:  # UNLOAD_TRUCK
+            #     truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
+            #     truck_action = Action(p_action_space=truck.get_action_space(), p_values=[2],
+            #                           **action_kwargs)  # 2 = UNLOAD_ORDER
+            #     return truck.process_action(truck_action)
+
+            elif action_type == SimulationActions.LOAD_DRONE_ACTION:
+                drone = self.global_state.get_entity("drone", action_kwargs["drone_id"])
+                return drone.process_action(p_action)
+
+            # elif action_value == 2:  # LOAD_DRONE
+            #     drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
+            #     drone_action = Action(p_action_space=drone.get_action_space(), p_values=[1],
+            #                           **action_kwargs)  # 1 = LOAD_ORDER
+            #     return drone.process_action(drone_action)
+
+            elif action_type == SimulationActions.UNLOAD_DRONE_ACTION:
+                drone = self.global_state.get_entity("drone", action_kwargs["drone_id"])
+                return drone.process_action(p_action)
+            # elif action_value == 3:  # UNLOAD_DRONE
+            #     drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
+            #     drone_action = Action(p_action_space=drone.get_action_space(), p_values=[2],
+            #                           **action_kwargs)  # 2 = UNLOAD_ORDER
+            #     return drone.process_action(drone_action)
 
         except KeyError as e:
             self.log(self.C_LOG_TYPE_E, f"Action parameter missing: {e}")

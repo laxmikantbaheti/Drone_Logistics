@@ -153,6 +153,8 @@ class Order(LogisticEntity):
         self.assigned_vehicle_id = vehicle_id
         self.status = "assigned"
         self.update_state_value_by_dim_name(self.C_DIM_ASSIGNED_VEHICLE[0], vehicle_id)
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
+        self.raise_state_change_event()
         return True
 
     def unassign_vehicle(self):
@@ -161,10 +163,18 @@ class Order(LogisticEntity):
             self.status = "flagged_re_delivery"
         self._update_state()
 
+    def get_assigned_vehicle_id(self):
+        if self.assigned_vehicle_id:
+            return self.assigned_vehicle_id
+
     def assign_micro_hub(self, micro_hub_id: int):
         self.assigned_micro_hub_id = micro_hub_id
         self.status = "at_micro_hub"
         self._update_state()
+
+    def set_enroute(self):
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)
+        self.raise_state_change_event()
 
     def get_SLA_remaining(self, current_time: float) -> float:
         return self.SLA_deadline - current_time
@@ -177,3 +187,6 @@ class Order(LogisticEntity):
 
     def get_global_state(self):
         return self.global_state
+
+    def __repr__(self):
+        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id})"
