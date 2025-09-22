@@ -175,10 +175,12 @@ class VehicleAtPickUpNodeConstraint(Constraint):
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             relevant_orders = [o.get_id() for o in vehicle.pickup_orders if o.get_pickup_node_id()==node_vehicle]
             actions_by_order = []
+            relevant_actions_by_order = []
             for o in relevant_orders:
-                actions_by_order.extend(list(p_action_index.actions_involving_entity["Order", o]))
+                actions_by_order = p_action_index.actions_involving_entity["Order", o]
+                relevant_actions_by_order.extend(actions_by_order.intersection(actions_by_type))
             actions_to_mask = actions_by_entity.intersection(actions_by_type)
-            actions_to_mask = list(actions_to_mask.difference(actions_by_order))
+            actions_to_mask = list(actions_to_mask.difference(relevant_actions_by_order))
             return actions_to_mask
 
         # If no orders or the vehicle is not at a delivery node for any of them, mask the actions.
@@ -378,8 +380,9 @@ class ConsolidationConstraint(Constraint):
         vehicle = p_entity
 
         # Consolidation is only valid if the vehicle is not en-route and has assigned delivery orders.
-        is_ready_for_consolidation = (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) == vehicle.C_TRIP_STATE_IDLE
-                                      and len(vehicle.pickup_orders) > 0)
+        is_ready_for_consolidation = (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0])
+                                      in [vehicle.C_TRIP_STATE_IDLE, vehicle.C_TRIP_STATE_HALT]
+                                      and (len(vehicle.pickup_orders) > 0 or p_entity.get_current_cargo_size() > 0))
 
         if not is_ready_for_consolidation:
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
