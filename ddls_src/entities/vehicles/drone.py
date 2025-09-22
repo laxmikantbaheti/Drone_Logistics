@@ -118,25 +118,26 @@ class Drone(Vehicle):
         self._update_state()
         return self._state
 
-    def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
-        if self.global_state is None: return False
+    # def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
+        # if self.global_state is None: return False
+        #
+        # action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
+        # action_kwargs = p_action.get_kwargs()
+        #
+        # if action_value == 0:  # GO_TO_NODE
+        #     return super()._process_action(p_action, p_t_step)
+        #
+        # try:
+        #     order_id = action_kwargs['order_id']
+        #     if action_value == 1:  # LOAD_ORDER
+        #         return self._load_order(order_id)
+        #     elif action_value == 2:  # UNLOAD_ORDER
+        #         return self._unload_order(order_id)
+        # except KeyError:
+        #     return False
+        #
+        # return False
 
-        action_value = p_action.get_elem(self._action_space.get_dim_ids()[0]).get_value()
-        action_kwargs = p_action.get_kwargs()
-
-        if action_value == 0:  # GO_TO_NODE
-            return super()._process_action(p_action, p_t_step)
-
-        try:
-            order_id = action_kwargs['order_id']
-            if action_value == 1:  # LOAD_ORDER
-                return self._load_order(order_id)
-            elif action_value == 2:  # UNLOAD_ORDER
-                return self._unload_order(order_id)
-        except KeyError:
-            return False
-
-        return False
 
     def update_energy(self, p_time_passed: float):
         if self.status == "en_route":

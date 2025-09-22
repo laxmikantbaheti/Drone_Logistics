@@ -143,7 +143,7 @@ class SimulationActions:
                               is_automatic=True,
                               handler="NetworkManager")
 
-    DRONE_LAND = ActionType(name="DRONE_LANDING_ACTION",
+    DRONE_LAND = ActionType(name="LAND_DRONE",
                             params=[{'name': 'drone_id', 'type': 'Drone'}],
                             is_automatic=True,
                             handler="NetworkManager")

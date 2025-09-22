@@ -174,14 +174,18 @@ class VehicleAtPickUpNodeConstraint(Constraint):
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
             relevant_orders = [o.get_id() for o in vehicle.pickup_orders if o.get_pickup_node_id()==node_vehicle]
+            actions_by_order = []
+            for o in relevant_orders:
+                actions_by_order.extend(list(p_action_index.actions_involving_entity["Order", o]))
             actions_to_mask = actions_by_entity.intersection(actions_by_type)
-            actions_to_mask = list(actions_to_mask.difference(relevant_orders))
+            actions_to_mask = list(actions_to_mask.difference(actions_by_order))
             return actions_to_mask
 
         # If no orders or the vehicle is not at a delivery node for any of them, mask the actions.
         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
         actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
-        return list(actions_by_entity.intersection(actions_by_type))
+        actions_to_mask = actions_by_entity.intersection(actions_by_type)
+        return list(actions_to_mask)
 
 class OrderRequestAssignabilityConstraint(Constraint):
     C_NAME = "OrderTripAssignabilityConstraint"
