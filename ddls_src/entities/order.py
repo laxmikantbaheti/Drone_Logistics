@@ -47,7 +47,7 @@ class Order(LogisticEntity):
                  p_id: int,
                  p_name: str = '',
                  p_visualize: bool = False,
-                 p_logging=True,
+                 p_logging=False,
                  **p_kwargs):
         """
         Initializes an Order system.

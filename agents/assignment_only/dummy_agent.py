@@ -11,7 +11,7 @@ class AssignmentAgent(Model):
     """
     C_NAME = 'AssignmentAgent'
 
-    def __init__(self, p_logging=True):
+    def __init__(self, p_logging=False):
         super().__init__(p_ada=False, p_logging=p_logging)
         self._action_space = None
         self._no_op_idx = -1

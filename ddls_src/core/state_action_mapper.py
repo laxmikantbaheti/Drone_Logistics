@@ -39,6 +39,9 @@ class Constraint(ABC, EventManager):
     C_NAME = None
     C_EVENT_CONSTRAINT_UPDATE = "ConstraintUpdate"
 
+    def __init__(self):
+        EventManager.__init__(self, p_logging=False)
+
     def raise_constraint_change_event(self, p_entities, p_effect):
         p_event_data = [p_entities, p_effect]
         self._raise_event(p_event_id=Constraint.C_EVENT_CONSTRAINT_UPDATE,
@@ -437,7 +440,7 @@ class ConstraintManager(EventManager):
                  action_index: ActionIndex,
                  action_map):
 
-        EventManager.__init__(self)
+        EventManager.__init__(self, p_logging=False)
         # self.constraint_config = p_entity_constraint_config.copy()
         # self.entity_constraints = {}
         # constraints = set()

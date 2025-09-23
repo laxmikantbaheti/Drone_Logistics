@@ -49,7 +49,7 @@ def run_framework_demo():
     # 3. Instantiate the Scenario, passing the configuration to it.
     scenario = LogisticsScenario(p_cycle_limit=200, # <-- Increased cycle limit for larger scenario
                                  p_visualize=False,
-                                 p_logging=True,
+                                 p_logging=False,
                                  config=sim_config)
 
     # 4. Run the scenario

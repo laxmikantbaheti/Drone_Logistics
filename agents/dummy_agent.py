@@ -11,7 +11,7 @@ class DummyAgent(Model):
     """
     C_NAME = 'DummyAgent'
 
-    def __init__(self, p_logging=True):
+    def __init__(self, p_logging=False):
         self._no_op_idx = -1
         super().__init__(p_ada=False, p_logging=p_logging)
 

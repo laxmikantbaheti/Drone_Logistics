@@ -43,7 +43,7 @@ class LogisticsSystem(System, EventManager):
                  p_id=None,
                  p_name: str = '',
                  p_visualize: bool = False,
-                 p_logging=True,
+                 p_logging=False,
                  **p_kwargs):
 
         self._config = p_kwargs.get('config', {})
@@ -157,14 +157,14 @@ class LogisticsSystem(System, EventManager):
         while True:
             automatic_actions_to_take = self._get_automatic_actions()
             if not automatic_actions_to_take:
-                self.log(self.C_LOG_TYPE_I, f"Auto-action loop stable after {i} iterations.")
+                print(f"Auto-action loop stable after {i} iterations.")
                 break
             auto_action_tuple = automatic_actions_to_take[0]
-            self.log(self.C_LOG_TYPE_I, f"  - Auto Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
+            print(f"  - Auto Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
             self.action_manager.execute_action(auto_action_tuple)
             i += 1
             if i > 20:  # Safety break
-                self.log(self.C_LOG_TYPE_W, "Auto-action loop exceeded safety limit of 20 iterations.")
+                print("Auto-action loop exceeded safety limit of 20 iterations.")
                 break
 
     def process_action(self, p_action: LogisticsAction):
@@ -174,7 +174,7 @@ class LogisticsSystem(System, EventManager):
         action_tuple = self._reverse_action_map.get(action_index)
 
         if action_tuple and action_tuple[0] != SimulationActions.NO_OPERATION:
-            self.log(self.C_LOG_TYPE_I, f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
+            print(f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
             action_processed = self.action_manager.execute_action(action_tuple)
 
         self._run_automatic_action_loop()
@@ -271,7 +271,7 @@ if __name__ == "__main__":
 
     logistics_system = LogisticsSystem(p_id='validation_sys',
                                        p_visualize=False,
-                                       p_logging=True,
+                                       p_logging=False,
                                        config=sim_config)
 
     print("\n--- Running simulation for 20 cycles with Dummy Agent Logic ---")

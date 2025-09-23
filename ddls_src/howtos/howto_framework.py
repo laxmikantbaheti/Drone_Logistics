@@ -33,7 +33,7 @@ def run_framework_demo():
     # The scenario will handle the setup of the LogisticsSystem internally.
     scenario = LogisticsScenario(p_cycle_limit=15,
                                  p_visualize=False,
-                                 p_logging=True,
+                                 p_logging=False,
                                  config=sim_config)
 
     # 3. Run the scenario

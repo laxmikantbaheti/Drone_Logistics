@@ -25,7 +25,7 @@ class AssignmentScenario(Scenario):
                  p_mode=Mode.C_MODE_SIM,
                  p_cycle_limit=100,
                  p_visualize: bool = False,
-                 p_logging=True,
+                 p_logging=False,
                  **p_kwargs):
         self._config = p_kwargs.pop('config', {})
         self._system: LogisticsSystem = None

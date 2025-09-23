@@ -39,7 +39,7 @@ class NetworkManager(System):
                  p_id=None,
                  p_name: str = '',
                  p_visualize: bool = False,
-                 p_logging=True,
+                 p_logging=False,
                  **p_kwargs):
         """
         Initializes the NetworkManager system.
@@ -249,7 +249,8 @@ class NetworkManager(System):
     def route_for_assigned_orders(self, vehicle_id: int):
         """
         Calculates a multi-stop tour for a vehicle based on all assigned orders.
-        The route includes both pickup and delivery locations.
+        The route includes pickups for new orders and deliveries for all orders
+        (newly picked up and already in cargo).
         """
         try:
             if vehicle_id in self.global_state.trucks:
@@ -265,16 +266,25 @@ class NetworkManager(System):
             full_path = [current_node]
             visited_nodes = {current_node}
 
-            # Gather all pickup and delivery locations for assigned orders
+            # Gather all necessary pickup and delivery locations
             all_stops = []
+
+            # 1. Process orders that need to be picked up AND delivered
             for order in vehicle.pickup_orders:
-                # order = self.global_state.get_entity("order", order_id)
                 if order:
-                    # A consolidated trip needs to visit pickup locations for orders not yet in cargo
+                    # Add pickup location if not already planned
                     if order.get_pickup_node_id() not in visited_nodes:
                         all_stops.append(order.get_pickup_node_id())
                         visited_nodes.add(order.get_pickup_node_id())
-                    # And deliver to the customer node
+                    # Add delivery location if not already planned
+                    if order.get_delivery_node_id() not in visited_nodes:
+                        all_stops.append(order.get_delivery_node_id())
+                        visited_nodes.add(order.get_delivery_node_id())
+
+            # 2. Process orders already in cargo that only need delivery (NEW LOGIC)
+            for order in vehicle.delivery_orders:
+                if order:
+                    # Add delivery location if not already planned
                     if order.get_delivery_node_id() not in visited_nodes:
                         all_stops.append(order.get_delivery_node_id())
                         visited_nodes.add(order.get_delivery_node_id())
@@ -287,7 +297,8 @@ class NetworkManager(System):
                     full_path.extend(path_to_next_stop[1:])
                     current_node = next_stop
                 else:
-                    self.log(self.C_LOG_TYPE_W, f"Could not find a path from {current_node} to {next_stop} for vehicle {vehicle_id}.")
+                    self.log(self.C_LOG_TYPE_W,
+                             f"Could not find a path from {current_node} to {next_stop} for vehicle {vehicle_id}.")
 
             if len(full_path) > 1:
                 self.log(self.C_LOG_TYPE_I, f"Routing consolidated Vehicle {vehicle_id} on path: {full_path}.")

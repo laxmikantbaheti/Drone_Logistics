@@ -44,7 +44,7 @@ def run_system_directly_demo():
     print("\n--- Initializing LogisticsSystem ---")
     logistics_system = LogisticsSystem(p_id='logsys_001',
                                        p_visualize=False,
-                                       p_logging=True,
+                                       p_logging=False,
                                        config=sim_config)
     print("--- Initialization Complete ---")
 

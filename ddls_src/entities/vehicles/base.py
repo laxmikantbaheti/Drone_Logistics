@@ -59,7 +59,7 @@ class Vehicle(LogisticEntity, ABC):
                  p_id: int,
                  p_name: str = '',
                  p_visualize: bool = False,
-                 p_logging=True,
+                 p_logging=False,
                  **p_kwargs):
         """
         Initializes a Vehicle system.
@@ -183,9 +183,11 @@ class Vehicle(LogisticEntity, ABC):
             else:
                 truck.pickup_orders.remove(order)
                 truck.delivery_orders.append(order)
+                truck.delivery_node_ids.append(order.get_delivery_node_id())
                 truck.add_cargo(order)
-                self.log(self.C_LOG_TYPE_I, f"{order_id} is loaded in the truck {truck_id}.")
+                print(f"{order_id} is loaded in the truck {truck_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
+                # input("Press enter")
                 return True
 
 
@@ -206,8 +208,10 @@ class Vehicle(LogisticEntity, ABC):
                     truck.delivery_orders.remove(order)
                     truck.remove_cargo(order)
                     order.set_enroute()
-                    self.log(self.C_LOG_TYPE_I, f"Order {order_id} is unloaded from the truck {truck_id}.")
+                    # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is unloaded from the truck {truck_id}.")
+                    print(f"Order {order_id} is unloaded from the truck {truck_id}.")
                     self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
+                    # input("Press Enter")
                     return True
         if action_type == SimulationActions.LOAD_DRONE_ACTION:
             drone_id = action_kwargs["drone_id"]
@@ -220,7 +224,9 @@ class Vehicle(LogisticEntity, ABC):
                 drone.pickup_orders.remove(order)
                 drone.delivery_orders.append(order)
                 drone.add_cargo(order)
-                self.log(self.C_LOG_TYPE_I, f"Order {order_id} is loaded in the Drone {drone_id}.")
+                print(f"Order {order_id} is loaded in the Drone {drone_id}.")
+                # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is loaded in the Drone {drone_id}.")
+                # input("Press enter")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
                 return True
 
@@ -236,7 +242,8 @@ class Vehicle(LogisticEntity, ABC):
                 drone.delivery_orders.remove(order)
                 drone.remove_cargo(order)
                 order.set_enroute()
-                self.log(self.C_LOG_TYPE_I, f"Order {order_id} is unloaded from the drone {drone_id}.")
+                print(f"Order {order_id} is unloaded from the drone {drone_id}.")
+                # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is unloaded from the drone {drone_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
                 return True
 
@@ -276,12 +283,14 @@ class Vehicle(LogisticEntity, ABC):
         self.current_edge = edge
         if not edge:
             self.status = "idle"
+            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
             return
 
         travel_time = edge.get_current_travel_time() if self.C_NAME == 'Truck' else edge.get_drone_flight_time()
 
         if travel_time <= 0 or travel_time == float('inf'):
             self.status = "idle"
+            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
             return
 
         time_needed = (1.0 - self.route_progress) * travel_time
@@ -297,9 +306,11 @@ class Vehicle(LogisticEntity, ABC):
         if self.route_progress >= 1.0:
             self.current_node_id = end_node_id
             self.current_edge = None
-            if end_node_id in self.pickup_node_ids or end_node_id in self.delivery_node_ids:
+            if (end_node_id in self.pickup_node_ids) or (end_node_id in self.delivery_node_ids):
                 self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
                 self.raise_state_change_event()
+                print(f"\n\n\n\n\nVehicle {self._id} reached delivery node {end_node_id}.\n\n\n\n")
+                # input("Press Enter to continue")
             else:
                 self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
 

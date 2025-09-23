@@ -29,7 +29,7 @@ def run_howto():
     # The LogisticsSystem now contains the entire simulation engine.
     logistics_system = LogisticsSystem(p_id='logsys_001',
                                        p_visualize=False,
-                                       p_logging=True,
+                                       p_logging=False,
                                        config=sim_config)
 
     # 3. Instantiate the Scenario to run the system
@@ -37,7 +37,7 @@ def run_howto():
     scenario = LogisticsScenario(p_system=logistics_system,
                                  p_cycle_limit=10, # Run for 10 simulation steps
                                  p_visualize=False,
-                                 p_logging=True)
+                                 p_logging=False)
 
     # 4. Run the scenario
     print("\nRunning Scenario...")

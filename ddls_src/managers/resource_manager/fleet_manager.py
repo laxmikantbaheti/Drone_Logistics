@@ -38,7 +38,7 @@ class FleetManager(System):
                  p_id=None,
                  p_name: str = '',
                  p_visualize: bool = False,
-                 p_logging=True,
+                 p_logging=False,
                  **p_kwargs):
         """
         Initializes the FleetManager system.

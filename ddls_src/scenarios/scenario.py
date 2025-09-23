@@ -13,7 +13,7 @@ from agents.dummy_agent import DummyAgent
 class LogisticsScenario(Scenario):
     C_NAME = 'LogisticsScenario'
 
-    def __init__(self, p_mode=Mode.C_MODE_SIM, p_cycle_limit=100, p_visualize: bool = False, p_logging=True,
+    def __init__(self, p_mode=Mode.C_MODE_SIM, p_cycle_limit=100, p_visualize: bool = False, p_logging=False,
                  **p_kwargs):
         self._config = p_kwargs.pop('config', {})
         self._system: LogisticsSystem = None

@@ -44,7 +44,7 @@ def run_assignment_demo():
     # 3. Instantiate and run the Scenario
     scenario = AssignmentScenario(p_cycle_limit=20,
                                   p_visualize=False,
-                                  p_logging=True,
+                                  p_logging=False,
                                   config=sim_config)
 
     print("\n--- Starting Scenario Run ---")

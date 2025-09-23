@@ -32,7 +32,7 @@ def run_visual_demo():
     # 2. Instantiate and run the Scenario with visualization enabled
     scenario = LogisticsScenario(p_cycle_limit=100000,
                                  p_visualize=True, # <-- IMPORTANT
-                                 p_logging=True,
+                                 p_logging=False,
                                  config=sim_config)
 
     print("\n--- Starting Scenario Run ---")
