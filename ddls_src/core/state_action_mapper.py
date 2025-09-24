@@ -107,7 +107,7 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
                           SimulationActions.UNLOAD_DRONE_ACTION,
                           SimulationActions.DRONE_LAND,
                           SimulationActions.DRONE_LAUNCH]
-
+    #
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
         invalidation_idx = []
         if not (isinstance(p_entity, Drone) or isinstance(p_entity, Truck)):
@@ -133,12 +133,54 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
 
         if is_at_delivery_node:
             # The constraint is satisfied, so we don't return any invalidations.
-            return []
+            actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+            actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+            relevant_orders = [o.get_id() for o in vehicle.delivery_orders if o.get_delivery_node_id() == node_vehicle]
+            actions_by_order = []
+            relevant_actions_by_order = []
+            for o in relevant_orders:
+                actions_by_order = p_action_index.actions_involving_entity["Order", o]
+                relevant_actions_by_order.extend(actions_by_order.intersection(actions_by_type))
+            actions_to_mask = actions_by_entity.intersection(actions_by_type)
+            actions_to_mask = list(actions_to_mask.difference(relevant_actions_by_order))
+            return actions_to_mask
 
         # If no orders or the vehicle is not at a delivery node for any of them, mask the actions.
         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
         actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
-        return list(actions_by_entity.intersection(actions_by_type))
+        actions_to_mask = actions_by_entity.intersection(actions_by_type)
+        return list(actions_to_mask)
+    #     invalidation_idx = []
+    #     if not (isinstance(p_entity, Drone) or isinstance(p_entity, Truck)):
+    #         raise TypeError("Vehicle At Delivery Node Constraint can only be applied to a vehicle entity.")
+    #
+    #     vehicle = p_entity
+    #     node_vehicle = vehicle.get_current_node()
+    #     delivery_orders = vehicle.get_delivery_orders()
+    #
+    #     # Check if the vehicle is at the delivery node for any of its delivery orders
+    #     is_at_delivery_node = False
+    #     if delivery_orders:
+    #         for order_obj in delivery_orders:
+    #             try:
+    #                 # order_obj = vehicle.global_state.get_entity("order", order_id)
+    #                 node_next_delivery_order = order_obj.get_delivery_node_id()
+    #
+    #                 if node_next_delivery_order == node_vehicle:
+    #                     is_at_delivery_node = True
+    #                     break  # Found a match, no need to check other orders
+    #             except KeyError:
+    #                 continue  # Order not found, skip it
+    #
+    #     if is_at_delivery_node:
+    #         # The constraint is satisfied, so we don't return any invalidations.
+    #         return []
+    #
+    #     # If no orders or the vehicle is not at a delivery node for any of them, mask the actions.
+    #     actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+    #     actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+    #     return list(actions_by_entity.intersection(actions_by_type))
+
 
 
 class VehicleAtPickUpNodeConstraint(Constraint):

@@ -303,9 +303,14 @@ class Vehicle(LogisticEntity, ABC):
             self.current_edge = None
             if (end_node_id in self.pickup_node_ids) or (end_node_id in self.delivery_node_ids):
                 self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
-                self.raise_state_change_event()
-                print(f"\n\n\n\n\nVehicle {self._id} reached delivery node {end_node_id}.\n\n\n\n")
-                # input("Press Enter to continue")
+
+                if end_node_id in self.pickup_node_ids:
+                    print(f"\n\n\n\n\nVehicle {self._id} reached pickup node {end_node_id}.\n\n\n\n")
+                    self.raise_state_change_event()
+                elif end_node_id in self.delivery_node_ids:
+                    print(f"\n\n\n\n\nVehicle {self._id} reached delivery node {end_node_id}.\n\n\n\n")
+                    self.raise_state_change_event()
+                    # input("Press Enter to continue")
             else:
                 self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
 
