@@ -270,17 +270,17 @@ class OrderRequestAssignabilityConstraint(Constraint):
             if micro_hub.get_state_value_by_dim_name(MicroHub.C_DIM_AVAILABILITY[0]) not in [0]:
                 invalidation_idx.extend(list(p_action_index.actions_involving_entity[(type(micro_hub), micro_hub.get_id())]))
                 return invalidation_idx
-        if isinstance(p_entity, Order):
-            order = p_entity
-            global_state = order.get_global_state()
-            # order_requests = global_state.get_order_requests()
-            pick_up_node = order.get_pickup_node_id()
-            delivery_node = order.get_delivery_node_id()
-            order_requests = global_state.get_order_requests()[(pick_up_node, delivery_node)]
-            if len(order_requests) == 0:
-                constraint_satisfied = False
-                invalidation_idx.extend((p_action_index.actions_involving_entity[("Node Pair",(pick_up_node, delivery_node))]))
-                return invalidation_idx
+        # if isinstance(p_entity, Order):
+        #     order = p_entity
+        #     global_state = order.get_global_state()
+        #     # order_requests = global_state.get_order_requests()
+        #     pick_up_node = order.get_pickup_node_id()
+        #     delivery_node = order.get_delivery_node_id()
+        #     order_requests = global_state.get_order_requests()[(pick_up_node, delivery_node)]
+        #     if len(order_requests) == 0:
+        #         constraint_satisfied = False
+        #         invalidation_idx.extend((p_action_index.actions_involving_entity[("Node Pair",(pick_up_node, delivery_node))]))
+        #         return invalidation_idx
         return invalidation_idx
 
 
