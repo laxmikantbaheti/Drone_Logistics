@@ -39,8 +39,9 @@ class Constraint(ABC, EventManager):
     C_NAME = None
     C_EVENT_CONSTRAINT_UPDATE = "ConstraintUpdate"
 
-    def __init__(self):
+    def __init__(self, p_reverse_action_map):
         EventManager.__init__(self, p_logging=False)
+        self.reverse_action_map = p_reverse_action_map
 
     def raise_constraint_change_event(self, p_entities, p_effect):
         p_event_data = [p_entities, p_effect]
@@ -248,21 +249,26 @@ class OrderRequestAssignabilityConstraint(Constraint):
                 or isinstance(p_entity, Order)):
             raise TypeError("The \"Order Request Assignability Constraint\" is only applicable to a vehicle "
                             "or a Micro-Hub.")
+        # Invalidate all the empty node pairs for order requests
+        invalid_order_requests = [pair for pair in p_entity.global_state.node_pairs
+                                if not pair in p_entity.global_state.get_order_requests()]
+        for inv_order in invalid_order_requests:
+            invalidation_idx.extend(list(p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED).intersection(p_action_index.actions_involving_entity["Node Pair", inv_order])))
         if isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
             vehicle = p_entity
-            if ((vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in ["En Route", "Charging"]) or
+            if ( (not vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in [vehicle.C_TRIP_STATE_IDLE]) or
                     (not vehicle.get_state_value_by_dim_name(vehicle.C_DIM_AVAILABLE[0]))):
                 constraint_satisfied = False
                 actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                                                                       SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
                                                                       SimulationActions.ASSIGN_ORDER_TO_DRONE])
                 actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
-                invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+                invalidation_idx.extend(actions_by_entity.intersection(actions_by_type))
                 return invalidation_idx
         if isinstance(p_entity, MicroHub):
             micro_hub = p_entity
             if micro_hub.get_state_value_by_dim_name(MicroHub.C_DIM_AVAILABILITY[0]) not in [0]:
-                invalidation_idx = list(p_action_index.actions_involving_entity[(type(micro_hub), micro_hub.get_id())])
+                invalidation_idx.extend(list(p_action_index.actions_involving_entity[(type(micro_hub), micro_hub.get_id())]))
                 return invalidation_idx
         if isinstance(p_entity, Order):
             order = p_entity
@@ -273,44 +279,44 @@ class OrderRequestAssignabilityConstraint(Constraint):
             order_requests = global_state.get_order_requests()[(pick_up_node, delivery_node)]
             if len(order_requests) == 0:
                 constraint_satisfied = False
-                invalidation_idx = list(p_action_index.actions_involving_entity[("Node Pair",(pick_up_node, delivery_node))])
+                invalidation_idx.extend((p_action_index.actions_involving_entity[("Node Pair",(pick_up_node, delivery_node))]))
                 return invalidation_idx
         return invalidation_idx
 
 
-class OrderAssignableConstraint(Constraint):
-    C_NAME = "OrderAssignableConstraint"
-    C_ASSOCIATED_ENTITIES = ["Order"]
-    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
-                          SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
-                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
-
-    # def _handle_order_state_change(self, p_event_id, p_event_object):
-    #     constraint_satisfied = True
-    #     order = p_event_object.get_data()['Order']
-    #     order_state = order.get_state()
-    #     if order_state not in ["Assigned", "Delivered", "Cancelled"]:
-    #         constraint_satisfied = True
-    #         return constraint_satisfied
-    #     else:
-    #         constraint_satisfied = False
-    #         return constraint_satisfied
-
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
-        invalidation_idx = []
-        order = p_entity
-        order_state = order.get_state()
-        if order_state not in ["Assigned", "Delivered", "Cancelled"]:
-            constraint_satisfied = True
-            return invalidation_idx
-        else:
-            constraint_satisfied = False
-            actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK,
-                                                                  SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
-                                                                  SimulationActions.ASSIGN_ORDER_TO_DRONE])
-            actions_by_entity = p_action_index.actions_involving_entity[(order.C_NAME, order.get_id())]
-            invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
-            return invalidation_idx
+# class OrderAssignableConstraint(Constraint):
+#     C_NAME = "OrderAssignableConstraint"
+#     C_ASSOCIATED_ENTITIES = ["Order"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+#                           SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
+#                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
+#
+#     # def _handle_order_state_change(self, p_event_id, p_event_object):
+#     #     constraint_satisfied = True
+#     #     order = p_event_object.get_data()['Order']
+#     #     order_state = order.get_state()
+#     #     if order_state not in ["Assigned", "Delivered", "Cancelled"]:
+#     #         constraint_satisfied = True
+#     #         return constraint_satisfied
+#     #     else:
+#     #         constraint_satisfied = False
+#     #         return constraint_satisfied
+#
+#     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+#         invalidation_idx = []
+#         order = p_entity
+#         order_state = order.get_state()
+#         if order_state not in ["Assigned", "Delivered", "Cancelled"]:
+#             constraint_satisfied = True
+#             return invalidation_idx
+#         else:
+#             constraint_satisfied = False
+#             actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+#                                                                   SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
+#                                                                   SimulationActions.ASSIGN_ORDER_TO_DRONE])
+#             actions_by_entity = p_action_index.actions_involving_entity[(order.C_NAME, order.get_id())]
+#             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+#             return invalidation_idx
 
 
 class VehicleCapacityConstraint(Constraint):
@@ -480,7 +486,7 @@ class ConstraintManager(EventManager):
 
     def __init__(self,
                  action_index: ActionIndex,
-                 action_map):
+                 reverse_action_map):
 
         EventManager.__init__(self, p_logging=False)
         # self.constraint_config = p_entity_constraint_config.copy()
@@ -496,9 +502,9 @@ class ConstraintManager(EventManager):
         #     self.constraints.append(constraint.__call__())
         #     self.constraint_names.append(constraint.C_NAME)
         self.entity_constraints = {}
-        self.setup_constraint_entity_map()
+        self.reverse_action_map = reverse_action_map
         self.action_index = action_index
-        self.action_map = action_map
+        self.setup_constraint_entity_map()
 
     def setup_constraint_entity_map(self):
         """
@@ -509,9 +515,9 @@ class ConstraintManager(EventManager):
         for con in Constraint.__subclasses__():
             for entity in con.C_ASSOCIATED_ENTITIES:
                 if entity in self.entity_constraints:
-                    self.entity_constraints[entity].append(con.__call__())
+                    self.entity_constraints[entity].append(con.__call__(p_reverse_action_map = self.reverse_action_map))
                 else:
-                    self.entity_constraints[entity] = [con.__call__()]
+                    self.entity_constraints[entity] = [con.__call__(p_reverse_action_map = self.reverse_action_map)]
 
     def get_constraints_by_entity(self, p_entity):
         """
@@ -579,6 +585,7 @@ class StateActionMapper:
         idx_to_unmask = idx_to_unmask.difference(self.permanent_masks)
         for idx in idx_to_unmask:
             self.masks[idx] = True
+        # print("Masking Updated")
 
     def handle_new_masks_event(self, p_event_id, p_event_object):
         raising_object = p_event_object.get_raising_object()

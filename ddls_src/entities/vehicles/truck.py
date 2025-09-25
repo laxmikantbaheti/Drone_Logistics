@@ -26,7 +26,7 @@ class Truck(Vehicle):
     It now includes automatic logic for loading and unloading.
     """
 
-    C_TYPE = 'Truck'
+    C_TYPE = 'Vehicle'
     C_NAME = 'Truck'
 
     def __init__(self,

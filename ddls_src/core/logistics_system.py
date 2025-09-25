@@ -113,7 +113,7 @@ class LogisticsSystem(System, EventManager):
                 entity.global_state = self.global_state
                 entity.reset()
 
-        self.constraint_manager = ConstraintManager(action_index=self.action_index, action_map=self.action_map)
+        self.constraint_manager = ConstraintManager(action_index=self.action_index, reverse_action_map=self._reverse_action_map)
         self.setup_events()
 
         self.supply_chain_manager = SupplyChainManager(p_id='scm', global_state=self.global_state,
@@ -142,7 +142,7 @@ class LogisticsSystem(System, EventManager):
 
         self._update_state()
 
-    def _get_automatic_actions(self) -> List[Tuple]:
+    def get_automatic_actions(self) -> List[Tuple]:
         system_mask = self.get_current_mask()
         possible_action_indices = np.where(system_mask)[0]
         automatic_actions = []
@@ -152,10 +152,13 @@ class LogisticsSystem(System, EventManager):
                 automatic_actions.append(action_tuple)
         return automatic_actions
 
-    def _run_automatic_action_loop(self):
+    # def are_automatic_actions_available(self):
+    #     automatic_action_to_take = self._get_automatic_actions()
+
+    def run_automatic_action_loop(self):
         i = 0
         while True:
-            automatic_actions_to_take = self._get_automatic_actions()
+            automatic_actions_to_take = self.get_automatic_actions()
             if not automatic_actions_to_take:
                 print(f"Auto-action loop stable after {i} iterations.")
                 break
@@ -177,7 +180,7 @@ class LogisticsSystem(System, EventManager):
             print(f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
             action_processed = self.action_manager.execute_action(action_tuple)
 
-        self._run_automatic_action_loop()
+        # self.run_automatic_action_loop()
         self._update_state()
         return action_processed
 
@@ -247,6 +250,20 @@ class LogisticsSystem(System, EventManager):
                     if isinstance(entity, LogisticEntity):
                         entity.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
                                                                       self.constraint_manager.handle_entity_state_change)
+
+
+    def get_success(self) -> bool:
+        orders = self.global_state.get_orders()
+        success = True
+        for ords in orders.values():
+            success = (ords.get_state_value_by_dim_name(ords.C_DIM_DELIVERY_STATUS[0]) == ords.C_STATUS_DELIVERED) and success
+        if success:
+            return success
+        return success
+
+
+    def get_broken(self):
+        return False
 
 
 # -------------------------------------------------------------------------

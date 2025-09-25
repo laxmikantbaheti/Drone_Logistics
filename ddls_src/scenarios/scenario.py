@@ -56,39 +56,93 @@ class LogisticsScenario(Scenario):
     #     new_state = self._system.get_state()
     #     return new_state.get_success(), new_state.get_broken(), False, new_state.get_terminal()
 
+    # def _run_cycle(self):
+    #     """
+    #     Runs a single macro-cycle, with the decision loop now correctly using the agent-specific mask.
+    #     """
+    #     self.log(self.C_LOG_TYPE_I, f"--- Starting Macro-Cycle {self.get_cycle_id()} ---")
+    #
+    #     # 1. Decision Phase
+    #     self.log(self.C_LOG_TYPE_I, "Entering Decision Phase...")
+    #
+    #     while not all(self._system.get_masks()):
+    #         current_state = self._system.get_state()
+    #         # --- MODIFIED: Get the mask for the agent ---
+    #         agent_mask = self._system.get_agent_mask()
+    #         # --------------------------------------------
+    #         no_op_idx = self._model._no_op_idx
+    #
+    #         # Condition 1: Are there any valid actions left for the agent?
+    #         agent_has_moves = np.any(np.delete(agent_mask, no_op_idx))
+    #         if not agent_has_moves:
+    #             self.log(self.C_LOG_TYPE_I, "No valid agent actions available. Ending Decision Phase.")
+    #             break
+    #
+    #         # Agent selects an action based on its specific mask
+    #         action = self._model.compute_action(p_state=current_state, p_action_mask=agent_mask)
+    #         action_idx = action.get_sorted_values()[0]
+    #
+    #         # Condition 2: Did the agent choose NO_OPERATION?
+    #         if action_idx == no_op_idx:
+    #             self.log(self.C_LOG_TYPE_I, "Agent chose NO_OPERATION. Ending Decision Phase.")
+    #             break
+    #
+    #         # Process the agent's chosen action
+    #         self._system.process_action(action)
+    #
+    #         if self._visualize:
+    #             self._system.network.update_plot()
+    #
+    #     # 2. Progression Phase
+    #     self.log(self.C_LOG_TYPE_I, "Entering Progression Phase...")
+    #     self._system.advance_time()
+    #
+    #     if self._visualize:
+    #         self._system.network.update_plot()
+    #
+    #     new_state = self._system.get_state()
+    #     return False, self._system.get_broken(), self._system.get_success(), False
+
+
     def _run_cycle(self):
         """
         Runs a single macro-cycle, with the decision loop now correctly using the agent-specific mask.
         """
+        eof_data = False
+        adapted = False
         self.log(self.C_LOG_TYPE_I, f"--- Starting Macro-Cycle {self.get_cycle_id()} ---")
 
         # 1. Decision Phase
         self.log(self.C_LOG_TYPE_I, "Entering Decision Phase...")
 
         while not all(self._system.get_masks()):
-            current_state = self._system.get_state()
-            # --- MODIFIED: Get the mask for the agent ---
-            agent_mask = self._system.get_agent_mask()
-            # --------------------------------------------
-            no_op_idx = self._model._no_op_idx
+            if not len(self._system.get_automatic_actions()):
 
-            # Condition 1: Are there any valid actions left for the agent?
-            agent_has_moves = np.any(np.delete(agent_mask, no_op_idx))
-            if not agent_has_moves:
-                self.log(self.C_LOG_TYPE_I, "No valid agent actions available. Ending Decision Phase.")
-                break
+                current_state = self._system.get_state()
+                # --- MODIFIED: Get the mask for the agent ---
+                agent_mask = self._system.get_agent_mask()
+                # --------------------------------------------
+                no_op_idx = self._model._no_op_idx
 
-            # Agent selects an action based on its specific mask
-            action = self._model.compute_action(p_state=current_state, p_action_mask=agent_mask)
-            action_idx = action.get_sorted_values()[0]
+                # Condition 1: Are there any valid actions left for the agent?
+                agent_has_moves = np.any(np.delete(agent_mask, no_op_idx))
+                if not agent_has_moves:
+                    self.log(self.C_LOG_TYPE_I, "No valid agent actions available. Ending Decision Phase.")
+                    break
 
-            # Condition 2: Did the agent choose NO_OPERATION?
-            if action_idx == no_op_idx:
-                self.log(self.C_LOG_TYPE_I, "Agent chose NO_OPERATION. Ending Decision Phase.")
-                break
+                # Agent selects an action based on its specific mask
+                action = self._model.compute_action(p_state=current_state, p_action_mask=agent_mask)
+                action_idx = action.get_sorted_values()[0]
+
+                # Condition 2: Did the agent choose NO_OPERATION?
+                if action_idx == no_op_idx:
+                    self.log(self.C_LOG_TYPE_I, "Agent chose NO_OPERATION. Ending Decision Phase.")
+                    break
 
             # Process the agent's chosen action
-            self._system.process_action(action)
+                self._system.process_action(action)
+            else:
+                self._system.run_automatic_action_loop()
 
             if self._visualize:
                 self._system.network.update_plot()
@@ -101,7 +155,9 @@ class LogisticsScenario(Scenario):
             self._system.network.update_plot()
 
         new_state = self._system.get_state()
-        return False, new_state.get_broken(), new_state.get_success(), False
+        return self._system.get_success(), self._system.get_broken(), adapted, eof_data
+
+
     def _reset(self, p_seed):
         self.log(self.C_LOG_TYPE_I, "Resetting scenario...")
         self._system.reset(p_seed=p_seed)

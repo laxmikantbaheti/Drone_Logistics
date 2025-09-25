@@ -13,6 +13,7 @@ from ddls_src.actions.base import SimulationActions
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.entities.base import LogisticEntity
 from ddls_src.actions.base import SimulationActions, ActionType
+from ddls_src.entities.order import Order
 
 # Forward declaration for NetworkManager
 class NetworkManager:
@@ -27,7 +28,7 @@ class Vehicle(LogisticEntity, ABC):
     """
 
     C_TYPE = 'Vehicle'
-    C_NAME = 'Vehicle'
+    C_NAME = '???'
 
     C_TRIP_STATE_IDLE = "Idle"
     C_TRIP_STATE_EN_ROUTE = "En Route"
@@ -123,6 +124,7 @@ class Vehicle(LogisticEntity, ABC):
         Resets the vehicle to its initial state at its starting node.
         """
         self.status = "idle"
+        self.update_state_value_by_dim_name(self.C_DIM_AVAILABLE[0], 1)
         self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
         self.consolidation_confirmed = False
         self.current_node_id = self.start_node_id
@@ -177,14 +179,16 @@ class Vehicle(LogisticEntity, ABC):
             truck_id = action_kwargs["truck_id"]
             order_id = action_kwargs["order_id"]
             truck = self.global_state.get_entity("truck", truck_id)
-            order = self.global_state.get_entity("order", order_id)
+            order:Order = self.global_state.get_entity("order", order_id)
             if order not in truck.pickup_orders:
                 raise ValueError("The order is not assigned to the vehicle. The order is not in the pick up orders.")
             else:
                 truck.pickup_orders.remove(order)
                 truck.delivery_orders.append(order)
+                truck.pickup_node_ids.remove(order.get_pickup_node_id())
                 truck.delivery_node_ids.append(order.get_delivery_node_id())
                 truck.add_cargo(order)
+                order.set_enroute()
                 print(f"{order_id} is loaded in the truck {truck_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
                 # input("Press enter")
@@ -202,7 +206,8 @@ class Vehicle(LogisticEntity, ABC):
             else:
                 truck.delivery_orders.remove(order)
                 truck.remove_cargo(order)
-                order.set_enroute()
+                order.set_delivered()
+                truck.delivery_node_ids.remove(order.get_delivery_node_id())
                 # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is unloaded from the truck {truck_id}.")
                 print(f"Order {order_id} is unloaded from the truck {truck_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
@@ -218,7 +223,10 @@ class Vehicle(LogisticEntity, ABC):
             else:
                 drone.pickup_orders.remove(order)
                 drone.delivery_orders.append(order)
+                drone.pickup_node_ids.remove(order.get_pickup_node_id())
+                drone.delivery_node_ids.append(order.get_delivery_node_id())
                 drone.add_cargo(order)
+                order.set_enroute()
                 print(f"Order {order_id} is loaded in the Drone {drone_id}.")
                 # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is loaded in the Drone {drone_id}.")
                 # input("Press enter")
@@ -236,7 +244,8 @@ class Vehicle(LogisticEntity, ABC):
             else:
                 drone.delivery_orders.remove(order)
                 drone.remove_cargo(order)
-                order.set_enroute()
+                order.set_delivered()
+                drone.delivery_node_ids.remove(order.get_delivery_node_id())
                 print(f"Order {order_id} is unloaded from the drone {drone_id}.")
                 # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is unloaded from the drone {drone_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
@@ -442,6 +451,8 @@ class Vehicle(LogisticEntity, ABC):
     def get_pickup_orders(self):
         return self.pickup_orders
 
+    def __repr__(self):
+        return f"{self.C_NAME} - {self._id}"
 
 
 

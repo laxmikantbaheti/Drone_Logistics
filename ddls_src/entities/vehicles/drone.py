@@ -26,7 +26,7 @@ class Drone(Vehicle):
     It now includes automatic logic for loading and unloading.
     """
 
-    C_TYPE = 'Drone'
+    C_TYPE = 'Vehicle'
     C_NAME = 'Drone'
 
     C_ACTION_DRONE_CHARGE = [SimulationActions.DRONE_CHARGE_ACTION]

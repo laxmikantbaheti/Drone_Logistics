@@ -129,13 +129,15 @@ class SimulationActions:
                                params=[{'name': 'truck_id', 'type': 'Truck'},
                                        {'name': 'destination_node_id', 'type': 'Node'}],
                                is_automatic=True,
-                               handler="NetworkManager")
+                               handler="NetworkManager",
+                               active=False)
 
     DRONE_TO_NODE = ActionType(name="DRONE_TO_NODE",
                                params=[{'name': 'drone_id', 'type': 'Drone'},
                                        {'name': 'destination_node_id', 'type': 'Node'}],
                                is_automatic=True,
-                               handler="NetworkManager")
+                               handler="NetworkManager",
+                               active=False)
 
     DRONE_LAUNCH = ActionType(name="LAUNCH_DRONE",
                               params=[{'name': 'drone_id', 'type': 'Drone'},

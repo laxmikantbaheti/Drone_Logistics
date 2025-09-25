@@ -112,6 +112,7 @@ class Order(LogisticEntity):
         Resets the order to its initial 'pending' state.
         """
         self.status = "pending"
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_PLACED)
         self.assigned_vehicle_id = None
         self.assigned_micro_hub_id = None
         self.delivery_time = None
@@ -132,14 +133,15 @@ class Order(LogisticEntity):
         """
         Helper method to synchronize internal attributes with the formal MLPro state object.
         """
-        status_map = {
-            "pending": 0, "accepted": 1, "assigned": 2, "in_transit": 3,
-            "at_micro_hub": 4, "delivered": 5, "cancelled": 6, "flagged_re_delivery": 7
-        }
-        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_DELIVERY_STATUS[0]).get_id(),
-                              status_map.get(self.status, 0))
-        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_PRIORITY[0]).get_id(),
-                              self.priority)
+        # status_map = {
+        #     "pending": 0, "accepted": 1, "assigned": 2, "in_transit": 3,
+        #     "at_micro_hub": 4, "delivered": 5, "cancelled": 6, "flagged_re_delivery": 7
+        # }
+        # self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_DELIVERY_STATUS[0]).get_id(),
+        #                       status_map.get(self.status, 0))
+        # self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_PRIORITY[0]).get_id(),
+        #                       self.priority)
+        pass
 
     # Public methods for managers to call
     def update_status(self, new_status: str):
@@ -190,3 +192,15 @@ class Order(LogisticEntity):
 
     def __repr__(self):
         return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id})"
+
+    def change_delivery_status(self, status):
+        if status not in self.C_VALID_DELIVERY_STATES:
+            raise ValueError("Invalid delivery status provided for Order entity.")
+
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], status)
+        self.raise_state_change_event()
+
+    def set_delivered(self):
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_DELIVERED)
+        self.status = "Delivered"
+        self.raise_state_change_event()

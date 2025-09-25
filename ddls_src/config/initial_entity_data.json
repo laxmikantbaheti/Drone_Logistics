@@ -222,6 +222,14 @@
             "time_received": 0.0,
             "SLA_deadline": 2400.0,
             "priority": 2
+        },
+        {
+            "id": 5,
+            "p_pickup_node_id": 5,
+            "p_delivery_node_id": 11,
+            "time_received": 0.0,
+            "SLA_deadline": 2400.0,
+            "priority": 2
         }
     ],
     "initial_time": 0.0
