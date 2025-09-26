@@ -8,6 +8,7 @@ from ddls_src.core.basics import LogisticsAction
 from ddls_src.core.logistics_system import LogisticsSystem
 from ddls_src.actions.base import SimulationActions
 from agents.dummy_agent import DummyAgent
+from ddls_src.functions.plotting import plot_vehicle_gantt_chart
 
 
 class LogisticsScenario(Scenario):
@@ -153,6 +154,9 @@ class LogisticsScenario(Scenario):
 
         if self._visualize:
             self._system.network.update_plot()
+
+        if self._system.get_success():
+            plot_vehicle_gantt_chart(self._system.global_state)
 
         new_state = self._system.get_state()
         return self._system.get_success(), self._system.get_broken(), adapted, eof_data

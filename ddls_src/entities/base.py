@@ -25,6 +25,7 @@ class LogisticEntity(System):
                          p_latency=timedelta(0, 0, 0))
         self.setup_discrete_spaces()
         self.setup_event_string()
+        self.data_storage = {}
 
     def setup_discrete_spaces(self):
         for dim in self.C_DIS_DIMS:
@@ -53,3 +54,10 @@ class LogisticEntity(System):
 
     def setup_event_string(self):
         self.C_EVENT_ENTITY_STATE_CHANGE = f"{self.C_NAME} - {self._id}: State Change Event"
+
+    def save_date(self, p_key, p_value):
+        if p_key in self.data_storage.keys():
+            self.data_storage[p_key].append(p_value)
+        else:
+            if not isinstance(p_value, list):
+                self.data_storage[p_key] = [p_value]
