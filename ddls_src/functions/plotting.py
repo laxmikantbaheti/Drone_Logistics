@@ -92,7 +92,7 @@ def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) 
 
             for lane in lanes:
                 bar_ranges = [(o['start'], o['end'] - o['start']) for o in lane]
-                ax.broken_barh(bar_ranges, (y_pos - 0.2, 0.4),
+                ax.broken_barh(bar_ranges, (y_pos - 0.25, 0.50),
                                facecolors=color_map[data['type']], edgecolor='black')
                 if show_order_labels:
                     for order in lane:
