@@ -92,7 +92,7 @@ def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) 
 
             for lane in lanes:
                 bar_ranges = [(o['start'], o['end'] - o['start']) for o in lane]
-                ax.broken_barh(bar_ranges, (y_pos - 0.4, 0.8),
+                ax.broken_barh(bar_ranges, (y_pos - 0.2, 0.4),
                                facecolors=color_map[data['type']], edgecolor='black')
                 if show_order_labels:
                     for order in lane:
@@ -117,7 +117,7 @@ def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) 
     ax.invert_yaxis()
     ax.set_xlabel("Time", fontsize=12)
     ax.set_ylabel("Vehicle ID", fontsize=12)
-    ax.set_title("Complete Vehicle Timeline (Including Unused)", fontsize=16, fontweight='bold')
+    ax.set_title("Vehicle Timeline", fontsize=16, fontweight='bold')
     ax.grid(axis='x', linestyle=':', alpha=0.8)
 
     from matplotlib.patches import Patch
