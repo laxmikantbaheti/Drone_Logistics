@@ -1,0 +1,46 @@
+{
+    "nodes": [
+        {
+            "id": 0,
+            "coords": [10, 10],
+            "type": "depot",
+            "is_loadable": true,
+            "is_unloadable": true,
+            "is_charging_station": true
+        },
+        {
+            "id": 1,
+            "coords": [90, 10],
+            "type": "customer"
+        },
+        {
+            "id": 2,
+            "coords": [50, 80],
+            "type": "customer"
+        }
+    ],
+    "edges": [],
+    "trucks": [
+        {
+            "id": 101,
+            "start_node_id": 0,
+            "max_payload_capacity": 5,
+            "max_speed": 60.0
+        }
+    ],
+    "drones": [],
+    "micro_hubs": [],
+    "orders": [
+        {
+            "id": 1001,
+            "p_pickup_node_id": 0,
+            "p_delivery_node_id": 1
+        }
+    ],
+    "initial_time": 0.0,
+    "distance_matrix": {
+        "0": { "1": 10.0, "2": 15.0 },
+        "1": { "0": 10.0, "2": 20.0 },
+        "2": { "0": 15.0, "1": 20.0 }
+    }
+}

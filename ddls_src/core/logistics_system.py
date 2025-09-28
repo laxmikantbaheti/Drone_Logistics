@@ -94,7 +94,7 @@ class LogisticsSystem(System, EventManager):
 
         raw_entity_data = self.data_loader.load_initial_simulation_data()
         scenario_generator = ScenarioGenerator(raw_entity_data)
-        self.entities = scenario_generator.build_entities()
+        self.entities = scenario_generator.build_entities(p_logging = self.get_log_level())
 
         self.global_state = GlobalState(initial_entities=self.entities, movement_mode=self.movement_mode)
 
