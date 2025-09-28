@@ -1,0 +1,152 @@
+{
+    "nodes": [
+        {
+            "id": 0,
+            "coords": [50, 50],
+            "type": "depot",
+            "is_loadable": true,
+            "is_unloadable": true,
+            "is_charging_station": true
+        },
+        {
+            "id": 1,
+            "coords": [10, 20],
+            "type": "customer"
+        },
+        {
+            "id": 2,
+            "coords": [20, 80],
+            "type": "customer"
+        },
+        {
+            "id": 3,
+            "coords": [80, 90],
+            "type": "customer"
+        },
+        {
+            "id": 4,
+            "coords": [90, 10],
+            "type": "customer"
+        },
+        {
+            "id": 5,
+            "coords": [5, 95],
+            "type": "customer"
+        },
+        {
+            "id": 6,
+            "coords": [70, 30],
+            "type": "customer"
+        },
+        {
+            "id": 7,
+            "coords": [30, 70],
+            "type": "customer"
+        },
+        {
+            "id": 8,
+            "coords": [60, 5],
+            "type": "customer"
+        },
+        {
+            "id": 9,
+            "coords": [95, 60],
+            "type": "customer"
+        }
+    ],
+    "edges": [],
+    "trucks": [
+        {
+            "id": 101,
+            "start_node_id": 0,
+            "max_payload_capacity": 10,
+            "max_speed": 60.0
+        },
+        {
+            "id": 102,
+            "start_node_id": 0,
+            "max_payload_capacity": 8,
+            "max_speed": 50.0
+        },
+        {
+            "id": 103,
+            "start_node_id": 0,
+            "max_payload_capacity": 12,
+            "max_speed": 55.0
+        }
+    ],
+    "drones":[
+        {
+            "id": 104,
+            "start_node_id": 0,
+            "max_payload_capacity": 5,
+            "max_speed": 70.0
+        }
+    ],
+    "micro_hubs": [],
+    "orders": [
+        {
+            "id": 1001,
+            "p_pickup_node_id": 0,
+            "p_delivery_node_id": 1
+        },
+        {
+            "id": 1002,
+            "p_pickup_node_id": 2,
+            "p_delivery_node_id": 3
+        },
+        {
+            "id": 1003,
+            "p_pickup_node_id": 4,
+            "p_delivery_node_id": 5
+        },
+        {
+            "id": 1004,
+            "p_pickup_node_id": 6,
+            "p_delivery_node_id": 0
+        },
+        {
+            "id": 1005,
+            "p_pickup_node_id": 1,
+            "p_delivery_node_id": 4
+        },
+        {
+            "id": 1006,
+            "p_pickup_node_id": 7,
+            "p_delivery_node_id": 8
+        },
+        {
+            "id": 1007,
+            "p_pickup_node_id": 9,
+            "p_delivery_node_id": 2
+        },
+        {
+            "id": 1008,
+            "p_pickup_node_id": 0,
+            "p_delivery_node_id": 7
+        },
+        {
+            "id": 1009,
+            "p_pickup_node_id": 8,
+            "p_delivery_node_id": 1
+        },
+        {
+            "id": 1010,
+            "p_pickup_node_id": 3,
+            "p_delivery_node_id": 9
+        }
+    ],
+    "initial_time": 0.0,
+    "distance_matrix": {
+        "0": { "1": 50.0, "2": 42.4, "3": 50.0, "4": 56.6, "5": 63.6, "6": 28.3, "7": 28.3, "8": 46.1, "9": 46.1 },
+        "1": { "0": 50.0, "2": 60.8, "3": 99.0, "4": 80.6, "5": 75.2, "6": 60.8, "7": 53.9, "8": 52.2, "9": 93.9 },
+        "2": { "0": 42.4, "1": 60.8, "3": 60.8, "4": 99.0, "5": 18.0, "6": 64.0, "7": 14.1, "8": 85.0, "9": 77.6 },
+        "3": { "0": 50.0, "1": 99.0, "2": 60.8, "4": 80.6, "5": 75.2, "6": 60.8, "7": 53.9, "8": 87.3, "9": 33.5 },
+        "4": { "0": 56.6, "1": 80.6, "2": 99.0, "3": 80.6, "5": 116.7, "6": 28.3, "7": 84.9, "8": 30.4, "9": 50.2 },
+        "5": { "0": 63.6, "1": 75.2, "2": 18.0, "3": 75.2, "4": 116.7, "6": 82.0, "7": 35.4, "8": 105.5, "9": 96.6 },
+        "6": { "0": 28.3, "1": 60.8, "2": 64.0, "3": 60.8, "4": 28.3, "5": 82.0, "7": 56.6, "8": 26.9, "9": 39.1 },
+        "7": { "0": 28.3, "1": 53.9, "2": 14.1, "3": 53.9, "4": 84.9, "5": 35.4, "6": 56.6, "8": 71.6, "9": 65.8 },
+        "8": { "0": 46.1, "1": 52.2, "2": 85.0, "3": 87.3, "4": 30.4, "5": 105.5, "6": 26.9, "7": 71.6, "9": 65.2 },
+        "9": { "0": 46.1, "1": 93.9, "2": 77.6, "3": 33.5, "4": 50.2, "5": 96.6, "6": 39.1, "7": 65.8, "8": 65.2 }
+    }
+}
