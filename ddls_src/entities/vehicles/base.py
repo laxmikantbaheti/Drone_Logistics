@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple, Any, Dict, Optional, Set
 from datetime import timedelta
 
+from mlpro.bf.exceptions import ParamError
 # MLPro Imports
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
@@ -93,7 +94,10 @@ class Vehicle(LogisticEntity, ABC):
         self.route_nodes: List[int] = []
 
         # New attributes for matrix-based movement
-        self.movement_mode = self.global_state.movement_mode if self.global_state else 'network'
+        if "p_movement_mode" in p_kwargs.keys():
+            self.movement_mode = p_kwargs["p_movement_mode"]
+        else:
+            raise ParamError("Please provide a movement mode value in the simulation config.")
         self.en_route_timer = 0.0  # Timer for matrix-based movement
 
         self._state = State(self._state_space)
@@ -262,7 +266,8 @@ class Vehicle(LogisticEntity, ABC):
             self._process_action(p_action, p_t_step)
 
         if self.movement_mode == 'matrix':
-            if self.status == "en_route":
+            if (self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) == self.C_TRIP_STATE_EN_ROUTE
+                    and self.current_route and len(self.current_route) >= 2):
                 self._update_matrix_movement(p_t_step.total_seconds())
         else:  # network mode
             if (self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) == self.C_TRIP_STATE_EN_ROUTE
@@ -274,13 +279,29 @@ class Vehicle(LogisticEntity, ABC):
     def _update_matrix_movement(self, delta_time: float):
         """Handles movement for the 'matrix' mode."""
         self.en_route_timer -= delta_time
-        if self.en_route_timer <= 0:
-            self.current_node_id = self.current_route[1]
-            self.current_route = []
-            self.status = "idle"
-            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-            # Update coordinates to be exactly at the new node
-            self._update_location_coords(self.current_node_id, self.current_node_id, 1.0)
+        if self.en_route_timer < 0:
+            start_node_id, end_node_id = self.current_route[0], self.current_route[1]
+            self.current_node_id = end_node_id
+            self.current_edge = None
+            if (end_node_id in self.pickup_node_ids) or (end_node_id in self.delivery_node_ids):
+                self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
+
+                if end_node_id in self.pickup_node_ids:
+                    print(f"\n\n\n\n\nVehicle {self._id} reached pickup node {end_node_id}.\n\n\n\n")
+                    self.raise_state_change_event()
+                elif end_node_id in self.delivery_node_ids:
+                    print(f"\n\n\n\n\nVehicle {self._id} reached delivery node {end_node_id}.\n\n\n\n")
+                    self.raise_state_change_event()
+                    # input("Press Enter to continue")
+            else:
+                self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
+        # if self.en_route_timer <= 0:
+        #     self.current_node_id = self.current_route[1]
+        #     self.current_route = []
+        #     self.status = "idle"
+        #     self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+        #     # Update coordinates to be exactly at the new node
+        #     self._update_location_coords(self.current_node_id, self.current_node_id, 1.0)
 
     def _move_along_route(self, delta_time: float):
         """

@@ -29,9 +29,9 @@ def run_matrix_scenario_demo():
     # 2. Instantiate and run the Scenario
     # The DummyAgent inside the scenario will automatically pick valid actions.
     # We can observe the console output to validate the timer-based movement.
-    scenario = LogisticsScenario(p_cycle_limit=15000,
+    scenario = LogisticsScenario(p_cycle_limit=1500,
                                  p_visualize=False,
-                                 p_logging=False, # Set to True to see detailed logs
+                                 p_logging=True, # Set to True to see detailed logs
                                  config=sim_config)
 
     print("\n--- Starting Scenario Run ---")

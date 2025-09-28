@@ -37,17 +37,17 @@ class ScenarioGenerator:
         return data
 
     def add_node(self, p_logging = Log.C_LOG_NOTHING, **p_kwargs) -> Node:
-        node = Node(**p_kwargs, p_logging=p_logging)
+        node = Node(p_logging=p_logging, **p_kwargs)
         self.nodes[node.id] = node
         return node
 
     def add_micro_hub(self, p_logging = Log.C_LOG_NOTHING, **p_kwargs) -> MicroHub:
-        micro_hub = MicroHub(**p_kwargs, p_logging=p_logging)
+        micro_hub = MicroHub(p_logging=p_logging, **p_kwargs)
         self.micro_hubs[micro_hub.id] = micro_hub
         self.nodes[micro_hub.id] = micro_hub
         return micro_hub
 
-    def build_entities(self, p_logging=Log.C_LOG_NOTHING) -> Dict[str, Dict[int, Any]]:
+    def build_entities(self, p_logging=Log.C_LOG_NOTHING, **p_kwargs) -> Dict[str, Dict[int, Any]]:
         """
         Phase 1 of initialization: Instantiates all entity objects from raw data.
         """
@@ -62,27 +62,28 @@ class ScenarioGenerator:
                 node_data['coords'] = tuple(node_data['coords'])
 
             if node_type == 'micro_hub':
-                instantiated_node = self.add_micro_hub(**node_data)
+                instantiated_node = self.add_micro_hub(**node_data, **p_kwargs)
             else:
-                instantiated_node = self.add_node(**node_data)
+                instantiated_node = self.add_node(**node_data, **p_kwargs)
 
             instantiated_node.temp_packages = packages_held
 
         for edge_data in self._raw_entity_data.get('edges', []):
             edge_data = self._prepare_kwargs(edge_data)  # <-- FIX
-            self.edges[edge_data['p_id']] = Edge(**edge_data, p_logging=p_logging)
+            self.edges[edge_data['p_id']] = Edge(**edge_data, p_logging=p_logging **p_kwargs)
 
         for truck_data in self._raw_entity_data.get('trucks', []):
             truck_data = self._prepare_kwargs(truck_data)  # <-- FIX
-            self.trucks[truck_data['p_id']] = Truck(**truck_data, p_logging=p_logging)
+            self.trucks[truck_data['p_id']] = Truck(**truck_data, p_logging=p_logging, **p_kwargs)
 
         for drone_data in self._raw_entity_data.get('drones', []):
             drone_data = self._prepare_kwargs(drone_data)  # <-- FIX
-            self.drones[drone_data['p_id']] = Drone(**drone_data, p_logging=p_logging)
+            self.drones[drone_data['p_id']] = Drone(**drone_data, p_logging=p_logging, **p_kwargs)
 
         for order_data in self._raw_entity_data.get('orders', []):
             order_data = self._prepare_kwargs(order_data)  # <-- FIX
-            self.orders[order_data['p_id']] = Order(**order_data, p_logging=p_logging)
+            self.orders[order_data['p_id']] = Order(**order_data, p_logging=p_logging, **p_kwargs
+                                                    )
 
         print("ScenarioGenerator: All entities instantiated (Phase 1 complete).")
 
