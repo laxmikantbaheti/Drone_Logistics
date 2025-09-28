@@ -92,7 +92,7 @@ def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) 
 
             for lane in lanes:
                 bar_ranges = [(o['start'], o['end'] - o['start']) for o in lane]
-                ax.broken_barh(bar_ranges, (y_pos - 0.25, 0.50),
+                ax.broken_barh(bar_ranges, (y_pos - 0.2, 0.40),
                                facecolors=color_map[data['type']], edgecolor='black')
                 if show_order_labels:
                     for order in lane:
@@ -105,10 +105,10 @@ def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) 
         else:
             y_ticks.append(y_pos)
             y_tick_labels.append(f"{vehicle_id} (Unused)")
-            y_pos += 1  # Reserve one empty lane for it
+            y_pos += 0.1  # Reserve one empty lane for it
 
-        ax.axhline(y_pos - 0.5, color='gray', linestyle='--', alpha=0.5)
-        y_pos += 0.5  # Add padding between vehicles
+        ax.axhline(y_pos - 0.1, color='gray', linestyle='--', alpha=0.5)
+        y_pos += 0.1  # Add padding between vehicles
 
     # 5. Format the final chart
     if y_ticks:  # Only set ticks if there are vehicles
