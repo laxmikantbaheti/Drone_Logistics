@@ -85,6 +85,7 @@ class Order(LogisticEntity):
         # FIX: Make global_state optional during initialization, defaulting to None
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self._state = State(self._state_space)
+        self.pseudo_orders = []
         self.reset()
 
     @staticmethod
@@ -116,6 +117,7 @@ class Order(LogisticEntity):
         self.assigned_vehicle_id = None
         self.assigned_micro_hub_id = None
         self.delivery_time = None
+        self.pseudo_orders = []
         self._update_state()
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:

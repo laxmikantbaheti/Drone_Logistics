@@ -188,6 +188,29 @@ class SupplyChainManager(System):
                 hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
                 assigned = self.assign_order(order, hub)
                 return assigned
+            # In file: ddls_src/managers/supply_chain_manager.py
+
+            elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
+                hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
+                assigned = self.assign_order(order, hub)
+                if assigned:
+                    # Create pseudo-orders
+                    pseudo_order_1 = Order(
+                        p_id=len(self.global_state.orders) + 1,
+                        p_pickup_node_id=order.get_pickup_node_id(),
+                        p_delivery_node_id=hub.id,
+                        global_state=self.global_state
+                    )
+                    pseudo_order_2 = Order(
+                        p_id=len(self.global_state.orders) + 2,
+                        p_pickup_node_id=hub.id,
+                        p_delivery_node_id=order.get_delivery_node_id(),
+                        global_state=self.global_state
+                    )
+                    self.global_state.add_entity(pseudo_order_1)
+                    self.global_state.add_entity(pseudo_order_2)
+                    order.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
+                return assigned
 
         except KeyError as e:
             self.log(self.C_LOG_TYPE_E, f"Action parameter missing: {e}")
@@ -195,14 +218,16 @@ class SupplyChainManager(System):
 
         return False
 
-    def assign_order(self, p_order:Order, p_entity):
+    def assign_order(self, p_order: Order, p_entity):
         assigned = False
         if isinstance(p_entity, MicroHub):
-            pass
+            p_order.assign_micro_hub(p_entity.id)
+            assigned = True
         elif isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
             assigned = p_order.assign_vehicle(p_entity._id)
             assigned = p_entity.assign_orders([p_order]) and assigned
-            self.global_state.get_order_requests()[(p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)
+            self.global_state.get_order_requests()[
+                (p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)
             p_order.raise_state_change_event()
         return assigned
 
