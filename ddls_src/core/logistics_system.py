@@ -55,7 +55,7 @@ class LogisticsSystem(System, EventManager):
                         p_mode=System.C_MODE_SIM,
                         p_latency=timedelta(seconds=self._config.get("main_timestep_duration", 60.0)))
         EventManager.__init__(self, p_logging=self.get_log_level())
-
+        self.movement_mode = self._config.get('movement_mode', 'network')
         # Initialize attributes
         self.automatic_logic_config = {}
         self.time_manager = TimeManager(initial_time=self._config.get("initial_time", 0.0))
@@ -96,7 +96,7 @@ class LogisticsSystem(System, EventManager):
         scenario_generator = ScenarioGenerator(raw_entity_data)
         self.entities = scenario_generator.build_entities()
 
-        self.global_state = GlobalState(initial_entities=self.entities)
+        self.global_state = GlobalState(initial_entities=self.entities, movement_mode=self.movement_mode)
 
         self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
         self.action_index = ActionIndex(self.global_state, self.action_map)

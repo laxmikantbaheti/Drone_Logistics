@@ -36,7 +36,7 @@ class GlobalState:
     All managers and entities will interact with the simulation state through this class.
     """
 
-    def __init__(self, initial_entities: Dict[str, Dict[int, Any]]):  # UPDATED: Takes instantiated entities
+    def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode):  # UPDATED: Takes instantiated entities
         """
         Initializes all entities based on pre-instantiated entity objects.
 
@@ -60,7 +60,8 @@ class GlobalState:
         self.network: Network = None  # Reference to the Network graph structure, populated after entities
         self.node_pairs = self.setup_node_pairs()
         self.orders_by_nodes = self.setup_order_by_node_pairs()
-        print("GlobalState initialized with provided entities.")
+        self.movement_mode = movement_mode  #
+        print(f"GlobalState initialized with provided entities. Movement mode set to: '{self.movement_mode}'.")
 
     def setup_node_pairs(self):
         node_ids = list(self.nodes.keys())

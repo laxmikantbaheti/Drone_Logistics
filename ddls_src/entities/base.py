@@ -55,7 +55,7 @@ class LogisticEntity(System):
     def setup_event_string(self):
         self.C_EVENT_ENTITY_STATE_CHANGE = f"{self.C_NAME} - {self._id}: State Change Event"
 
-    def save_date(self, p_key, p_value):
+    def save_data(self, p_key, p_value):
         if p_key in self.data_storage.keys():
             self.data_storage[p_key].append(p_value)
         else:

@@ -61,5 +61,9 @@ class JsonFileDataGenerator(BaseDataGenerator):
         if 'initial_time' not in data:
             data['initial_time'] = 0.0  # Default if not specified in JSON
 
-        return data
+        # Add this to load the distance matrix
+        if 'distance_matrix' not in data:
+            print("JsonFileDataGenerator Warning: 'distance_matrix' not found. Matrix-based movement will not work.")
+            data['distance_matrix'] = {}
 
+        return data

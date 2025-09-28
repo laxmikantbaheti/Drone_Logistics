@@ -27,12 +27,24 @@ class Network:
     for network queries, pathfinding, and live visualization.
     """
 
-    def __init__(self, global_state: 'GlobalState'):
+    def __init__(self, global_state: 'GlobalState', movement_mode: str = 'network', distance_matrix: Dict = None):
+        """
+        Initializes the Network class.
+
+        Args:
+            global_state (GlobalState): The global state of the simulation.
+            movement_mode (str): The movement mode ('network' or 'matrix').
+            distance_matrix (Dict): The distance matrix for matrix-based movement.
+        """
         self.global_state = global_state
         self.nodes: Dict[int, Node] = global_state.nodes
         self.edges: Dict[int, Edge] = global_state.edges
         self.adjacency_list: Dict[int, List[Tuple[int, int]]] = {}
         self._build_adjacency_list()
+
+        # New attributes for distance matrix mode
+        self.movement_mode = movement_mode
+        self.distance_matrix = distance_matrix if distance_matrix is not None else {}
 
         # Visualization attributes
         self.fig = None
@@ -57,33 +69,53 @@ class Network:
                 return edge
         return None
 
+    def get_travel_time(self, start_node_id: int, end_node_id: int) -> Optional[float]:
+        """Gets the travel time between two nodes based on the current movement mode."""
+        if self.movement_mode == 'matrix':
+            try:
+                # Ensure keys are strings for JSON compatibility
+                return self.distance_matrix[str(start_node_id)][str(end_node_id)]
+            except KeyError:
+                return None
+        else: # network mode
+            edge = self.get_edge_between_nodes(start_node_id, end_node_id)
+            return edge.get_current_travel_time() if edge else None
+
     def calculate_shortest_path(self, start_node_id: int, end_node_id: int, vehicle_type: str) -> List[int]:
-        # Dijkstra's algorithm implementation remains the same
-        if start_node_id not in self.nodes or end_node_id not in self.nodes: return []
-        distances = {node_id: float('inf') for node_id in self.nodes.keys()}
-        previous_nodes = {node_id: None for node_id in self.nodes.keys()}
-        distances[start_node_id] = 0
-        priority_queue = [(0, start_node_id)]
-        while priority_queue:
-            dist, current_node_id = heapq.heappop(priority_queue)
-            if dist > distances[current_node_id]: continue
-            if current_node_id == end_node_id: break
-            for neighbor_id, edge_id in self.get_neighbors(current_node_id):
-                edge = self.edges.get(edge_id)
-                if not edge or edge.is_blocked: continue
-                travel_time = edge.get_current_travel_time() if vehicle_type == 'truck' else edge.get_drone_flight_time()
-                if travel_time == float('inf'): continue
-                new_dist = dist + travel_time
-                if new_dist < distances[neighbor_id]:
-                    distances[neighbor_id] = new_dist
-                    previous_nodes[neighbor_id] = current_node_id
-                    heapq.heappush(priority_queue, (new_dist, neighbor_id))
-        path = []
-        current = end_node_id
-        while current is not None:
-            path.insert(0, current)
-            current = previous_nodes.get(current)
-        return path if path and path[0] == start_node_id else []
+        if self.movement_mode == 'matrix':
+            # For matrix mode, we assume a direct path.
+            # You could implement a more complex pathfinding algorithm here if needed.
+            if str(start_node_id) in self.distance_matrix and str(end_node_id) in self.distance_matrix[str(start_node_id)]:
+                return [start_node_id, end_node_id]
+            else:
+                return []
+        else: # network mode
+            # Dijkstra's algorithm implementation remains the same
+            if start_node_id not in self.nodes or end_node_id not in self.nodes: return []
+            distances = {node_id: float('inf') for node_id in self.nodes.keys()}
+            previous_nodes = {node_id: None for node_id in self.nodes.keys()}
+            distances[start_node_id] = 0
+            priority_queue = [(0, start_node_id)]
+            while priority_queue:
+                dist, current_node_id = heapq.heappop(priority_queue)
+                if dist > distances[current_node_id]: continue
+                if current_node_id == end_node_id: break
+                for neighbor_id, edge_id in self.get_neighbors(current_node_id):
+                    edge = self.edges.get(edge_id)
+                    if not edge or edge.is_blocked: continue
+                    travel_time = edge.get_current_travel_time() if vehicle_type == 'truck' else edge.get_drone_flight_time()
+                    if travel_time == float('inf'): continue
+                    new_dist = dist + travel_time
+                    if new_dist < distances[neighbor_id]:
+                        distances[neighbor_id] = new_dist
+                        previous_nodes[neighbor_id] = current_node_id
+                        heapq.heappush(priority_queue, (new_dist, neighbor_id))
+            path = []
+            current = end_node_id
+            while current is not None:
+                path.insert(0, current)
+                current = previous_nodes.get(current)
+            return path if path and path[0] == start_node_id else []
 
     def calculate_distance(self, p_node_1, p_node_2):
         return 10
