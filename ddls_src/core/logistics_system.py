@@ -102,7 +102,7 @@ class LogisticsSystem(System, EventManager):
         self.action_index = ActionIndex(self.global_state, self.action_map)
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
 
-        self.network = Network(self.global_state)
+        self.network = Network(self.global_state, self.movement_mode, raw_entity_data['distance_matrix'])
         self.global_state.network = self.network
         self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
 

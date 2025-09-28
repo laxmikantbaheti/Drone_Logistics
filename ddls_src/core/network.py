@@ -1,11 +1,13 @@
 # In file: ddls_src/core/network.py
-
+from ast import Param
 from typing import Dict, Any, List, Tuple, Optional
 import heapq
+from xmlrpc.client import Error
 
 # --- Imports for visualization ---
 import matplotlib.pyplot as plt
 import networkx as nx
+from mlpro.bf.exceptions import ParamError
 
 
 # Forward declarations for type hinting
@@ -44,7 +46,12 @@ class Network:
 
         # New attributes for distance matrix mode
         self.movement_mode = movement_mode
-        self.distance_matrix = distance_matrix if distance_matrix is not None else {}
+        if self.movement_mode:
+            if distance_matrix is None:
+                raise ParamError("Please provide distance matrix when using matrix movement mode.")
+            self.distance_matrix = distance_matrix
+        else:
+            self.distance_matrix = {}
 
         # Visualization attributes
         self.fig = None
