@@ -351,8 +351,10 @@ class Vehicle(LogisticEntity, ABC):
             self.current_route.pop(0)
             self.route_progress = 0.0
             if not self.current_route or len(self.current_route) < 2:
+                self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
                 self.status = "idle"
                 self.route_nodes = []
+                self.raise_state_change_event()
 
             # New: Update coordinates to be exactly at the new node
             self._update_location_coords(self.current_node_id, self.current_node_id, self.route_progress)

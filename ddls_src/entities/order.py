@@ -206,3 +206,32 @@ class Order(LogisticEntity):
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_DELIVERED)
         self.status = "Delivered"
         self.raise_state_change_event()
+
+
+
+
+
+class PseudoOrder(Order):
+
+    C_TYPE = "Pseudo Order"
+
+    def __init__(self,
+                 p_pickup_node_id,
+                 p_delivery_node_id,
+                 p_id,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=False,
+                 **p_kwargs):
+
+        Order.__init__(self,
+                       p_pickup_node_id=p_pickup_node_id,
+                       p_delivery_node_id=p_delivery_node_id,
+                       p_id=p_id,
+                       p_name=p_name,
+                       p_visualize=p_visualize,
+                       p_logging=p_logging,
+                       **p_kwargs)
+
+
+
