@@ -239,8 +239,9 @@ class LogisticsSystem(System, EventManager):
         self.global_state.add_orders(p_orders=p_event_object.get_data()['p_orders'])
         self.state_action_mapper.add_order(p_oredrs=p_event_object.get_data()['p_orders'])
         self.action_map, self.action_space_size = generate_action_map(self.global_state)
+        self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
         self.action_index.build_indexes(global_state=self.global_state, action_map=self.action_map)
-        self.constraint_manager.update_constraints(self.global_state)
+        self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
         self.get_masks()
 
     def get_masks(self):

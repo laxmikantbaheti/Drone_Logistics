@@ -564,7 +564,8 @@ class ConstraintManager(EventManager):
                                                    idx_to_mask=idx_to_mask,
                                                    idx_to_unmask=idx_to_unmask))
 
-    def update_constraints(self, global_state):
+    def update_constraints(self, global_state, reverse_action_map):
+        self.reverse_action_map = reverse_action_map
         for entity_dict in global_state.get_all_entities():
             for entity in entity_dict:
                 idx_to_mask = set()
@@ -582,6 +583,7 @@ class ConstraintManager(EventManager):
                 constraints_to_check = self.get_constraints_by_entity(entity)
                 related_actions_by_constraint = set()
                 for constraint in constraints_to_check:
+                    constraint.reverse_action_map = self.reverse_action_map
                     self.log(Log.C_LOG_TYPE_I, f"Checking constraint: {constraint.C_NAME}")
                     idx = constraint.get_invalidations(p_entity=entity,
                                                        p_action_index=self.action_index)
