@@ -11,7 +11,7 @@ from mlpro.bf.systems import System, State
 from mlpro.bf.math import MSpace, Dimension
 from mlpro.bf.events import EventManager, Event
 
-from ddls_src.actions.action_map_generator import generate_action_map
+# from ddls_src.actions.action_map_generator import generate_action_map
 # Local Imports
 from ddls_src.core.global_state import GlobalState
 from ddls_src.core.network import Network
@@ -239,10 +239,11 @@ class LogisticsSystem(System, EventManager):
         orders = p_event_object.get_data()['p_orders']
         # self.global_state.add_orders(p_orders=p_event_object.get_data()['p_orders'])
         self.global_state.add_dynamic_orders(orders)
-        self.state_action_mapper.add_order(p_oredrs=p_event_object.get_data()['p_orders'])
-        self.action_map, self.action_space_size = generate_action_map(self.global_state)
+        # self.state_action_mapper.add_order(p_oredrs=p_event_object.get_data()['p_orders'])
+        self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
         self.action_index.build_indexes(global_state=self.global_state, action_map=self.action_map)
+        self.state_action_mapper.update_action_space(self.action_map)
         self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
         self.get_masks()
 

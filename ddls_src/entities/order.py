@@ -175,6 +175,7 @@ class Order(LogisticEntity):
         self.assigned_micro_hub_id = micro_hub_id
         self.status = "at_micro_hub"
         self._update_state()
+        return True
 
     def set_enroute(self):
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)
@@ -209,7 +210,7 @@ class Order(LogisticEntity):
         if isinstance(self, PseudoOrder):
             self._raise_event(PseudoOrder.C_EVENT_ORDER_DELIVERED, Event(p_raising_object=self))
 
-    def handle_pseudo_order_delivery(self):
+    def handle_pseudo_delivery(self):
         delivered = True
         for ordr in self.pseudo_orders:
             if ordr.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0]) == self.C_STATUS_DELIVERED:

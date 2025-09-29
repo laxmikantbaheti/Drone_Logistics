@@ -170,7 +170,7 @@ class Vehicle(LogisticEntity, ABC):
             truck = self.global_state.get_entity("truck", truck_id)
             order: Order = self.global_state.get_entity("order", order_id)
             if order not in truck.pickup_orders:
-                raise ValueError("The order is not assigned to the vehicle. The order is not in the pick up orders.")
+                raise ValueError(f"The order {order_id} is not assigned to the vehicle {truck_id}. The order is not in the pick up orders.")
             else:
                 truck.pickup_orders.remove(order)
                 truck.delivery_orders.append(order)

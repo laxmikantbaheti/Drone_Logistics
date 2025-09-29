@@ -200,14 +200,14 @@ class SupplyChainManager(System):
                 if assigned:
                     # Create pseudo-orders
                     pseudo_order_1 = PseudoOrder(
-                        p_id=str(order.get_id())+"_1",
+                        p_id=str(order.get_id())+"_a",
                         p_pickup_node_id=order.get_pickup_node_id(),
                         p_delivery_node_id=hub.id,
                         global_state=self.global_state,
                         p_parent_order = order
                     )
                     pseudo_order_2 = PseudoOrder(
-                        p_id=str(order.get_id())+"_2",
+                        p_id=str(order.get_id())+"_b",
                         p_pickup_node_id=hub.id,
                         p_delivery_node_id=order.get_delivery_node_id(),
                         global_state=self.global_state,
@@ -224,7 +224,7 @@ class SupplyChainManager(System):
         return False
 
     def assign_order(self, p_order: Order, p_entity):
-        assigned = False
+        assigned = True
         if isinstance(p_entity, MicroHub):
             assigned = p_order.assign_micro_hub(p_entity.id) and assigned
             assigned = p_entity.assign_order(p_order) and assigned
@@ -239,7 +239,7 @@ class SupplyChainManager(System):
     def create_order_requests(self, p_orders:list):
         self._raise_event(p_event_id=self.C_EVENT_NEW_ORDER_REQUEST,
                           p_event_object=Event(p_raising_object=self,
-                                               p_orders = [p_orders]))
+                                               p_orders = p_orders))
 
 
 

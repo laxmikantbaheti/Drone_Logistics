@@ -1,3 +1,4 @@
+from tkinter.constants import ACTIVE
 from typing import List, Dict, Any, Callable, Tuple, Type, Set
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -101,6 +102,13 @@ class SimulationActions:
                                        is_automatic=False,
                                        handler="SupplyChainManager")
 
+    ASSIGN_ORDER_TO_MICRO_HUB = ActionType(name="ASSIGN_ORDER_TO_MICRO_HUB",
+                                           params=[{'name': 'pick_up_drop', 'type': 'Node Pair'},
+                                                   {'name': 'micro_hub_id', 'type': 'MicroHub'}],
+                                           is_automatic=False,
+                                           handler= "SupplyChainManager",
+                                           active=True)
+
     LOAD_TRUCK_ACTION = ActionType(name="LOAD_TRUCK_ACTION",
                                    params=[{'name': 'truck_id', 'type': 'Truck'},
                                            {'name': 'order_id', 'type': 'Order'}],
@@ -171,9 +179,9 @@ class SimulationActions:
                               active=False)
     FLAG_FOR_RE_DELIVERY = ActionType("FLAG_FOR_RE_DELIVERY", [{'name': 'order_id', 'type': 'Order'}], False,
                                       "SupplyChainManager", active=False)
-    ASSIGN_ORDER_TO_MICRO_HUB = ActionType("ASSIGN_ORDER_TO_MICRO_HUB", [{'name': 'order_id', 'type': 'Order'},
-                                                                         {'name': 'micro_hub_id', 'type': 'MicroHub'}],
-                                           False, "SupplyChainManager", active=False)
+    # ASSIGN_ORDER_TO_MICRO_HUB = ActionType("ASSIGN_ORDER_TO_MICRO_HUB", [{'name': 'order_id', 'type': 'Order'},
+    #                                                                      {'name': 'micro_hub_id', 'type': 'MicroHub'}],
+    #                                        False, "SupplyChainManager", active=False)
     REASSIGN_ORDER = ActionType("REASSIGN_ORDER",
                                 [{'name': 'order_id', 'type': 'Order'}, {'name': 'vehicle_id', 'type': 'Vehicle'}],
                                 False, "SupplyChainManager", active=False)
@@ -247,11 +255,12 @@ class SimulationActions:
             'Node': list(global_state.nodes.keys()),
             'MicroHub': list(global_state.micro_hubs.keys()),
             'Vehicle': list(global_state.trucks.keys()) + list(global_state.drones.keys()),
-            'Node Pair': global_state.node_pairs
+            'Node Pair': global_state.node_pairs.keys()
         }
 
         # 2. Iterate through each action defined in our blueprint
-        for action_type in self.get_all_actions():
+        all_actions = self.get_all_actions()
+        for action_type in all_actions:
             # This loop now includes ALL actions to ensure a static action map size
             if not action_type.params:
                 action_tuple = (action_type,)

@@ -84,11 +84,11 @@ class ActionManager:
                                      **params)
 
         # 4. Dispatch the action
-        try:
-            return target_manager.process_action(action_obj)
-        except Exception as e:
-            print(f"ActionManager dispatch error for action {action_tuple}: {e}")
-            return False
+        # try:
+        return target_manager.process_action(action_obj)
+        # except Exception as e:
+        #     print(f"ActionManager dispatch error for action {action_tuple}: {e}")
+        #     return False
 
 
 # -------------------------------------------------------------------------
