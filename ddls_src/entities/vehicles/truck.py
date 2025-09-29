@@ -30,7 +30,7 @@ class Truck(Vehicle):
     C_NAME = 'Truck'
 
     def __init__(self,
-                 p_id: int,
+                 p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,

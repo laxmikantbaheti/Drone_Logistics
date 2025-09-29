@@ -9,7 +9,7 @@ class LogisticEntity(System):
     C_DIS_DIMS = []
     C_EVENT_ENTITY_STATE_CHANGE = "Entity State Change"
     def __init__(self,
-                 p_id: int,
+                 p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=System.C_LOG_NOTHING,

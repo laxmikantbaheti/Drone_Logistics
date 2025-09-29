@@ -1,6 +1,8 @@
 import itertools
 from typing import Dict, Any, List, Tuple
 
+from ddls_src.actions.action_mapping import order_id
+
 
 # Forward declarations for entities to avoid circular imports.
 # These will be replaced by actual imports once the entity classes are defined.
@@ -81,7 +83,7 @@ class GlobalState:
             raise KeyError(f"Entity of type '{entity_type}' with ID '{entity_id}' not found.")
         return entities_dict[entity_id]
 
-    def get_all_entities(self, entity_type: str) -> Dict[int, Any]:
+    def get_all_entities_by_type(self, entity_type: str) -> Dict[int, Any]:
         """
         Generic getter for all entities of a specific type.
         """
@@ -299,4 +301,11 @@ class GlobalState:
 
     def get_orders(self):
         return self.orders
+
+    def add_dynamic_order(self, p_order):
+        self.orders[p_order.get_id()] = p_order
+
+    def get_all_entities(self):
+        return [self.orders, self.trucks, self.drones, self.micro_hubs, self.nodes]
+
 

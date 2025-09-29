@@ -44,7 +44,7 @@ class Order(LogisticEntity):
     def __init__(self,
                  p_pickup_node_id,
                  p_delivery_node_id,
-                 p_id: int,
+                 p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,
@@ -53,7 +53,7 @@ class Order(LogisticEntity):
         Initializes an Order system.
 
         Parameters:
-            p_id (int): Unique identifier for the order.
+            p_id: Unique identifier for the order.
             p_name (str): Name of the order.
             p_visualize (bool): Visualization flag.
             p_logging: Logging level.

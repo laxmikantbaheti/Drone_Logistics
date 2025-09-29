@@ -489,6 +489,7 @@ class ConstraintManager(EventManager):
                  reverse_action_map):
 
         EventManager.__init__(self, p_logging=False)
+        self.constraints = set()
         # self.constraint_config = p_entity_constraint_config.copy()
         # self.entity_constraints = {}
         # constraints = set()
@@ -513,11 +514,13 @@ class ConstraintManager(EventManager):
         """
         self.entity_constraints = {}
         for con in Constraint.__subclasses__():
+            constr = con.__call__(p_reverse_action_map = self.reverse_action_map)
+            self.constraints.update(constr)
             for entity in con.C_ASSOCIATED_ENTITIES:
                 if entity in self.entity_constraints:
-                    self.entity_constraints[entity].append(con.__call__(p_reverse_action_map = self.reverse_action_map))
+                    self.entity_constraints[entity].append(constr)
                 else:
-                    self.entity_constraints[entity] = [con.__call__(p_reverse_action_map = self.reverse_action_map)]
+                    self.entity_constraints[entity] = [constr]
 
     def get_constraints_by_entity(self, p_entity):
         """
@@ -560,6 +563,39 @@ class ConstraintManager(EventManager):
                               p_event_object=Event(p_raising_object=self,
                                                    idx_to_mask=idx_to_mask,
                                                    idx_to_unmask=idx_to_unmask))
+
+    def update_constraints(self, global_state):
+        for entity_dict in global_state.get_all_entities():
+            for entity in entity_dict:
+                idx_to_mask = set()
+                # We are not checking for unmasking, since we are now checking constraints on entity state. So we always start
+                # with completely unmasked version of the actions related to that entity.
+                # ids_to_unmask = set()
+                # Unmask all actions related to the entity
+                related_actions = set()
+                related_actions_by_entity = self.action_index.actions_involving_entity[(entity.C_NAME, entity.get_id())]
+
+                if isinstance(entity, Order):
+                    pickup_node = entity.get_pickup_node_id()
+                    delivery_node = entity.get_delivery_node_id()
+                    related_actions_by_entity.update(self.action_index.actions_involving_entity[("Node Pair", (pickup_node, delivery_node))])
+                constraints_to_check = self.get_constraints_by_entity(entity)
+                related_actions_by_constraint = set()
+                for constraint in constraints_to_check:
+                    self.log(Log.C_LOG_TYPE_I, f"Checking constraint: {constraint.C_NAME}")
+                    idx = constraint.get_invalidations(p_entity=entity,
+                                                       p_action_index=self.action_index)
+                    if idx is None:
+                        print(constraint)
+                    idx_to_mask.update(idx)
+                    related_actions_by_constraint.update(self.action_index.get_actions_of_type(constraint.C_ACTIONS_AFFECTED))
+                related_actions = related_actions_by_constraint.intersection(related_actions_by_entity)
+                idx_to_unmask = related_actions.difference(idx_to_mask)
+                if len(idx_to_mask) or len(idx_to_unmask):
+                    self._raise_event(p_event_id=ConstraintManager.C_EVENT_MASK_UPDATED,
+                                      p_event_object=Event(p_raising_object=self,
+                                                           idx_to_mask=idx_to_mask,
+                                                           idx_to_unmask=idx_to_unmask))
 
 
 # -------------------------------------------------------------------------

@@ -19,9 +19,9 @@ class ActionIndex:
     def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
         self.actions_by_type: Dict['ActionType', Set[int]] = defaultdict(set)
         self.actions_involving_entity: Dict[Tuple, Set[int]] = defaultdict(set)
-        self._build_indexes(global_state, action_map)
+        self.build_indexes(global_state, action_map)
 
-    def _build_indexes(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
+    def build_indexes(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
         for action_tuple, action_index in action_map.items():
             action_type = action_tuple[0]
             self.actions_by_type[action_type].add(action_index)
@@ -38,8 +38,8 @@ class ActionIndex:
             ids.update(self.actions_by_type[action_type])
         return ids
 
-    def _handle_new_entity(self):
-        pass
+    # def _handle_new_entity(self, p_event_str, p_event_obj):
+    #     self._build_indexes(global_state, action_map=)
 
 
 

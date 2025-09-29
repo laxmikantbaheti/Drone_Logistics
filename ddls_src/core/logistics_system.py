@@ -11,6 +11,7 @@ from mlpro.bf.systems import System, State
 from mlpro.bf.math import MSpace, Dimension
 from mlpro.bf.events import EventManager, Event
 
+from ddls_src.actions.action_map_generator import generate_action_map
 # Local Imports
 from ddls_src.core.global_state import GlobalState
 from ddls_src.core.network import Network
@@ -107,12 +108,11 @@ class LogisticsSystem(System, EventManager):
         self.global_state.network = self.network
         self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
 
-        all_entity_dicts = [self.global_state.orders, self.global_state.trucks, self.global_state.drones,
-                            self.global_state.micro_hubs, self.global_state.nodes]
+        all_entity_dicts = self.global_state.get_all_entities()
         for entity_dict in all_entity_dicts:
             for entity in entity_dict.values():
                 entity.global_state = self.global_state
-                entity.reset()
+                # entity.reset()
 
         self.constraint_manager = ConstraintManager(action_index=self.action_index, reverse_action_map=self._reverse_action_map)
         self.setup_events()
@@ -230,7 +230,7 @@ class LogisticsSystem(System, EventManager):
     def _update_state(self):
         if self.global_state:
             state_space = self._state.get_related_set()
-            orders = self.global_state.get_all_entities("order").values()
+            orders = self.global_state.get_all_entities_by_type("order").values()
             self._state.set_value(state_space.get_dim_by_name("total_orders").get_id(), len(orders))
             self._state.set_value(state_space.get_dim_by_name("delivered_orders").get_id(),
                                   sum(1 for o in orders if o.status == 'delivered'))
@@ -238,6 +238,10 @@ class LogisticsSystem(System, EventManager):
     def _handle_new_order_request(self, p_event_id, p_event_object):
         self.global_state.add_orders(p_orders=p_event_object.get_data()['p_orders'])
         self.state_action_mapper.add_order(p_oredrs=p_event_object.get_data()['p_orders'])
+        self.action_map, self.action_space_size = generate_action_map(self.global_state)
+        self.action_index.build_indexes(global_state=self.global_state, action_map=self.action_map)
+        self.constraint_manager.update_constraints(self.global_state)
+        self.get_masks()
 
     def get_masks(self):
         return self.state_action_mapper.generate_masks()

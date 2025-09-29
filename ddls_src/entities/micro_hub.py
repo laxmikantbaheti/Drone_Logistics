@@ -36,7 +36,7 @@ class MicroHub(Node):
                   C_DIM_NUM_DELIVERY_PACKAGES]
 
     def __init__(self,
-                 p_id: int,
+                 p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,

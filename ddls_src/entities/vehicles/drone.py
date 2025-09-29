@@ -35,7 +35,7 @@ class Drone(Vehicle):
     C_ACTION_DRONE_LAND = [SimulationActions.DRONE_LAND]
 
     def __init__(self,
-                 p_id: int,
+                 p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,

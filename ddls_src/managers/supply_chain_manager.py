@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Optional
 from datetime import timedelta
 
+from mlpro.bf.events import Event
 # MLPro Imports
 from mlpro.bf.systems import System, State
 from mlpro.bf.math import MSpace, Dimension
@@ -36,6 +37,7 @@ class SupplyChainManager(System):
 
     C_TYPE = 'Supply Chain Manager'
     C_NAME = 'Supply Chain Manager'
+    C_EVENT_NEW_ORDER_REQUEST = "New order event"
 
     def __init__(self,
                  p_id=None,
@@ -196,19 +198,19 @@ class SupplyChainManager(System):
                 if assigned:
                     # Create pseudo-orders
                     pseudo_order_1 = Order(
-                        p_id=len(self.global_state.orders) + 1,
+                        p_id=str(order.get_id())+"_1",
                         p_pickup_node_id=order.get_pickup_node_id(),
                         p_delivery_node_id=hub.id,
                         global_state=self.global_state
                     )
                     pseudo_order_2 = Order(
-                        p_id=len(self.global_state.orders) + 2,
+                        p_id=str(order.get_id())+"_2",
                         p_pickup_node_id=hub.id,
                         p_delivery_node_id=order.get_delivery_node_id(),
                         global_state=self.global_state
                     )
-                    self.global_state.add_entity(pseudo_order_1)
-                    self.global_state.add_entity(pseudo_order_2)
+                    self.create_order_request(pseudo_order_1)
+                    self.create_order_request(pseudo_order_2)
                     order.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
                 return assigned
 
@@ -231,13 +233,20 @@ class SupplyChainManager(System):
             p_order.raise_state_change_event()
         return assigned
 
+    def create_order_request(self, p_order):
+        self.global_state.add_dynamic_order(p_order)
+        self._raise_event(p_event_id=self.C_EVENT_NEW_ORDER_REQUEST,
+                          p_event_object=Event(p_raising_object=self,
+                                               p_order = p_order))
+
+
 
     def _update_state(self):
         """
         Calculates aggregate order statistics and updates the formal state object.
         """
         state_space = self._state.get_related_set()
-        orders = self.global_state.get_all_entities("order").values()
+        orders = self.global_state.get_all_entities_by_type("order").values()
 
         self._state.set_value(state_space.get_dim_by_name("num_orders_total").get_id(), len(orders))
         self._state.set_value(state_space.get_dim_by_name("orders_pending").get_id(),
