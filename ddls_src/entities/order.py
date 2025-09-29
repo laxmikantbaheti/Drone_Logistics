@@ -85,7 +85,7 @@ class Order(LogisticEntity):
         # FIX: Make global_state optional during initialization, defaulting to None
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self._state = State(self._state_space)
-        self.pseudo_orders = []
+        self.pseudo_orders:[Order] = []
         self.reset()
 
     @staticmethod
@@ -206,6 +206,18 @@ class Order(LogisticEntity):
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_DELIVERED)
         self.status = "Delivered"
         self.raise_state_change_event()
+        if isinstance(self, PseudoOrder):
+            self._raise_event(PseudoOrder.C_EVENT_ORDER_DELIVERED, Event(p_raising_object=self))
+
+    def handle_pseudo_order_delivery(self):
+        delivered = True
+        for ordr in self.pseudo_orders:
+            if ordr.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0]) == self.C_STATUS_DELIVERED:
+                delivered = True and delivered
+            else:
+                delivered = False
+        if delivered:
+            self.set_delivered()
 
 
 
@@ -214,10 +226,12 @@ class Order(LogisticEntity):
 class PseudoOrder(Order):
 
     C_TYPE = "Pseudo Order"
+    C_EVENT_ORDER_DELIVERED = "Pseudo Order Delivered"
 
     def __init__(self,
                  p_pickup_node_id,
                  p_delivery_node_id,
+                 p_parent_order,
                  p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
@@ -232,6 +246,7 @@ class PseudoOrder(Order):
                        p_visualize=p_visualize,
                        p_logging=p_logging,
                        **p_kwargs)
-
-
+        self.parent_order = p_parent_order
+        self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
+                                    self.parent_order.handle_pseudo_delivery())
 
