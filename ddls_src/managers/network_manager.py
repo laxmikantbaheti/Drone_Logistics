@@ -225,8 +225,8 @@ class NetworkManager(System):
 
     def _update_state(self):
         state_space = self._state.get_related_set()
-        nodes = self.global_state.get_all_entities("node").values()
-        edges = self.global_state.get_all_entities("edge").values()
+        nodes = self.global_state.get_all_entities_by_type("node").values()
+        edges = self.global_state.get_all_entities_by_type("edge").values()
 
         self._state.set_value(state_space.get_dim_by_name("total_nodes").get_id(), len(nodes))
         self._state.set_value(state_space.get_dim_by_name("total_edges").get_id(), len(edges))

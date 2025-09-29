@@ -122,9 +122,9 @@ class ResourceManager(System):
         Calculates aggregate resource statistics and updates the formal state object.
         """
         state_space = self._state.get_related_set()
-        trucks = self.global_state.get_all_entities("truck").values()
-        drones = self.global_state.get_all_entities("drone").values()
-        hubs = self.global_state.get_all_entities("micro_hub").values()
+        trucks = self.global_state.get_all_entities_by_type("truck").values()
+        drones = self.global_state.get_all_entities_by_type("drone").values()
+        hubs = self.global_state.get_all_entities_by_type("micro_hub").values()
 
         self._state.set_value(state_space.get_dim_by_name("num_vehicles").get_id(), len(trucks) + len(drones))
         self._state.set_value(state_space.get_dim_by_name("num_hubs").get_id(), len(hubs))

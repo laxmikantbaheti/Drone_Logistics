@@ -115,13 +115,13 @@ class LogisticsSystem(System, EventManager):
                 # entity.reset()
 
         self.constraint_manager = ConstraintManager(action_index=self.action_index, reverse_action_map=self._reverse_action_map)
-        self.setup_events()
-
         self.supply_chain_manager = SupplyChainManager(p_id='scm', global_state=self.global_state,
                                                        p_automatic_logic_config=self.automatic_logic_config)
         self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
         self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
                                               p_automatic_logic_config=self.automatic_logic_config)
+        self.setup_events()
+
 
         managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
                     'NetworkManager': self.network_manager}
@@ -236,7 +236,9 @@ class LogisticsSystem(System, EventManager):
                                   sum(1 for o in orders if o.status == 'delivered'))
 
     def _handle_new_order_request(self, p_event_id, p_event_object):
-        self.global_state.add_orders(p_orders=p_event_object.get_data()['p_orders'])
+        orders = p_event_object.get_data()['p_orders']
+        # self.global_state.add_orders(p_orders=p_event_object.get_data()['p_orders'])
+        self.global_state.add_dynamic_orders(orders)
         self.state_action_mapper.add_order(p_oredrs=p_event_object.get_data()['p_orders'])
         self.action_map, self.action_space_size = generate_action_map(self.global_state)
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
@@ -256,6 +258,9 @@ class LogisticsSystem(System, EventManager):
                     if isinstance(entity, LogisticEntity):
                         entity.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
                                                                       self.constraint_manager.handle_entity_state_change)
+
+        self.supply_chain_manager.register_event_handler(SupplyChainManager.C_EVENT_NEW_ORDER_REQUEST,
+                                                         self._handle_new_order_request)
 
 
     def get_success(self) -> bool:

@@ -209,8 +209,7 @@ class SupplyChainManager(System):
                         p_delivery_node_id=order.get_delivery_node_id(),
                         global_state=self.global_state
                     )
-                    self.create_order_request(pseudo_order_1)
-                    self.create_order_request(pseudo_order_2)
+                    self.create_order_requests([pseudo_order_1, pseudo_order_2])
                     order.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
                 return assigned
 
@@ -233,11 +232,10 @@ class SupplyChainManager(System):
             p_order.raise_state_change_event()
         return assigned
 
-    def create_order_request(self, p_order):
-        self.global_state.add_dynamic_order(p_order)
+    def create_order_requests(self, p_orders:list):
         self._raise_event(p_event_id=self.C_EVENT_NEW_ORDER_REQUEST,
                           p_event_object=Event(p_raising_object=self,
-                                               p_order = p_order))
+                                               p_orders = [p_orders]))
 
 
 

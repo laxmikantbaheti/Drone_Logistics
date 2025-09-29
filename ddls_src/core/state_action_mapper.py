@@ -515,7 +515,7 @@ class ConstraintManager(EventManager):
         self.entity_constraints = {}
         for con in Constraint.__subclasses__():
             constr = con.__call__(p_reverse_action_map = self.reverse_action_map)
-            self.constraints.update(constr)
+            self.constraints.add(constr)
             for entity in con.C_ASSOCIATED_ENTITIES:
                 if entity in self.entity_constraints:
                     self.entity_constraints[entity].append(constr)

@@ -108,7 +108,7 @@ class MicroHubsManager(System):
         """
         Calculates aggregate micro-hub statistics and updates the formal MLPro state object.
         """
-        hubs = self.global_state.get_all_entities("micro_hub").values()
+        hubs = self.global_state.get_all_entities_by_type("micro_hub").values()
         self._state.set_value(self._state.get_related_set().get_dim_by_name('num_micro_hubs').get_id(),
                               len(hubs))
         self._state.set_value(self._state.get_related_set().get_dim_by_name('active_hubs').get_id(),
