@@ -224,6 +224,7 @@ class SupplyChainManager(System):
         return False
 
     def assign_order(self, p_order: Order, p_entity):
+        self.global_state.get_order_requests()
         assigned = True
         if isinstance(p_entity, MicroHub):
             assigned = p_order.assign_micro_hub(p_entity.id) and assigned

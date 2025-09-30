@@ -249,5 +249,5 @@ class PseudoOrder(Order):
                        **p_kwargs)
         self.parent_order = p_parent_order
         self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
-                                    self.parent_order.handle_pseudo_delivery())
+                                    self.parent_order.handle_pseudo_delivery)
 

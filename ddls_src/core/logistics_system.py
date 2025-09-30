@@ -243,6 +243,7 @@ class LogisticsSystem(System, EventManager):
         self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
         self.action_index.build_indexes(global_state=self.global_state, action_map=self.action_map)
+        self.constraint_manager.action_index = self.action_index
         self.state_action_mapper.update_action_space(self.action_map)
         self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
         self.get_masks()

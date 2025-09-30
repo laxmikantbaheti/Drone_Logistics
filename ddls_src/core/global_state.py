@@ -305,6 +305,9 @@ class GlobalState:
     def add_dynamic_orders(self, p_orders:list):
         for ordr in p_orders:
             self.orders[ordr.get_id()] = ordr
+            pickup_node_id = ordr.get_pickup_node_id()
+            delivery_node_id = ordr.get_delivery_node_id()
+
 
     def get_all_entities(self):
         return [self.orders, self.trucks, self.drones, self.micro_hubs, self.nodes]
