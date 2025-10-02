@@ -212,7 +212,7 @@ class Order(LogisticEntity):
         if isinstance(self, PseudoOrder):
             self._raise_event(PseudoOrder.C_EVENT_ORDER_DELIVERED, Event(p_raising_object=self))
 
-    def handle_pseudo_delivery(self):
+    def handle_pseudo_delivery(self, p_event_id, p_event_object):
         delivered = True
         for ordr in self.pseudo_orders:
             if ordr.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0]) == self.C_STATUS_DELIVERED:
@@ -220,6 +220,7 @@ class Order(LogisticEntity):
             else:
                 delivered = False
         if delivered:
+            print(f"Collaborative order {self.get_id()} is delivered.")
             self.set_delivered()
 
 

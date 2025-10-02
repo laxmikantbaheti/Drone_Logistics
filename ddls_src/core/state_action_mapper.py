@@ -468,6 +468,34 @@ class ConsolidationConstraint(Constraint):
         return invalidation_idx
 
 
+
+class OrderAlreadyAtMicroHubConstraint(Constraint):
+    C_NAME = "OrderAlreadyAtMicroHubConstraint"
+    C_ASSOCIATED_ENTITIES = ["Order"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB]
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+        invalidation_idx = []
+        if not isinstance(p_entity, Order):
+            raise TypeError("The 'OrderAlreadyAtMicroHubConstraint' is only applicable to an Order entity.")
+
+        order = p_entity
+        for ps_order in order.pseudo_orders:
+            if order.assigned_micro_hub_id is not None:
+                # This order is already assigned to a micro-hub.
+                # Invalidate actions that would assign it to the *same* micro-hub.
+                actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+                actions_by_entity = p_action_index.actions_involving_entity[("Order", ps_order.get_id())]
+                actions_for_this_hub = p_action_index.actions_involving_entity[("MicroHub", order.assigned_micro_hub_id)]
+
+                # Find the intersection of all three sets to get the specific actions to invalidate.
+                invalidation_idx.extend(list(actions_by_type.intersection(actions_by_entity).intersection(actions_for_this_hub)))
+
+        return invalidation_idx
+
+
+
+
 # -------------------------------------------------------------------------------------------------
 
 
@@ -562,7 +590,7 @@ class ConstraintManager(EventManager):
             self.log(Log.C_LOG_TYPE_I, f"Checking constraint: {constraint.C_NAME}")
             invalidations = constraint.get_invalidations(p_entity=entity, p_action_index=self.action_index)
             if invalidations is not None:
-                idx_to_mask.update(invalidations)
+                idx_to_mask.update(set(invalidations))
             related_actions_by_constraint.update(self.action_index.get_actions_of_type(constraint.C_ACTIONS_AFFECTED))
 
         related_actions = related_actions_by_constraint.intersection(related_actions_by_entity)
@@ -609,7 +637,7 @@ class ConstraintManager(EventManager):
                     self.log(Log.C_LOG_TYPE_I, f"Checking constraint: {constraint.C_NAME}")
                     invalidations = constraint.get_invalidations(p_entity=entity, p_action_index=self.action_index)
                     if invalidations:
-                        idx_to_mask.update(invalidations)
+                        idx_to_mask.update(set(invalidations))
                     related_actions_by_constraint.update(
                         self.action_index.get_actions_of_type(constraint.C_ACTIONS_AFFECTED))
 
