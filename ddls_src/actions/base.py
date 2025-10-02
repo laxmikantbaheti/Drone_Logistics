@@ -33,6 +33,11 @@ class ActionIndex:
                 entity_id = action_tuple[i + 1]
                 self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
 
+    def update_indexes(self, global_state, action_map):
+        self.actions_by_type = defaultdict(set)
+        self.actions_involving_entity = defaultdict(set)
+        self.build_indexes(global_state, action_map)
+
     def get_actions_of_type(self, action_types: List['ActionType']) -> Set[int]:
         ids = set()
         for action_type in action_types:
