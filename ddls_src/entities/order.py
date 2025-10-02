@@ -161,6 +161,14 @@ class Order(LogisticEntity):
         self.raise_state_change_event()
         return True
 
+    def assign_micro_hub(self, micro_hub_id: int):
+        self.assigned_micro_hub_id = micro_hub_id
+        self.status = "at_micro_hub"
+        self.update_state_value_by_dim_name(self.C_DIM_ASSIGNED_VEHICLE[0], micro_hub_id)
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
+        self._update_state()
+        return True
+
     def unassign_vehicle(self):
         self.assigned_vehicle_id = None
         if self.status in ["assigned", "in_transit"]:
@@ -170,12 +178,6 @@ class Order(LogisticEntity):
     def get_assigned_vehicle_id(self):
         if self.assigned_vehicle_id:
             return self.assigned_vehicle_id
-
-    def assign_micro_hub(self, micro_hub_id: int):
-        self.assigned_micro_hub_id = micro_hub_id
-        self.status = "at_micro_hub"
-        self._update_state()
-        return True
 
     def set_enroute(self):
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)

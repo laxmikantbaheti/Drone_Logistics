@@ -181,11 +181,15 @@ class SupplyChainManager(System):
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_TRUCK:
                 truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
                 assigned = self.assign_order(order, truck)
+                if assigned:
+                    print(f"Order {order.get_id()} assigned to vehicle {truck.get_id()}.")
                 return assigned
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_DRONE:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
                 assigned = self.assign_order(order, drone)
+                if assigned:
+                    print(f"Order {order.get_id()} assigned to vehicle {drone.get_id()}.")
                 return assigned
 
             # elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
@@ -215,6 +219,8 @@ class SupplyChainManager(System):
                     )
                     self.create_order_requests([pseudo_order_1, pseudo_order_2])
                     order.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
+                if assigned:
+                    print(f"Order {order.get_id()} assigned to micro-hub {hub.get_id()}.")
                 return assigned
 
         except KeyError as e:
@@ -232,7 +238,7 @@ class SupplyChainManager(System):
         elif isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
             assigned = p_order.assign_vehicle(p_entity._id)
             assigned = p_entity.assign_orders([p_order]) and assigned
-            self.global_state.get_order_requests()[
+        self.global_state.get_order_requests()[
                 (p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)
         p_order.raise_state_change_event()
         return assigned
