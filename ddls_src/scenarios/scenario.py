@@ -126,7 +126,7 @@ class LogisticsScenario(Scenario):
                 no_op_idx = list(self._system.action_map.values())[-1]
 
                 # Condition 1: Are there any valid actions left for the agent?
-                agent_has_moves = np.any(np.delete(agent_mask, no_op_idx))
+                agent_has_moves = np.any(agent_mask)
                 if not agent_has_moves:
                     self.log(self.C_LOG_TYPE_I, "No valid agent actions available. Ending Decision Phase.")
                     break

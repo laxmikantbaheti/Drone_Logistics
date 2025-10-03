@@ -196,7 +196,7 @@ class Order(LogisticEntity):
         return self.global_state
 
     def __repr__(self):
-        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id})"
+        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])}"
 
     def change_delivery_status(self, status):
         if status not in self.C_VALID_DELIVERY_STATES:
