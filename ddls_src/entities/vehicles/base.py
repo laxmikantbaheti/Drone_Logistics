@@ -180,7 +180,7 @@ class Vehicle(LogisticEntity, ABC):
                 order.set_enroute()
                 print(f"{order_id} is loaded in the truck {truck_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
-                self.save_data(order.__repr__(), self.global_state.current_time)
+                self.save_data(str(order), self.global_state.current_time)
                 # input("Press enter")
                 return True
 
@@ -201,7 +201,7 @@ class Vehicle(LogisticEntity, ABC):
                 print(f"Order {order_id} is unloaded from the truck {truck_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
                 # input("Press Enter")
-                self.save_data(order.__repr__(), self.global_state.current_time)
+                self.save_data(str(order), self.global_state.current_time)
                 # input("Press Enter")
                 return True
 
@@ -223,7 +223,7 @@ class Vehicle(LogisticEntity, ABC):
                 # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is loaded in the Drone {drone_id}.")
                 # input("Press enter")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
-                self.save_data(order.__repr__(), self.global_state.current_time)
+                self.save_data(str(order), self.global_state.current_time)
                 return True
 
         if action_type == SimulationActions.UNLOAD_DRONE_ACTION:
@@ -242,7 +242,7 @@ class Vehicle(LogisticEntity, ABC):
                 print(f"Order {order_id} is unloaded from the drone {drone_id}.")
                 # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is unloaded from the drone {drone_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
-                self.save_data(order.__repr__(), self.global_state.current_time)
+                self.save_data(str(order), self.global_state.current_time)
                 # input("Press Enter")
                 return True
 

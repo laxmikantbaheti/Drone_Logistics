@@ -47,9 +47,9 @@ def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) 
     for vehicle_id in all_vehicle_ids:
         vehicle_obj = truck_data.get(vehicle_id) or drone_data.get(vehicle_id)
         orders = []
-        for order_id, times in vehicle_obj.data_storage.items():
+        for order, times in vehicle_obj.data_storage.items():
             if len(times) == 2 and times[1] > times[0]:
-                orders.append({'id': order_id, 'start': times[0], 'end': times[1]})
+                orders.append({'id': order, 'start': times[0], 'end': times[1]})
 
         if not orders:
             continue

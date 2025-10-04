@@ -198,6 +198,9 @@ class Order(LogisticEntity):
     def __repr__(self):
         return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])}"
 
+    def __str__(self):
+        return f"Order {self.get_id()} - {self.pickup_node_id, self.delivery_node_id}"
+
     def change_delivery_status(self, status):
         if status not in self.C_VALID_DELIVERY_STATES:
             raise ValueError("Invalid delivery status provided for Order entity.")

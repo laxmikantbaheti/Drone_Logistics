@@ -61,3 +61,5 @@ class LogisticEntity(System):
         else:
             if not isinstance(p_value, list):
                 self.data_storage[p_key] = [p_value]
+            else:
+                self.data_storage[p_key] = p_value
