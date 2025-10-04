@@ -260,12 +260,11 @@ class SimulationActions:
             'Node': list(global_state.nodes.keys()),
             'MicroHub': list(global_state.micro_hubs.keys()),
             'Vehicle': list(global_state.trucks.keys()) + list(global_state.drones.keys()),
-            'Node Pair': global_state.node_pairs.keys()
+            'Node Pair': global_state.node_pairs
         }
 
         # 2. Iterate through each action defined in our blueprint
-        all_actions = self.get_all_actions()
-        for action_type in all_actions:
+        for action_type in self.get_all_actions():
             # This loop now includes ALL actions to ensure a static action map size
             if not action_type.params:
                 action_tuple = (action_type,)
@@ -292,8 +291,20 @@ class SimulationActions:
                 continue
 
             # 4. Generate all unique combinations of parameter values
-            # Handling special invalid case of same-node delivery requests.
             param_combinations = list(itertools.product(*param_ranges))
+
+            # MODIFICATION: Filter out invalid micro hub assignments
+            if action_type.name == "ASSIGN_ORDER_TO_MICRO_HUB":
+                filtered_combinations = []
+                for combo in param_combinations:
+                    # combo is expected to be ((pickup_node_id, delivery_node_id), micro_hub_id)
+                    node_pair, micro_hub_id = combo
+                    pickup_node_id, delivery_node_id = node_pair
+
+                    # The micro hub cannot be the same as the pickup or delivery node
+                    if micro_hub_id != pickup_node_id and micro_hub_id != delivery_node_id:
+                        filtered_combinations.append(combo)
+                param_combinations = filtered_combinations
 
             for combo in param_combinations:
                 action_tuple = (action_type,) + combo
