@@ -462,6 +462,12 @@ class ConsolidationConstraint(Constraint):
                                       in [vehicle.C_TRIP_STATE_IDLE, vehicle.C_TRIP_STATE_HALT]
                                       and (len(vehicle.pickup_orders) > 0 or p_entity.get_current_cargo_size() > 0))
 
+        vehicle_node_id = vehicle.current_node_id
+        assigned_orders_at_node = ([ordr for ordr in vehicle.get_pickup_orders() if ordr.get_pickup_node_id() == vehicle_node_id]
+                                   + [ordr for ordr in vehicle.get_delivery_orders() if ordr.get_delivery_node_id() == vehicle_node_id])
+        if len(assigned_orders_at_node):
+            is_ready_for_consolidation = False
+
         if not is_ready_for_consolidation:
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
