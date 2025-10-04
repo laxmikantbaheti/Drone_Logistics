@@ -30,7 +30,7 @@
         {
             "id": 3,
             "coords": [25, 75],
-            "type": "micro_hub",
+            "type": "customer",
             "is_loadable": true,
             "is_unloadable": true,
             "is_charging_station": true,
@@ -40,7 +40,7 @@
         {
             "id": 4,
             "coords": [75, 70],
-            "type": "micro_hub",
+            "type": "customer",
             "is_loadable": true,
             "is_unloadable": true,
             "is_charging_station": true,
@@ -50,7 +50,7 @@
         {
             "id": 5,
             "coords": [20, 25],
-            "type": "micro_hub",
+            "type": "customer",
             "is_loadable": true,
             "is_unloadable": true,
             "is_charging_station": true,
@@ -60,7 +60,7 @@
         {
             "id": 6,
             "coords": [80, 20],
-            "type": "micro_hub",
+            "type": "customer",
             "is_loadable": true,
             "is_unloadable": true,
             "is_charging_station": true,
@@ -70,7 +70,7 @@
         {
             "id": 7,
             "coords": [50, 50],
-            "type": "micro_hub",
+            "type": "customer",
             "is_loadable": true,
             "is_unloadable": true,
             "is_charging_station": true,
@@ -363,7 +363,6 @@
         {"id": 210, "start_node_id": 1, "max_payload_capacity": 1, "max_speed": 30.0, "initial_battery": 1.0, "battery_drain_rate_flying": 0.005, "battery_drain_rate_idle": 0.001, "battery_charge_rate": 0.01},
         {"id": 211, "start_node_id": 7, "max_payload_capacity": 1, "max_speed": 30.0, "initial_battery": 1.0, "battery_drain_rate_flying": 0.005, "battery_drain_rate_idle": 0.001, "battery_charge_rate": 0.01}
     ],
-    "micro_hubs": [3, 4, 5, 6, 7],
     "orders": [
         {"id": 0, "p_pickup_node_id": 2, "p_delivery_node_id": 19, "time_received": 1205.33, "SLA_deadline": 8634.34, "priority": 1},
         {"id": 1, "p_pickup_node_id": 0, "p_delivery_node_id": 12, "time_received": 345.11, "SLA_deadline": 7011.0, "priority": 2},
