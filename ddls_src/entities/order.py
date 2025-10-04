@@ -21,12 +21,14 @@ class Order(LogisticEntity):
     C_STATUS_EN_ROUTE = "En Route"
     C_STATUS_DELIVERED = "Delivered"
     C_STATUS_FAILED = "Failed"
+    C_STATUS_IN_RELAY = "Order in relay"
     C_VALID_DELIVERY_STATES = [C_STATUS_PLACED,
                                C_STATUS_ACCEPTED,
                                C_STATUS_ASSIGNED,
                                C_STATUS_EN_ROUTE,
                                C_STATUS_DELIVERED,
-                               C_STATUS_FAILED]
+                               C_STATUS_FAILED,
+                               C_STATUS_IN_RELAY]
     C_DIM_DELIVERY_STATUS = ["delivery", "Delivery Status", C_VALID_DELIVERY_STATES]
     C_DIM_PRIORITY = ["pri", "Priority", []]
     C_DIM_PICKUP_NODE = ["p_node", "Pickup Node", []]
