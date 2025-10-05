@@ -93,12 +93,12 @@ def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) 
             for lane in lanes:
                 bar_ranges = [(o['start'], o['end'] - o['start']) for o in lane]
                 ax.broken_barh(bar_ranges, (y_pos - 0.2, 0.40),
-                               facecolors=color_map[data['type']], edgecolor='black')
+                               facecolors=color_map[data['type']], edgecolor='black', alpha = 0.85)
                 if show_order_labels:
                     for order in lane:
                         start, duration = order['start'], order['end'] - order['start']
                         ax.text(start + duration / 2, y_pos, order['id'],
-                                ha='center', va='center', color='white', fontsize=9)
+                                ha='center', va='center', color='black', fontsize=9)
                 y_pos += 1
 
         # CASE B: The vehicle is unused
