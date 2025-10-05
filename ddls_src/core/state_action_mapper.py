@@ -28,6 +28,7 @@ from ddls_src.entities.base import LogisticEntity
 from ddls_src.entities import *
 # Import the Log class for structured logging.
 from mlpro.bf.various import Log
+from ddls_src.entities.order import PseudoOrder
 
 
 # # Forward declarations for type hinting to avoid circular import issues.
@@ -117,7 +118,7 @@ class Constraint(ABC, EventManager):
 #----------------------------------------------------------------------------------------------------
 
     @abstractmethod
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
         Determines which actions should be invalidated for a given entity.
 
@@ -172,7 +173,7 @@ class VehicleAvailableConstraint(Constraint):
     #                                        p_effect=constraint_satisfied)
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
         Invalidates vehicle actions if the vehicle is not available.
         """
@@ -188,7 +189,7 @@ class VehicleAvailableConstraint(Constraint):
         # Check the vehicle's availability status from its state.
         if vehicle.get_state_value_by_dim_name(Vehicle.C_DIM_AVAILABLE[0]):
             # If the vehicle is available, return the empty list (no invalidations).
-            return invalidation_idx
+            return invalidation_idx, []
         else:
             # If the vehicle is not available, find all actions related to it that should be masked.
             # Get all action indices of the types affected by this constraint.
@@ -198,7 +199,7 @@ class VehicleAvailableConstraint(Constraint):
             # Find the intersection of the two sets to get the actions to invalidate.
             invalidation_idx = list(actions_by_type.intersection(actions_by_entity))
             # Return the list of invalidated action indices.
-            return invalidation_idx
+            return invalidation_idx, []
 
 #----------------------------------------------------------------------------------------------------
 
@@ -222,7 +223,7 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
                           SimulationActions.DRONE_LAUNCH]
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
         Invalidates unloading actions if the vehicle is not at a delivery node.
         """
@@ -279,7 +280,7 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
             # Unmask the relevant actions by taking the set difference.
             actions_to_mask = list(actions_to_mask.difference(relevant_actions_by_order))
             # Return the final list of actions to be masked.
-            return actions_to_mask
+            return actions_to_mask, []
 
         # If the vehicle is not at any delivery node, mask all related unload actions.
         # Get all actions of the affected types.
@@ -289,7 +290,7 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
         # The actions to mask are the intersection of the two sets.
         actions_to_mask = actions_by_entity.intersection(actions_by_type)
         # Return the list of actions to mask.
-        return list(actions_to_mask)
+        return list(actions_to_mask), []
 
 #----------------------------------------------------------------------------------------------------
 
@@ -313,7 +314,7 @@ class VehicleAtPickUpNodeConstraint(Constraint):
                           SimulationActions.DRONE_LAND]
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
         Invalidates loading actions if the vehicle is not at a pickup node.
         """
@@ -368,7 +369,7 @@ class VehicleAtPickUpNodeConstraint(Constraint):
             # Unmask the relevant actions by taking the set difference.
             actions_to_mask = list(actions_to_mask.difference(relevant_actions_by_order))
             # Return the final list of actions to be masked.
-            return actions_to_mask
+            return actions_to_mask, []
 
         # If the vehicle is not at any pickup node, mask all related load actions.
         # Get all actions of the affected types.
@@ -378,7 +379,7 @@ class VehicleAtPickUpNodeConstraint(Constraint):
         # The actions to mask are the intersection of the two sets.
         actions_to_mask = actions_by_entity.intersection(actions_by_type)
         # Return the list of actions to mask.
-        return list(actions_to_mask)
+        return list(actions_to_mask), []
 
 #----------------------------------------------------------------------------------------------------
 
@@ -401,7 +402,7 @@ class OrderRequestAssignabilityConstraint(Constraint):
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
         Invalidates order assignments if there's no valid request or the target is unavailable.
         """
@@ -449,7 +450,7 @@ class OrderRequestAssignabilityConstraint(Constraint):
                     list(p_action_index.actions_involving_entity[(type(micro_hub), micro_hub.get_id())]))
 
         # Return the final list of invalidated action indices.
-        return invalidation_idx
+        return invalidation_idx, []
 
 #----------------------------------------------------------------------------------------------------
 
@@ -471,7 +472,7 @@ class VehicleCapacityConstraint(Constraint):
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
         Invalidates order assignment if the vehicle is at full capacity.
         """
@@ -487,7 +488,7 @@ class VehicleCapacityConstraint(Constraint):
         # Check if there is space for at least one more item.
         if vehicle_capacity - current_cargo_size >= 1:
             # If there is capacity, return the empty list (no invalidations).
-            return invalidation_idx
+            return invalidation_idx, []
         else:
             # If the vehicle is full, invalidate assignment actions.
             # Get all actions of the affected assignment types.
@@ -497,7 +498,7 @@ class VehicleCapacityConstraint(Constraint):
             # The actions to invalidate are the intersection of the two sets.
             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
             # Return the list of invalidations.
-            return invalidation_idx
+            return invalidation_idx, []
 
 #----------------------------------------------------------------------------------------------------
 
@@ -518,7 +519,7 @@ class TripWithinRangeConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
         Invalidates drone order assignments for trips that exceed the drone's range.
         """
@@ -550,7 +551,7 @@ class TripWithinRangeConstraint(Constraint):
 
         # If no orders are out of range, there are no invalidations.
         if not orders_not_in_range:
-            return []
+            return [], []
 
         # Get all actions of the affected assignment type.
         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
@@ -565,7 +566,7 @@ class TripWithinRangeConstraint(Constraint):
         # The invalidation set is the intersection of actions involving the drone, the correct action type, and the out-of-range orders.
         invalidation_set = actions_by_drone.intersection(actions_by_type, actions_by_orders)
         # Return the resulting list of invalidations.
-        return list(invalidation_set)
+        return list(invalidation_set), []
 
 #----------------------------------------------------------------------------------------------------
 
@@ -587,7 +588,7 @@ class VehicleRoutingConstraint(Constraint):
                           SimulationActions.DRONE_TO_NODE]
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
         Invalidates movement to nodes that are not part of the current route plan.
         """
@@ -613,12 +614,12 @@ class VehicleRoutingConstraint(Constraint):
             # The invalid actions are all possible move actions minus the ones we want to unmask.
             invalidation_idx = list(all_possible_move_actions.difference(idx_to_unmask))
             # Return the list of invalidations.
-            return invalidation_idx
+            return invalidation_idx, []
         # If the entity is a Node, the logic is driven by the vehicle, so we do nothing here.
         elif isinstance(p_entity, Node):
-            return []
+            return [], []
         # For any other entity type, return an empty list.
-        return []
+        return [], []
 
 #----------------------------------------------------------------------------------------------------
 
@@ -640,7 +641,7 @@ class ConsolidationConstraint(Constraint):
                           SimulationActions.CONSOLIDATE_FOR_DRONE]
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
         Invalidates consolidation if the vehicle is en-route or has no orders.
         """
@@ -649,7 +650,7 @@ class ConsolidationConstraint(Constraint):
         # Check if the entity is a Truck or Drone.
         if not isinstance(p_entity, (Truck, Drone)):
             # If not, return immediately as this constraint does not apply.
-            return invalidation_idx
+            return invalidation_idx, []
 
         # Assign the entity to a more specific variable name.
         vehicle = p_entity
@@ -677,40 +678,77 @@ class ConsolidationConstraint(Constraint):
             invalidation_idx = list(actions_by_type.intersection(actions_by_entity))
 
         # Return the final list of invalidations.
-        return invalidation_idx
+        return invalidation_idx, []
 
 #----------------------------------------------------------------------------------------------------
 
 
 
-# # This entire class is commented out, representing a potential or deprecated constraint.
-# class CollaborationPrecedenceConstraint(Constraint):
-#     C_NAME = "Collaboration Precedence Constraint"
-#     C_ASSOCIATED_ENTITIES = ["Order"]
-#     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION, SimulationActions.LOAD_DRONE_ACTION]
-#
-#     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
-#         invalidation_idx = []
-#         if not isinstance(p_entity, Order):
-#             raise TypeError("The \'Collaboration Precedence Constraint\' is only applicable to an Order entity.")
-#
-#         order = p_entity
-#         predecessor_orders:[Order] = order.predecessor_orders
-#         if not len(predecessor_orders):
-#             return invalidation_idx
-#
-#         else:
-#             precedence_satisfied = True
-#             for ordr in predecessor_orders:
-#                 if isinstance(ordr, Order):
-#                     if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_DELIVERED:
-#                         precedence_satisfied = True and precedence_satisfied
-#                     else:
-#                         precedence_satisfied = False
-#
-#
-#
-#         return invalidation_idx
+# This entire class is commented out, representing a potential or deprecated constraint.
+class CollaborationPrecedenceConstraint(Constraint):
+    C_NAME = "Collaboration Precedence Constraint"
+    C_ASSOCIATED_ENTITIES = ["Order", "Truck", "Drone"]
+    C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION, SimulationActions.LOAD_DRONE_ACTION]
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
+        invalidation_idx = []
+        # if not isinstance(p_entity, Order):
+        #     raise TypeError("The \'Collaboration Precedence Constraint\' is only applicable to an Order entity.")
+
+        def check_order_precedence(p_order):
+            predecessor_orders: [Order] = p_order.predecessor_orders
+            if not len(predecessor_orders):
+                return True
+
+            else:
+                precedence_satisfied = True
+                for ordr in predecessor_orders:
+                    if isinstance(ordr, Order):
+                        if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_DELIVERED:
+                            precedence_satisfied = True and precedence_satisfied
+                        else:
+                            precedence_satisfied = False
+                return precedence_satisfied
+
+        if isinstance(p_entity, Order):
+            order = p_entity
+            # predecessor_orders:[Order] = order.predecessor_orders
+            # if not len(predecessor_orders):
+            #     return invalidation_idx, []
+            #
+            # else:
+            #     precedence_satisfied = True
+            #     for ordr in predecessor_orders:
+            #         if isinstance(ordr, Order):
+            #             if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_DELIVERED:
+            #                 precedence_satisfied = True and precedence_satisfied
+            #             else:
+            #                 precedence_satisfied = False
+            precedence_satisfied = check_order_precedence(order)
+            if not precedence_satisfied:
+                actions_by_entity = p_action_index.actions_involving_entity["Order", p_entity.get_id()]
+                actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+                invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+
+        if isinstance(p_entity, Vehicle):
+            if p_entity.current_node_id is not None:
+                current_node_id = p_entity.current_node_id
+                pickup_orders_at_nodes = [ordr for ordr in p_entity.get_pickup_orders() if ordr.get_pickup_node_id() == current_node_id]
+                relevant_orders = [ordr for ordr in pickup_orders_at_nodes if not check_order_precedence(ordr)]
+                actions_by_order = set()
+                for rel_order in relevant_orders:
+                    actions_by_order.update(p_action_index.actions_involving_entity["Order", rel_order.get_id()])
+                if isinstance(p_entity, Truck):
+                    actions_by_vehicle = p_action_index.actions_involving_entity["Truck", p_entity.get_id()]
+                elif isinstance(p_entity, Drone):
+                    actions_by_vehicle = p_action_index.actions_involving_entity["Drone", p_entity.get_id()]
+                actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+                invalidation_idx = actions_by_type.intersection(actions_by_vehicle).intersection(actions_by_order)
+
+
+
+
+        return invalidation_idx, []
 
 
 
@@ -725,7 +763,7 @@ class MicroHubAssignabilityConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB]
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         # Initialize an empty list for invalidated action indices.
         invalidation_idx = []
         # Check if the entity is an Order.
@@ -756,18 +794,18 @@ class MicroHubAssignabilityConstraint(Constraint):
                 invalidation_idx.extend(list(actions_by_type.intersection(actions_by_node_pair).intersection(actions_by_mh)))
 
             # Return the final list of invalidations.
-            return invalidation_idx
+            return invalidation_idx, []
         except:
             # If any error occurs (e.g., the order is not assigned to a Micro-Hub), return the empty list.
-            return invalidation_idx
+            return invalidation_idx, []
 
 #----------------------------------------------------------------------------------------------------
 
 
 
-# # This is another commented-out, likely deprecated or incomplete, constraint class.
-#
-#
+# This is another commented-out, likely deprecated or incomplete, constraint class.
+
+
 # class CoOrdinationPrecedenceConstraint(Constraint):
 #     C_NAME = "Co-ordination Precedence Constraint"
 #     C_ASSOCIATED_ENTITIES = ["Order"]
@@ -775,15 +813,19 @@ class MicroHubAssignabilityConstraint(Constraint):
 #                           SimulationActions.LOAD_DRONE_ACTION]
 #
 #
-#     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+#     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
 #         invalidation_idx = []
 #         if not isinstance(p_entity, Order):
 #             raise TypeError("The \"Co-ordination Precedence Constraint\" is only applicable to Order entity.")
 #
 #         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
 #         actions_by_entity = p_action_index.actions_involving_entity["Order", p_entity.get_id()]
-#         invalidation_idx.extend(list(actions_by_type.intersection(actions_by_entity)))
-#         return invalidation_idx
+#
+# 
+#
+#
+#         # invalidation_idx.extend(list(actions_by_type.intersection(actions_by_entity)))
+#         return invalidation_idx, []
 
 
 
@@ -794,7 +836,7 @@ class OrderLoadConstraint(Constraint):
                           SimulationActions.LOAD_DRONE_ACTION]
 
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         invalidation_idx = []
 
         if isinstance(p_entity, Vehicle):
@@ -809,7 +851,7 @@ class OrderLoadConstraint(Constraint):
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
             relevant_actions = actions_by_vehicle.intersection(actions_by_type)
             invalidation_idx = list(relevant_actions.difference(actions_by_order))
-            return invalidation_idx
+            return invalidation_idx, []
 
         elif isinstance(p_entity, Order):
             assigned_vehicle_id = p_entity.assigned_vehicle_id
@@ -827,10 +869,10 @@ class OrderLoadConstraint(Constraint):
                 if vehicle.current_node_id == p_entity.get_pickup_node_id():
                     invalidation_idx = list(relevant_actions.difference(actions_by_vehicle))
                 else:
-                    return list(relevant_actions)
-                return invalidation_idx
+                    return list(relevant_actions), []
+                return invalidation_idx, []
 
-            return list(relevant_actions)
+            return list(relevant_actions), []
 
 
 class OrderUnloadConstraint(Constraint):
@@ -839,7 +881,7 @@ class OrderUnloadConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.UNLOAD_TRUCK_ACTION,
                           SimulationActions.UNLOAD_DRONE_ACTION]
 
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         invalidation_idx = []
 
         if isinstance(p_entity, Vehicle):
@@ -855,7 +897,7 @@ class OrderUnloadConstraint(Constraint):
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
             relevant_actions = actions_by_vehicle.intersection(actions_by_type)
             invalidation_idx = list(relevant_actions.difference(actions_by_order))
-            return invalidation_idx
+            return invalidation_idx, []
 
         elif isinstance(p_entity, Order):
             assigned_vehicle_id = p_entity.assigned_vehicle_id
@@ -872,9 +914,9 @@ class OrderUnloadConstraint(Constraint):
                     actions_by_vehicle = p_action_index.actions_involving_entity["Drone", assigned_vehicle_id]
                 if vehicle.current_node_id == p_entity.get_delivery_node_id():
                     invalidation_idx = list(relevant_actions.difference(actions_by_vehicle))
-                    return invalidation_idx
+                    return invalidation_idx, []
 
-            return list(relevant_actions)
+            return list(relevant_actions), []
 
 
 
@@ -906,7 +948,7 @@ class ConstraintManager(EventManager):
         reverse_action_map : Dict
             A mapping from action index to action details.
         """
-        # Initialize the EventManager parent class, disabling its logging.
+        # Initialize the EventManager parent class disabling its logging.
         EventManager.__init__(self, p_logging=False)
         # A set to hold all instantiated constraint objects.
         self.constraints = set()
@@ -985,6 +1027,7 @@ class ConstraintManager(EventManager):
         entity = p_event_object.get_raising_object()
         # Initialize a set to store indices of actions to be masked.
         idx_to_mask = set()
+        validations = set()
 
         # Get all actions involving this specific entity instance.
         related_actions_by_entity = self.action_index.actions_involving_entity.get((entity.C_NAME, entity.get_id()),
@@ -1008,7 +1051,7 @@ class ConstraintManager(EventManager):
             # Log which constraint is being checked.
             self.log(Log.C_LOG_TYPE_I, f"Checking constraint: {constraint.C_NAME}")
             # Get the list of invalidated action indices from the constraint.
-            invalidations = constraint.get_invalidations(p_entity=entity, p_action_index=self.action_index)
+            invalidations, validations = constraint.get_invalidations(p_entity=entity, p_action_index=self.action_index)
             # If the constraint returned any invalidations, add them to the mask set.
             if invalidations is not None:
                 idx_to_mask.update(set(invalidations))
@@ -1019,6 +1062,7 @@ class ConstraintManager(EventManager):
         related_actions = related_actions_by_constraint.intersection(related_actions_by_entity)
         # Determine which of these related actions should be unmasked (i.e., are not in the mask list).
         idx_to_unmask = related_actions.difference(idx_to_mask)
+        idx_to_unmask.update(validations)
 
         # If there are any changes (actions to mask or unmask), raise an event.
         if len(idx_to_mask) > 0 or len(idx_to_unmask) > 0:
@@ -1049,6 +1093,7 @@ class ConstraintManager(EventManager):
             for entity in entity_dict.values():
                 # Initialize a set for actions to mask for this entity.
                 idx_to_mask = set()
+                validations = set()
 
                 # Get all actions involving this specific entity instance.
                 related_actions_by_entity = self.action_index.actions_involving_entity.get(
@@ -1074,7 +1119,7 @@ class ConstraintManager(EventManager):
                     # Log the check.
                     self.log(Log.C_LOG_TYPE_I, f"Checking constraint: {constraint.C_NAME}")
                     # Get invalidations from the constraint.
-                    invalidations = constraint.get_invalidations(p_entity=entity, p_action_index=self.action_index)
+                    invalidations, validations = constraint.get_invalidations(p_entity=entity, p_action_index=self.action_index)
                     # If there are invalidations, add them to the mask set.
                     if invalidations:
                         idx_to_mask.update(set(invalidations))
@@ -1086,6 +1131,7 @@ class ConstraintManager(EventManager):
                 related_actions = related_actions_by_constraint.intersection(related_actions_by_entity)
                 # Determine which actions should be unmasked.
                 idx_to_unmask = related_actions.difference(idx_to_mask)
+                idx_to_unmask.update(validations)
 
                 # If any changes are needed, raise the update event.
                 if len(idx_to_mask) > 0 or len(idx_to_unmask) > 0:

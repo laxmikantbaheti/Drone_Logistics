@@ -199,7 +199,7 @@ class Order(LogisticEntity):
         return self.global_state
 
     def __repr__(self):
-        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])}"
+        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])} - {self.assigned_vehicle_id}"
 
     def __str__(self):
         return f"Order {self.get_id()} - {self.pickup_node_id, self.delivery_node_id}"
