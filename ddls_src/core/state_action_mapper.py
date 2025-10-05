@@ -9,6 +9,7 @@ from pprint import pprint
 # Import ABC (Abstract Base Class) and abstractmethod decorator for creating abstract classes.
 from abc import ABC, abstractmethod
 
+from networkx import predecessor
 # Import shiboken6 invalidate, potentially for UI integration or memory management in a Qt environment.
 from shiboken6 import invalidate
 
@@ -683,29 +684,33 @@ class ConsolidationConstraint(Constraint):
 
 
 # # This entire class is commented out, representing a potential or deprecated constraint.
-class CollaborationPrecedenceConstraint(Constraint):
-    C_NAME = "Collaboration Precedence Constraint"
-    C_ASSOCIATED_ENTITIES = ["Order"]
-    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB]
-
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
-        invalidation_idx = []
-        if not isinstance(p_entity, Order):
-            raise TypeError("The \'Collaboration Precedence Constraint\' is only applicable to an Order entity.")
-
-        order = p_entity
-        for ps_order in order.pseudo_orders:
-            if order.assigned_micro_hub_id is not None:
-                # This order is already assigned to a micro-hub.
-                # Invalidate actions that would assign it to the *same* micro-hub.
-                actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
-                actions_by_entity = p_action_index.actions_involving_entity[("Order", ps_order.get_id())]
-                actions_for_this_hub = p_action_index.actions_involving_entity[("MicroHub", order.assigned_micro_hub_id)]
-
-                # Find the intersection of all three sets to get the specific actions to invalidate.
-                invalidation_idx.extend(list(actions_by_type.intersection(actions_by_entity).intersection(actions_for_this_hub)))
-
-        return invalidation_idx
+# class CollaborationPrecedenceConstraint(Constraint):
+#     C_NAME = "Collaboration Precedence Constraint"
+#     C_ASSOCIATED_ENTITIES = ["Order"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION, SimulationActions.LOAD_DRONE_ACTION]
+#
+#     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+#         invalidation_idx = []
+#         if not isinstance(p_entity, Order):
+#             raise TypeError("The \'Collaboration Precedence Constraint\' is only applicable to an Order entity.")
+#
+#         order = p_entity
+#         predecessor_orders:[Order] = order.predecessor_orders
+#         if not len(predecessor_orders):
+#             return invalidation_idx
+#
+#         else:
+#             precedence_satisfied = True
+#             for ordr in predecessor_orders:
+#                 if isinstance(ordr, Order):
+#                     if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_DELIVERED:
+#                         precedence_satisfied = True and precedence_satisfied
+#                     else:
+#                         precedence_satisfied = False
+#
+#
+#
+#         return invalidation_idx
 
 
 
@@ -779,6 +784,97 @@ class MicroHubAssignabilityConstraint(Constraint):
 #         actions_by_entity = p_action_index.actions_involving_entity["Order", p_entity.get_id()]
 #         invalidation_idx.extend(list(actions_by_type.intersection(actions_by_entity)))
 #         return invalidation_idx
+
+
+
+class OrderLoadConstraint(Constraint):
+    C_NAME = "OrderLoadConstraint"
+    C_ASSOCIATED_ENTITIES = ["Order", "Vehicle"]
+    C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION,
+                          SimulationActions.LOAD_DRONE_ACTION]
+
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+        invalidation_idx = []
+
+        if isinstance(p_entity, Vehicle):
+            actions_by_order = []
+            for ordr in p_entity.get_pickup_orders():
+                actions_by_order.extend(p_action_index.actions_involving_entity["Order", ordr.get_id()])
+            actions_by_order = list(set(actions_by_order))
+            if isinstance(p_entity, Truck):
+                actions_by_vehicle = p_action_index.actions_involving_entity["Truck", p_entity.get_id()]
+            elif isinstance(p_entity, Drone):
+                actions_by_vehicle = p_action_index.actions_involving_entity["Drone", p_entity.get_id()]
+            actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+            relevant_actions = actions_by_vehicle.intersection(actions_by_type)
+            invalidation_idx = list(relevant_actions.difference(actions_by_order))
+            return invalidation_idx
+
+        elif isinstance(p_entity, Order):
+            assigned_vehicle_id = p_entity.assigned_vehicle_id
+            actions_by_order = p_action_index.actions_involving_entity["Order", p_entity.get_id()]
+            actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+            relevant_actions = actions_by_type.intersection(actions_by_order)
+            if ((assigned_vehicle_id is not None) and
+                    (p_entity.get_state_value_by_dim_name(p_entity.C_DIM_DELIVERY_STATUS[0]) in [p_entity.C_STATUS_ASSIGNED])):
+                try:
+                    vehicle = p_entity.global_state.get_entity("truck", assigned_vehicle_id)
+                    actions_by_vehicle = p_action_index.actions_involving_entity["Truck", assigned_vehicle_id]
+                except KeyError:
+                    vehicle = p_entity.global_state.get_entity("drone", assigned_vehicle_id)
+                    actions_by_vehicle = p_action_index.actions_involving_entity["Drone", assigned_vehicle_id]
+                if vehicle.current_node_id == p_entity.get_pickup_node_id():
+                    invalidation_idx = list(relevant_actions.difference(actions_by_vehicle))
+                else:
+                    return list(relevant_actions)
+                return invalidation_idx
+
+            return list(relevant_actions)
+
+
+class OrderUnloadConstraint(Constraint):
+    C_NAME = "OrderUnloadConstraint"
+    C_ASSOCIATED_ENTITIES = ["Order", "Vehicle"]
+    C_ACTIONS_AFFECTED = [SimulationActions.UNLOAD_TRUCK_ACTION,
+                          SimulationActions.UNLOAD_DRONE_ACTION]
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+        invalidation_idx = []
+
+        if isinstance(p_entity, Vehicle):
+            actions_by_order = []
+            for ordr in p_entity.get_delivery_orders():
+                if ordr in p_entity.get_current_cargo():
+                    actions_by_order.extend(p_action_index.actions_involving_entity["Order", ordr.get_id()])
+            actions_by_order = list(set(actions_by_order))
+            if isinstance(p_entity, Truck):
+                actions_by_vehicle = p_action_index.actions_involving_entity["Truck", p_entity.get_id()]
+            elif isinstance(p_entity, Drone):
+                actions_by_vehicle = p_action_index.actions_involving_entity["Drone", p_entity.get_id()]
+            actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+            relevant_actions = actions_by_vehicle.intersection(actions_by_type)
+            invalidation_idx = list(relevant_actions.difference(actions_by_order))
+            return invalidation_idx
+
+        elif isinstance(p_entity, Order):
+            assigned_vehicle_id = p_entity.assigned_vehicle_id
+            actions_by_order = p_action_index.actions_involving_entity["Order", p_entity.get_id()]
+            actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+            relevant_actions = actions_by_type.intersection(actions_by_order)
+            if ((assigned_vehicle_id is not None)
+                    and (p_entity.get_state_value_by_dim_name(p_entity.C_DIM_DELIVERY_STATUS[0]) in [p_entity.C_STATUS_EN_ROUTE])):
+                try:
+                    vehicle = p_entity.global_state.get_entity("truck", assigned_vehicle_id)
+                    actions_by_vehicle = p_action_index.actions_involving_entity["Truck", assigned_vehicle_id]
+                except KeyError:
+                    vehicle = p_entity.global_state.get_entity("drone", assigned_vehicle_id)
+                    actions_by_vehicle = p_action_index.actions_involving_entity["Drone", assigned_vehicle_id]
+                if vehicle.current_node_id == p_entity.get_delivery_node_id():
+                    invalidation_idx = list(relevant_actions.difference(actions_by_vehicle))
+                    return invalidation_idx
+
+            return list(relevant_actions)
 
 
 
