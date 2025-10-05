@@ -668,7 +668,10 @@ class ConsolidationConstraint(Constraint):
                                    + [ordr for ordr in vehicle.get_delivery_orders() if ordr.get_delivery_node_id() == vehicle_node_id])
         # If there are orders to be processed at the current node, consolidation should not happen.
         if len(assigned_orders_at_node):
-            is_ready_for_consolidation = False
+            valid_relay_orders = True
+            for ordr in assigned_orders_at_node:
+                valid_relay_orders = ordr.check_order_precedence() and True
+            is_ready_for_consolidation = not valid_relay_orders
 
         # If the vehicle is not ready for consolidation...
         if not is_ready_for_consolidation:
@@ -695,20 +698,20 @@ class CollaborationPrecedenceConstraint(Constraint):
         # if not isinstance(p_entity, Order):
         #     raise TypeError("The \'Collaboration Precedence Constraint\' is only applicable to an Order entity.")
 
-        def check_order_precedence(p_order):
-            predecessor_orders: [Order] = p_order.predecessor_orders
-            if not len(predecessor_orders):
-                return True
-
-            else:
-                precedence_satisfied = True
-                for ordr in predecessor_orders:
-                    if isinstance(ordr, Order):
-                        if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_DELIVERED:
-                            precedence_satisfied = True and precedence_satisfied
-                        else:
-                            precedence_satisfied = False
-                return precedence_satisfied
+        # def check_order_precedence(p_order):
+        #     predecessor_orders: [Order] = p_order.predecessor_orders
+        #     if not len(predecessor_orders):
+        #         return True
+        #
+        #     else:
+        #         precedence_satisfied = True
+        #         for ordr in predecessor_orders:
+        #             if isinstance(ordr, Order):
+        #                 if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_DELIVERED:
+        #                     precedence_satisfied = True and precedence_satisfied
+        #                 else:
+        #                     precedence_satisfied = False
+        #         return precedence_satisfied
 
         if isinstance(p_entity, Order):
             order = p_entity
@@ -724,7 +727,8 @@ class CollaborationPrecedenceConstraint(Constraint):
             #                 precedence_satisfied = True and precedence_satisfied
             #             else:
             #                 precedence_satisfied = False
-            precedence_satisfied = check_order_precedence(order)
+            # precedence_satisfied = check_order_precedence(order)
+            precedence_satisfied = order.check_order_precedence()
             if not precedence_satisfied:
                 actions_by_entity = p_action_index.actions_involving_entity["Order", p_entity.get_id()]
                 actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
@@ -734,7 +738,7 @@ class CollaborationPrecedenceConstraint(Constraint):
             if p_entity.current_node_id is not None:
                 current_node_id = p_entity.current_node_id
                 pickup_orders_at_nodes = [ordr for ordr in p_entity.get_pickup_orders() if ordr.get_pickup_node_id() == current_node_id]
-                relevant_orders = [ordr for ordr in pickup_orders_at_nodes if not check_order_precedence(ordr)]
+                relevant_orders = [ordr for ordr in pickup_orders_at_nodes if not ordr.check_order_precedence()]
                 actions_by_order = set()
                 for rel_order in relevant_orders:
                     actions_by_order.update(p_action_index.actions_involving_entity["Order", rel_order.get_id()])

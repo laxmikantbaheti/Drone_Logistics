@@ -249,6 +249,20 @@ class Order(LogisticEntity):
 
         return [pseudo_order_1, pseudo_order_2]
 
+    def check_order_precedence(self):
+        predecessor_orders: [Order] = self.predecessor_orders
+        if not len(predecessor_orders):
+            return True
+
+        else:
+            precedence_satisfied = True
+            for ordr in predecessor_orders:
+                if isinstance(ordr, Order):
+                    if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_DELIVERED:
+                        precedence_satisfied = True and precedence_satisfied
+                    else:
+                        precedence_satisfied = False
+            return precedence_satisfied
 
 class PseudoOrder(Order):
 
