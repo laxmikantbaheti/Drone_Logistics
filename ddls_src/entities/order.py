@@ -259,3 +259,9 @@ class PseudoOrder(Order):
         self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
                                     self.parent_order.handle_pseudo_delivery)
 
+
+    def reset(self, p_seed=None) -> None:
+        Order.reset(self, p_seed)
+
+
+
