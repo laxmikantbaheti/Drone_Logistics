@@ -266,7 +266,8 @@ class Vehicle(LogisticEntity, ABC):
             self._process_action(p_action, p_t_step)
 
         if self.movement_mode == 'matrix':
-            if (self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) == self.C_TRIP_STATE_EN_ROUTE
+            if (self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) in [self.C_TRIP_STATE_EN_ROUTE,
+                                                                               self.C_TRIP_STATE_HALT]
                     and self.current_route and len(self.current_route) >= 2):
                 self._update_matrix_movement(p_t_step.total_seconds())
         else:  # network mode
@@ -314,6 +315,20 @@ class Vehicle(LogisticEntity, ABC):
                     self.raise_state_change_event()
             else:
                 self.current_node_id = None
+
+        elif self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) in [self.C_TRIP_STATE_HALT]:
+
+            if not self.current_route or len(self.current_route) < 2:
+                self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+                self.status = "idle"
+                self.route_nodes = []
+                self.raise_state_change_event()
+            else:
+                start_node_id, end_node_id = self.current_route[0], self.current_route[1]
+                self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id)
+                # self.current_node_id = None
+                self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
+                self.raise_state_change_event()
             # if self.en_route_timer <= 0:
             #     self.current_node_id = self.current_route[1]
             #     self.current_route = []
