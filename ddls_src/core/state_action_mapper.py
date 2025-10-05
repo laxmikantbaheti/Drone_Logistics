@@ -29,7 +29,7 @@ from ddls_src.entities import *
 # Import the Log class for structured logging.
 from mlpro.bf.various import Log
 from ddls_src.entities.order import PseudoOrder
-
+from ddls_src.core.global_state import GlobalState
 
 # # Forward declarations for type hinting to avoid circular import issues.
 # class GlobalState: pass
@@ -801,6 +801,53 @@ class MicroHubAssignabilityConstraint(Constraint):
 
 #----------------------------------------------------------------------------------------------------
 
+
+
+
+class CoOrdinatedDeliveryAssignmentConstraint(Constraint):
+    C_NAME = "Co-ordinated Delivery Assignment Constraint"
+    C_ASSOCIATED_ENTITIES = ["Order", "Truck", "Drone"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
+
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
+
+        def check_ass_precedence(p_order):
+            ass_precedence_satisfied = True
+            for pre_order in p_order.predecessor_orders:
+                if pre_order.get_state_value_by_dim_name(pre_order.C_DIM_DELIVERY_STATUS[0]) not in [pre_order.C_STATUS_PLACED,
+                                                                                                     pre_order.C_STATUS_ACCEPTED,
+                                                                                                     pre_order.C_STATUS_FAILED]:
+                    ass_precedence_satisfied = True and ass_precedence_satisfied
+                else:
+                    ass_precedence_satisfied = False
+
+            return ass_precedence_satisfied
+
+        invalidation_idx = []
+        validation_idx = []
+        if not (isinstance(p_entity, Order) or isinstance(p_entity, Truck), isinstance(p_entity, Drone)):
+            raise TypeError("Wrong entity type for the constraint")
+        actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+        pseudo_orders = [order for order in p_entity.global_state.get_all_entities_by_type("order").values()
+                         if (isinstance(order, PseudoOrder) and len(order.predecessor_orders) and not check_ass_precedence(order))]
+        # for ps_ordr in pseudo_orders:
+        #     ass_precedence_satisfied = True
+        #     for pre_order in ps_ordr.predecessor_orders:
+        #         if pre_order.get_state_value_by_dim_name(pre_order.C_DIM_DELIVERY_STATUS[0]) not in [pre_order.C_STATUS_PLACED,
+        #                                                                                              pre_order.C_STATUS_ACCEPTED,
+        #                                                                                              pre_order.C_STATUS_FALIED]:
+        #             ass_precedence_satisfied = True and ass_precedence_satisfied
+        #         else:
+        #             ass_precedence_satisfied = False
+
+            # if ps_ordr.get_state_value_by_dim_name(ps_ordr.C_DIM_DELIVERY_STATUS[0]) == ps_ordr.C_STATUS_PLACED:
+        for ps_ordr in pseudo_orders:
+            actions_by_entity = p_action_index.actions_involving_entity["Node Pair", (ps_ordr.get_pickup_node_id(), ps_ordr.get_delivery_node_id())]
+            invalidation_idx.extend(actions_by_entity.intersection(actions_by_type))
+
+        return invalidation_idx, validation_idx
 
 
 # This is another commented-out, likely deprecated or incomplete, constraint class.
