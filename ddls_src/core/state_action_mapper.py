@@ -530,6 +530,26 @@ class MicroHubAssignabilityConstraint(Constraint):
 
 
 
+#
+#
+# class CoOrdinationPrecedenceConstraint(Constraint):
+#     C_NAME = "Co-ordination Precedence Constraint"
+#     C_ASSOCIATED_ENTITIES = ["Order"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION,
+#                           SimulationActions.LOAD_DRONE_ACTION]
+#
+#
+#     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> List:
+#         invalidation_idx = []
+#         if not isinstance(p_entity, Order):
+#             raise TypeError("The \"Co-ordination Precedence Constraint\" is only applicable to Order entity.")
+#
+#         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+#         actions_by_entity = p_action_index.actions_involving_entity["Order", p_entity.get_id()]
+#         invalidation_idx.extend(list(actions_by_type.intersection(actions_by_entity)))
+#         return invalidation_idx
+
+
 
 # -------------------------------------------------------------------------------------------------
 

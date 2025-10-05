@@ -2,6 +2,7 @@ import itertools
 from typing import Dict, Any, List, Tuple
 
 from ddls_src.actions.action_mapping import order_id
+from ddls_src.entities.order import PseudoOrder
 
 
 # Forward declarations for entities to avoid circular imports.
@@ -55,6 +56,7 @@ class GlobalState:
         self.nodes: Dict[int, Node] = initial_entities.get('nodes', {})
         self.edges: Dict[int, Edge] = initial_entities.get('edges', {})
         self.orders: Dict[int, Order] = initial_entities.get('orders', {})
+        self.pseudo_orders: Dict[int, PseudoOrder] = initial_entities.get('pseudo_orders', {})
         self.trucks: Dict[int, Truck] = initial_entities.get('trucks', {})
         self.drones: Dict[int, Drone] = initial_entities.get('drones', {})
         self.micro_hubs: Dict[int, MicroHub] = initial_entities.get('micro_hubs', {})
@@ -305,8 +307,8 @@ class GlobalState:
     def add_dynamic_orders(self, p_orders:list):
         for ordr in p_orders:
             self.orders[ordr.get_id()] = ordr
-            pickup_node_id = ordr.get_pickup_node_id()
-            delivery_node_id = ordr.get_delivery_node_id()
+            if isinstance(ordr, PseudoOrder):
+                self.pseudo_orders[ordr.get_id()] = ordr
 
 
     def get_all_entities(self):
