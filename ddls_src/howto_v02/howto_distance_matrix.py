@@ -13,7 +13,7 @@ def run_matrix_scenario_demo():
     # 1. Define the simulation configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
     # Point to the new matrix-specific data file
-    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_matrix_01.json')
+    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
     config_file_path = os.path.normpath(config_file_path)
 
     sim_config = {
@@ -29,7 +29,7 @@ def run_matrix_scenario_demo():
     # 2. Instantiate and run the Scenario
     # The DummyAgent inside the scenario will automatically pick valid actions.
     # We can observe the console output to validate the timer-based movement.
-    scenario = LogisticsScenario(p_cycle_limit=15000,
+    scenario = LogisticsScenario(p_cycle_limit=150000,
                                  p_visualize=False,
                                  p_logging=False, # Set to True to see detailed logs
                                  config=sim_config)

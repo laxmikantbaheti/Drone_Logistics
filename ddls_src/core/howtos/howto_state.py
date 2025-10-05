@@ -117,10 +117,10 @@ def demonstrate_global_state_functionality():
 
     # 3. Get All Entities of a Type
     print("\n3. Getting All Entities of a Type:")
-    all_drones = global_state.get_all_entities("drone")
+    all_drones = global_state.get_all_entities_by_type("drone")
     print(f"  All Drones (IDs): {list(all_drones.keys())}")
 
-    all_micro_hubs = global_state.get_all_entities("micro_hub")
+    all_micro_hubs = global_state.get_all_entities_by_type("micro_hub")
     print(f"  All MicroHubs (IDs): {list(all_micro_hubs.keys())}")
 
     # 4. Add and Remove Entities

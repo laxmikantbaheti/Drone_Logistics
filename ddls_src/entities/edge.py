@@ -25,7 +25,7 @@ class Edge(LogisticEntity):
                   C_DIM_TIME_FACTOR]
 
     def __init__(self,
-                 p_id: int,
+                 p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,

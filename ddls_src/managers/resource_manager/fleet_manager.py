@@ -148,8 +148,8 @@ class FleetManager(System):
         """
         Calculates aggregate fleet statistics and updates the formal MLPro state object.
         """
-        trucks = self.global_state.get_all_entities("truck").values()
-        drones = self.global_state.get_all_entities("drone").values()
+        trucks = self.global_state.get_all_entities_by_type("truck").values()
+        drones = self.global_state.get_all_entities_by_type("drone").values()
 
         self._state.set_value(self._state.get_related_set().get_dim_by_name('num_trucks').get_id(),
                               len(trucks))

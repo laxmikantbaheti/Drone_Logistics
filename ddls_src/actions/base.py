@@ -1,3 +1,4 @@
+from tkinter.constants import ACTIVE
 from typing import List, Dict, Any, Callable, Tuple, Type, Set
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -19,9 +20,9 @@ class ActionIndex:
     def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
         self.actions_by_type: Dict['ActionType', Set[int]] = defaultdict(set)
         self.actions_involving_entity: Dict[Tuple, Set[int]] = defaultdict(set)
-        self._build_indexes(global_state, action_map)
+        self.build_indexes(global_state, action_map)
 
-    def _build_indexes(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
+    def build_indexes(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
         for action_tuple, action_index in action_map.items():
             action_type = action_tuple[0]
             self.actions_by_type[action_type].add(action_index)
@@ -32,14 +33,19 @@ class ActionIndex:
                 entity_id = action_tuple[i + 1]
                 self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
 
+    def update_indexes(self, global_state, action_map):
+        self.actions_by_type = defaultdict(set)
+        self.actions_involving_entity = defaultdict(set)
+        self.build_indexes(global_state, action_map)
+
     def get_actions_of_type(self, action_types: List['ActionType']) -> Set[int]:
         ids = set()
         for action_type in action_types:
             ids.update(self.actions_by_type[action_type])
         return ids
 
-    def _handle_new_entity(self):
-        pass
+    # def _handle_new_entity(self, p_event_str, p_event_obj):
+    #     self._build_indexes(global_state, action_map=)
 
 
 
@@ -100,6 +106,13 @@ class SimulationActions:
                                                {'name': 'drone_id', 'type': 'Drone'}],
                                        is_automatic=False,
                                        handler="SupplyChainManager")
+
+    ASSIGN_ORDER_TO_MICRO_HUB = ActionType(name="ASSIGN_ORDER_TO_MICRO_HUB",
+                                           params=[{'name': 'pick_up_drop', 'type': 'Node Pair'},
+                                                   {'name': 'micro_hub_id', 'type': 'MicroHub'}],
+                                           is_automatic=False,
+                                           handler= "SupplyChainManager",
+                                           active=True)
 
     LOAD_TRUCK_ACTION = ActionType(name="LOAD_TRUCK_ACTION",
                                    params=[{'name': 'truck_id', 'type': 'Truck'},
@@ -171,9 +184,9 @@ class SimulationActions:
                               active=False)
     FLAG_FOR_RE_DELIVERY = ActionType("FLAG_FOR_RE_DELIVERY", [{'name': 'order_id', 'type': 'Order'}], False,
                                       "SupplyChainManager", active=False)
-    ASSIGN_ORDER_TO_MICRO_HUB = ActionType("ASSIGN_ORDER_TO_MICRO_HUB", [{'name': 'order_id', 'type': 'Order'},
-                                                                         {'name': 'micro_hub_id', 'type': 'MicroHub'}],
-                                           False, "SupplyChainManager", active=False)
+    # ASSIGN_ORDER_TO_MICRO_HUB = ActionType("ASSIGN_ORDER_TO_MICRO_HUB", [{'name': 'order_id', 'type': 'Order'},
+    #                                                                      {'name': 'micro_hub_id', 'type': 'MicroHub'}],
+    #                                        False, "SupplyChainManager", active=False)
     REASSIGN_ORDER = ActionType("REASSIGN_ORDER",
                                 [{'name': 'order_id', 'type': 'Order'}, {'name': 'vehicle_id', 'type': 'Vehicle'}],
                                 False, "SupplyChainManager", active=False)
@@ -278,8 +291,20 @@ class SimulationActions:
                 continue
 
             # 4. Generate all unique combinations of parameter values
-            # Handling special invalid case of same-node delivery requests.
             param_combinations = list(itertools.product(*param_ranges))
+
+            # MODIFICATION: Filter out invalid micro hub assignments
+            if action_type.name == "ASSIGN_ORDER_TO_MICRO_HUB":
+                filtered_combinations = []
+                for combo in param_combinations:
+                    # combo is expected to be ((pickup_node_id, delivery_node_id), micro_hub_id)
+                    node_pair, micro_hub_id = combo
+                    pickup_node_id, delivery_node_id = node_pair
+
+                    # The micro hub cannot be the same as the pickup or delivery node
+                    if micro_hub_id != pickup_node_id and micro_hub_id != delivery_node_id:
+                        filtered_combinations.append(combo)
+                param_combinations = filtered_combinations
 
             for combo in param_combinations:
                 action_tuple = (action_type,) + combo

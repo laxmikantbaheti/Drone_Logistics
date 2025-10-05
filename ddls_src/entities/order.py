@@ -21,12 +21,14 @@ class Order(LogisticEntity):
     C_STATUS_EN_ROUTE = "En Route"
     C_STATUS_DELIVERED = "Delivered"
     C_STATUS_FAILED = "Failed"
+    C_STATUS_IN_RELAY = "Order in relay"
     C_VALID_DELIVERY_STATES = [C_STATUS_PLACED,
                                C_STATUS_ACCEPTED,
                                C_STATUS_ASSIGNED,
                                C_STATUS_EN_ROUTE,
                                C_STATUS_DELIVERED,
-                               C_STATUS_FAILED]
+                               C_STATUS_FAILED,
+                               C_STATUS_IN_RELAY]
     C_DIM_DELIVERY_STATUS = ["delivery", "Delivery Status", C_VALID_DELIVERY_STATES]
     C_DIM_PRIORITY = ["pri", "Priority", []]
     C_DIM_PICKUP_NODE = ["p_node", "Pickup Node", []]
@@ -44,7 +46,7 @@ class Order(LogisticEntity):
     def __init__(self,
                  p_pickup_node_id,
                  p_delivery_node_id,
-                 p_id: int,
+                 p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,
@@ -53,7 +55,7 @@ class Order(LogisticEntity):
         Initializes an Order system.
 
         Parameters:
-            p_id (int): Unique identifier for the order.
+            p_id: Unique identifier for the order.
             p_name (str): Name of the order.
             p_visualize (bool): Visualization flag.
             p_logging: Logging level.
@@ -85,6 +87,7 @@ class Order(LogisticEntity):
         # FIX: Make global_state optional during initialization, defaulting to None
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self._state = State(self._state_space)
+        self.pseudo_orders:[Order] = []
         self.reset()
 
     @staticmethod
@@ -116,6 +119,7 @@ class Order(LogisticEntity):
         self.assigned_vehicle_id = None
         self.assigned_micro_hub_id = None
         self.delivery_time = None
+        self.pseudo_orders = []
         self._update_state()
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
@@ -159,6 +163,14 @@ class Order(LogisticEntity):
         self.raise_state_change_event()
         return True
 
+    def assign_micro_hub(self, micro_hub_id: int):
+        self.assigned_micro_hub_id = micro_hub_id
+        self.status = "at_micro_hub"
+        self.update_state_value_by_dim_name(self.C_DIM_ASSIGNED_VEHICLE[0], micro_hub_id)
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
+        self._update_state()
+        return True
+
     def unassign_vehicle(self):
         self.assigned_vehicle_id = None
         if self.status in ["assigned", "in_transit"]:
@@ -168,11 +180,6 @@ class Order(LogisticEntity):
     def get_assigned_vehicle_id(self):
         if self.assigned_vehicle_id:
             return self.assigned_vehicle_id
-
-    def assign_micro_hub(self, micro_hub_id: int):
-        self.assigned_micro_hub_id = micro_hub_id
-        self.status = "at_micro_hub"
-        self._update_state()
 
     def set_enroute(self):
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)
@@ -191,7 +198,10 @@ class Order(LogisticEntity):
         return self.global_state
 
     def __repr__(self):
-        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id})"
+        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])}"
+
+    def __str__(self):
+        return f"Order {self.get_id()} - {self.pickup_node_id, self.delivery_node_id}"
 
     def change_delivery_status(self, status):
         if status not in self.C_VALID_DELIVERY_STATES:
@@ -204,3 +214,48 @@ class Order(LogisticEntity):
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_DELIVERED)
         self.status = "Delivered"
         self.raise_state_change_event()
+        if isinstance(self, PseudoOrder):
+            self._raise_event(PseudoOrder.C_EVENT_ORDER_DELIVERED, Event(p_raising_object=self))
+
+    def handle_pseudo_delivery(self, p_event_id, p_event_object):
+        delivered = True
+        for ordr in self.pseudo_orders:
+            if ordr.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0]) == self.C_STATUS_DELIVERED:
+                delivered = True and delivered
+            else:
+                delivered = False
+        if delivered:
+            print(f"Collaborative order {self.get_id()} is delivered.")
+            self.set_delivered()
+
+
+
+
+
+class PseudoOrder(Order):
+
+    C_TYPE = "Pseudo Order"
+    C_EVENT_ORDER_DELIVERED = "Pseudo Order Delivered"
+
+    def __init__(self,
+                 p_pickup_node_id,
+                 p_delivery_node_id,
+                 p_parent_order,
+                 p_id,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=False,
+                 **p_kwargs):
+
+        Order.__init__(self,
+                       p_pickup_node_id=p_pickup_node_id,
+                       p_delivery_node_id=p_delivery_node_id,
+                       p_id=p_id,
+                       p_name=p_name,
+                       p_visualize=p_visualize,
+                       p_logging=p_logging,
+                       **p_kwargs)
+        self.parent_order = p_parent_order
+        self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
+                                    self.parent_order.handle_pseudo_delivery)
+

@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Optional
 from datetime import timedelta
 
+from mlpro.bf.events import Event
 # MLPro Imports
 from mlpro.bf.systems import System, State
 from mlpro.bf.math import MSpace, Dimension
@@ -11,6 +12,8 @@ from ddls_src.core.basics import LogisticsAction
 from ddls_src.actions.base import SimulationActions, ActionType
 from ddls_src.core.global_state import GlobalState
 from ddls_src.entities import *
+from ddls_src.entities.order import PseudoOrder
+
 
 # # Forward declarations
 # class GlobalState: pass
@@ -36,6 +39,7 @@ class SupplyChainManager(System):
 
     C_TYPE = 'Supply Chain Manager'
     C_NAME = 'Supply Chain Manager'
+    C_EVENT_NEW_ORDER_REQUEST = "New order event"
 
     def __init__(self,
                  p_id=None,
@@ -177,16 +181,46 @@ class SupplyChainManager(System):
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_TRUCK:
                 truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
                 assigned = self.assign_order(order, truck)
+                if assigned:
+                    print(f"Order {order.get_id()} assigned to vehicle {truck.get_id()}.")
                 return assigned
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_DRONE:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
                 assigned = self.assign_order(order, drone)
+                if assigned:
+                    print(f"Order {order.get_id()} assigned to vehicle {drone.get_id()}.")
                 return assigned
+
+            # elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
+            #     hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
+            #     assigned = self.assign_order(order, hub)
+            #     return assigned
+            # In file: ddls_src/managers/supply_chain_manager.py
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
                 hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
                 assigned = self.assign_order(order, hub)
+                if assigned:
+                    # Create pseudo-orders
+                    pseudo_order_1 = PseudoOrder(
+                        p_id=str(order.get_id())+"_a",
+                        p_pickup_node_id=order.get_pickup_node_id(),
+                        p_delivery_node_id=hub.id,
+                        global_state=self.global_state,
+                        p_parent_order = order
+                    )
+                    pseudo_order_2 = PseudoOrder(
+                        p_id=str(order.get_id())+"_b",
+                        p_pickup_node_id=hub.id,
+                        p_delivery_node_id=order.get_delivery_node_id(),
+                        global_state=self.global_state,
+                        p_parent_order = order
+                    )
+                    self.create_order_requests([pseudo_order_1, pseudo_order_2])
+                    order.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
+                if assigned:
+                    print(f"Order {order.get_id()} assigned to micro-hub {hub.get_id()}.")
                 return assigned
 
         except KeyError as e:
@@ -195,16 +229,25 @@ class SupplyChainManager(System):
 
         return False
 
-    def assign_order(self, p_order:Order, p_entity):
-        assigned = False
+    def assign_order(self, p_order: Order, p_entity):
+        self.global_state.get_order_requests()
+        assigned = True
         if isinstance(p_entity, MicroHub):
-            pass
+            assigned = p_order.assign_micro_hub(p_entity.id) and assigned
+            assigned = p_entity.assign_order(p_order) and assigned
         elif isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
             assigned = p_order.assign_vehicle(p_entity._id)
             assigned = p_entity.assign_orders([p_order]) and assigned
-            self.global_state.get_order_requests()[(p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)
-            p_order.raise_state_change_event()
+        # self.global_state.get_order_requests()[
+        #         (p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)
+        p_order.raise_state_change_event()
         return assigned
+
+    def create_order_requests(self, p_orders:list):
+        self._raise_event(p_event_id=self.C_EVENT_NEW_ORDER_REQUEST,
+                          p_event_object=Event(p_raising_object=self,
+                                               p_orders = p_orders))
+
 
 
     def _update_state(self):
@@ -212,7 +255,7 @@ class SupplyChainManager(System):
         Calculates aggregate order statistics and updates the formal state object.
         """
         state_space = self._state.get_related_set()
-        orders = self.global_state.get_all_entities("order").values()
+        orders = self.global_state.get_all_entities_by_type("order").values()
 
         self._state.set_value(state_space.get_dim_by_name("num_orders_total").get_id(), len(orders))
         self._state.set_value(state_space.get_dim_by_name("orders_pending").get_id(),

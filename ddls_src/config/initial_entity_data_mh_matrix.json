@@ -117,7 +117,7 @@
         },
         {
             "id": 1007,
-            "p_pickup_node_id": 9,
+            "p_pickup_node_id": 5,
             "p_delivery_node_id": 2
         },
         {
@@ -133,7 +133,7 @@
         {
             "id": 1010,
             "p_pickup_node_id": 3,
-            "p_delivery_node_id": 9
+            "p_delivery_node_id": 7
         }
     ],
     "initial_time": 0.0,

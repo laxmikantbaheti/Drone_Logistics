@@ -9,7 +9,7 @@ class LogisticEntity(System):
     C_DIS_DIMS = []
     C_EVENT_ENTITY_STATE_CHANGE = "Entity State Change"
     def __init__(self,
-                 p_id: int,
+                 p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=System.C_LOG_NOTHING,
@@ -47,6 +47,7 @@ class LogisticEntity(System):
     def update_state_value_by_dim_name(self, p_dim_name, p_value):
         dim = self.get_state_space().get_dim_by_name(p_dim_name)
         self.log(self.C_LOG_TYPE_S, f"{dim.get_name_long()} updated.")
+        print(f"{self.C_NAME}{self.get_id()} - {dim.get_name_long()} updated to {p_value}.")
         self._state.set_value(dim.get_id(), p_value)
 
     def raise_state_change_event(self):
@@ -61,3 +62,5 @@ class LogisticEntity(System):
         else:
             if not isinstance(p_value, list):
                 self.data_storage[p_key] = [p_value]
+            else:
+                self.data_storage[p_key] = p_value

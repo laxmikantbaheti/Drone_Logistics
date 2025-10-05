@@ -70,7 +70,7 @@ class ScenarioGenerator:
 
         for edge_data in self._raw_entity_data.get('edges', []):
             edge_data = self._prepare_kwargs(edge_data)  # <-- FIX
-            self.edges[edge_data['p_id']] = Edge(**edge_data, p_logging=p_logging **p_kwargs)
+            self.edges[edge_data['p_id']] = Edge(**edge_data, p_logging=p_logging, **p_kwargs)
 
         for truck_data in self._raw_entity_data.get('trucks', []):
             truck_data = self._prepare_kwargs(truck_data)  # <-- FIX

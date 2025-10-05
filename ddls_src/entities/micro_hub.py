@@ -36,7 +36,7 @@ class MicroHub(Node):
                   C_DIM_NUM_DELIVERY_PACKAGES]
 
     def __init__(self,
-                 p_id: int,
+                 p_id,
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,
@@ -72,6 +72,8 @@ class MicroHub(Node):
         # FIX: Make global_state optional during initialization, defaulting to None
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self._state = State(self._state_space)
+        self.cargo = {}
+        self.assigned_order = []
         self.reset()
 
     @staticmethod
@@ -108,6 +110,8 @@ class MicroHub(Node):
         self.is_blocked_for_launches = False
         self.is_blocked_for_recoveries = False
         self.is_package_transfer_unavailable = False
+        self.assigned_oder = []
+        self.cargo = {}
         self._update_state()
 
     def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
@@ -172,4 +176,12 @@ class MicroHub(Node):
 
     def get_available_charging_slots(self) -> List[int]:
         return [slot_id for slot_id, drone_id in self.charging_slots.items() if drone_id is None]
+
+    def assign_order(self, p_order):
+        self.add_cargo(p_order)
+        self.assigned_order.append(p_order)
+        return True
+
+    def add_cargo(self, p_order):
+        self.cargo[p_order.id] = p_order
 
