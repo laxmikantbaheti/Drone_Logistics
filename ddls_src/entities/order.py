@@ -88,6 +88,7 @@ class Order(LogisticEntity):
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self._state = State(self._state_space)
         self.pseudo_orders:[Order] = []
+        self.predecessor_orders = []
         self.reset()
 
     @staticmethod
@@ -228,8 +229,25 @@ class Order(LogisticEntity):
             print(f"Collaborative order {self.get_id()} is delivered.")
             self.set_delivered()
 
+    def create_pseudo_orders(self, hub_id):
+        pseudo_order_1 = PseudoOrder(
+            p_id=str(self.get_id()) + "_1",
+            p_pickup_node_id=self.get_pickup_node_id(),
+            p_delivery_node_id=hub_id,
+            global_state=self.global_state,
+            p_parent_order=self
+        )
+        pseudo_order_2 = PseudoOrder(
+            p_id=str(self.get_id()) + "_2",
+            p_pickup_node_id=hub_id,
+            p_delivery_node_id=self.get_delivery_node_id(),
+            global_state=self.global_state,
+            p_parent_order=self
+        )
+        pseudo_order_2.predecessor_orders.append(pseudo_order_1)
+        self.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
 
-
+        return [pseudo_order_1, pseudo_order_2]
 
 
 class PseudoOrder(Order):
