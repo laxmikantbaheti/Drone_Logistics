@@ -88,6 +88,7 @@ class Order(LogisticEntity):
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self._state = State(self._state_space)
         self.pseudo_orders:[Order] = []
+        self.predecessor_orders = []
         self.reset()
 
     @staticmethod
@@ -198,7 +199,7 @@ class Order(LogisticEntity):
         return self.global_state
 
     def __repr__(self):
-        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])}"
+        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])} - {self.assigned_vehicle_id}"
 
     def __str__(self):
         return f"Order {self.get_id()} - {self.pickup_node_id, self.delivery_node_id}"
@@ -228,9 +229,40 @@ class Order(LogisticEntity):
             print(f"Collaborative order {self.get_id()} is delivered.")
             self.set_delivered()
 
+    def create_pseudo_orders(self, hub_id):
+        pseudo_order_1 = PseudoOrder(
+            p_id=str(self.get_id()) + "_1",
+            p_pickup_node_id=self.get_pickup_node_id(),
+            p_delivery_node_id=hub_id,
+            global_state=self.global_state,
+            p_parent_order=self
+        )
+        pseudo_order_2 = PseudoOrder(
+            p_id=str(self.get_id()) + "_2",
+            p_pickup_node_id=hub_id,
+            p_delivery_node_id=self.get_delivery_node_id(),
+            global_state=self.global_state,
+            p_parent_order=self
+        )
+        pseudo_order_2.predecessor_orders.append(pseudo_order_1)
+        self.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
 
+        return [pseudo_order_1, pseudo_order_2]
 
+    def check_order_precedence(self):
+        predecessor_orders: [Order] = self.predecessor_orders
+        if not len(predecessor_orders):
+            return True
 
+        else:
+            precedence_satisfied = True
+            for ordr in predecessor_orders:
+                if isinstance(ordr, Order):
+                    if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_DELIVERED:
+                        precedence_satisfied = True and precedence_satisfied
+                    else:
+                        precedence_satisfied = False
+            return precedence_satisfied
 
 class PseudoOrder(Order):
 
@@ -258,4 +290,10 @@ class PseudoOrder(Order):
         self.parent_order = p_parent_order
         self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
                                     self.parent_order.handle_pseudo_delivery)
+
+
+    def reset(self, p_seed=None) -> None:
+        Order.reset(self, p_seed)
+
+
 

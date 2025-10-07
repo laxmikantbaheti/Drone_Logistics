@@ -56,11 +56,22 @@ class LogisticEntity(System):
     def setup_event_string(self):
         self.C_EVENT_ENTITY_STATE_CHANGE = f"{self.C_NAME} - {self._id}: State Change Event"
 
-    def save_data(self, p_key, p_value):
-        if p_key in self.data_storage.keys():
-            self.data_storage[p_key].append(p_value)
-        else:
-            if not isinstance(p_value, list):
-                self.data_storage[p_key] = [p_value]
+    def save_data(self, p_key, p_value, p_frame=None):
+        if not isinstance(p_value, list):
+            p_value = [p_value]
+        if p_frame is None:
+            if p_key in self.data_storage.keys():
+                self.data_storage[p_key].append(p_value)
             else:
-                self.data_storage[p_key] = p_value
+                self.data_storage[p_key] = [p_value]
+
+        else:
+            if p_frame in self.data_storage.keys():
+                if p_key in self.data_storage[p_frame].keys():
+                    self.data_storage[p_frame][p_key].append(p_value)
+                else:
+                    self.data_storage[p_frame][p_key] = [p_value]
+
+            else:
+                self.data_storage[p_frame] = {}
+                self.data_storage[p_frame][p_key] = [p_value]
