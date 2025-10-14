@@ -674,6 +674,7 @@ class ConsolidationConstraint(Constraint):
             for ordr in assigned_orders_at_node:
                 valid_relay_orders = ordr.check_order_precedence() and True
             is_ready_for_consolidation = not valid_relay_orders
+        #     is_ready_for_consolidation = True
 
         # If the vehicle is not ready for consolidation...
         if not is_ready_for_consolidation:
@@ -689,7 +690,7 @@ class ConsolidationConstraint(Constraint):
 
 
 
-# This entire class is commented out, representing a potential or deprecated constraint.
+# # This entire class is commented out, representing a potential or deprecated constraint.
 class CollaborationPrecedenceConstraint(Constraint):
     C_NAME = "Collaboration Precedence Constraint"
     C_ACTIVE = False
@@ -751,7 +752,7 @@ class CollaborationPrecedenceConstraint(Constraint):
                     actions_by_vehicle = p_action_index.actions_involving_entity["Drone", p_entity.get_id()]
                 actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
                 invalidation_idx = actions_by_type.intersection(actions_by_vehicle).intersection(actions_by_order)
-
+#
 
 
 
