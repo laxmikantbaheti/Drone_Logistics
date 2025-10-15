@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 
 from networkx import predecessor
 # Import shiboken6 invalidate, potentially for UI integration or memory management in a Qt environment.
-from shiboken6 import invalidate
+# from shiboken6 import invalidate
 
 # Local Imports from the project's source code.
 # Import the base class for simulation actions.
