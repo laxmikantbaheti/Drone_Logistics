@@ -71,6 +71,7 @@ class Constraint(ABC, EventManager):
     """
     # Class constant defining which entity types this constraint is associated with.
     C_ACTIVE = True
+
     C_ASSOCIATED_ENTITIES = []
     # Class constant listing the simulation actions this constraint can affect.
     C_ACTIONS_AFFECTED = []
