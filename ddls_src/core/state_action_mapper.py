@@ -70,6 +70,7 @@ class Constraint(ABC, EventManager):
         The event ID for constraint updates.
     """
     # Class constant defining which entity types this constraint is associated with.
+    C_ACTIVE = True
     C_ASSOCIATED_ENTITIES = []
     # Class constant listing the simulation actions this constraint can affect.
     C_ACTIONS_AFFECTED = []
@@ -690,6 +691,7 @@ class ConsolidationConstraint(Constraint):
 # This entire class is commented out, representing a potential or deprecated constraint.
 class CollaborationPrecedenceConstraint(Constraint):
     C_NAME = "Collaboration Precedence Constraint"
+    C_ACTIVE = False
     C_ASSOCIATED_ENTITIES = ["Order", "Truck", "Drone"]
     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION, SimulationActions.LOAD_DRONE_ACTION]
 
@@ -1023,19 +1025,20 @@ class ConstraintManager(EventManager):
         self.entity_constraints = {}
         # Iterate through all direct subclasses of the base Constraint class.
         for con in Constraint.__subclasses__():
-            # Instantiate the constraint class.
-            constr = con(p_reverse_action_map=self.reverse_action_map)
-            # Add the instance to the set of all constraints.
-            self.constraints.add(constr)
-            # Iterate through the entity names associated with this constraint.
-            for entity_name in con.C_ASSOCIATED_ENTITIES:
-                # If the entity name is already a key in the map...
-                if entity_name in self.entity_constraints:
-                    # ...append the new constraint to the existing list.
-                    self.entity_constraints[entity_name].append(constr)
-                else:
-                    # ...otherwise, create a new list with this constraint.
-                    self.entity_constraints[entity_name] = [constr]
+            if con.C_ACTIVE:
+                # Instantiate the constraint class.
+                constr = con(p_reverse_action_map=self.reverse_action_map)
+                # Add the instance to the set of all constraints.
+                self.constraints.add(constr)
+                # Iterate through the entity names associated with this constraint.
+                for entity_name in con.C_ASSOCIATED_ENTITIES:
+                    # If the entity name is already a key in the map...
+                    if entity_name in self.entity_constraints:
+                        # ...append the new constraint to the existing list.
+                        self.entity_constraints[entity_name].append(constr)
+                    else:
+                        # ...otherwise, create a new list with this constraint.
+                        self.entity_constraints[entity_name] = [constr]
 
 #----------------------------------------------------------------------------------------------------
 
