@@ -579,7 +579,7 @@ class Vehicle(LogisticEntity, ABC):
 
     def __repr__(self):
         return (f"{self.C_NAME} - {self._id} - {self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0])} - "
-                f"{self.pickup_orders[0].get_id() if len(self.pickup_orders) else "None"}")
+                f"{self.pickup_orders[0].get_id() if len(self.pickup_orders) else 'None'}")
 
 
 # -------------------------------------------------------------------------
