@@ -5,6 +5,7 @@ import os  # Import os for path manipulation
 from ..generators.data_generator import BaseDataGenerator
 from ..generators.random_generator import RandomDataGenerator
 from ..generators.json_file_data_generator import JsonFileDataGenerator
+from ..generators.random_distance_matrix_generator import DistanceMatrixDataGenerator
 
 
 class DataLoader:
@@ -39,11 +40,13 @@ class DataLoader:
         Raises:
             ValueError: If an unsupported generator type is specified.
         """
-        if self.generator_type == 'json_file':
+        if self.generator_type == 'json_f[[;;ile':
             # Pass the file_path from generator_config
             return JsonFileDataGenerator(self.generator_config)
         elif self.generator_type == 'random':
             return RandomDataGenerator(self.generator_config)
+        elif self.generator_type == 'distance_matrix':
+            return DistanceMatrixDataGenerator(self.generator_config)
         elif self.generator_type == 'osm':
             # Placeholder for OSM data generator
             # from .generators.osm_data_generator import OsmDataGenerator

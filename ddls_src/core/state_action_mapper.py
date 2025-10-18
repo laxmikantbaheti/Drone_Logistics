@@ -778,34 +778,40 @@ class MicroHubAssignabilityConstraint(Constraint):
         if not isinstance(p_entity, Order):
             # Raise an error if the entity type is incorrect.
             raise TypeError("The \"Micro-Hub assignability constraint\" is only applicable to an Order entity.")
-        try:
-            # Get the ID of the Micro-Hub this order is assigned to.
-            mh_node_id = p_entity.assigned_micro_hub_id
-            # # This is a commented-out alternative way to get the ID.
-            # mh_node_id = assignment.get_id()
-            # Get the pseudo-orders associated with the main order (legs of the trip).
-            pseudo_orders = p_entity.pseudo_orders
-            # Iterate through each leg of the trip.
-            for ps_order in pseudo_orders:
-                # Get the delivery and pickup nodes for this leg.
-                delivery_node_id = ps_order.get_delivery_node_id()
-                pickup_node_id = ps_order.get_pickup_node_id()
-                # Create a tuple representing the node pair (the trip).
-                node_pair = (pickup_node_id, delivery_node_id)
-                # Get all actions of the Micro-Hub assignment type.
-                actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB])
-                # Get all actions associated with this specific node pair.
-                actions_by_node_pair = p_action_index.actions_involving_entity["Node Pair", node_pair]
-                # Get all actions associated with the assigned Micro-Hub.
-                actions_by_mh = p_action_index.actions_involving_entity["MicroHub", mh_node_id]
-                # Find actions that match all three criteria and add them to the invalidation list.
-                invalidation_idx.extend(list(actions_by_type.intersection(actions_by_node_pair).intersection(actions_by_mh)))
 
-            # Return the final list of invalidations.
-            return invalidation_idx, []
-        except:
-            # If any error occurs (e.g., the order is not assigned to a Micro-Hub), return the empty list.
-            return invalidation_idx, []
+        # Get the ID of the Micro-Hub this order is assigned to.
+        if isinstance(p_entity, PseudoOrder):
+            mh_node_id = [p_entity.parent_order.assigned_micro_hub_id]
+        else:
+            mh_node_id = []
+        # # This is a commented-out alternative way to get the ID.
+        # mh_node_id = assignment.get_id()
+        # Get the pseudo-orders associated with the main order (legs of the trip).
+        ps_order = p_entity
+        # Iterate through each leg of the trip.
+
+        mh_node_ids = mh_node_id+ps_order.mh_assignment_history
+        print(ps_order, mh_node_ids)
+        # Get the delivery and pickup nodes for this leg.
+        delivery_node_id = ps_order.get_delivery_node_id()
+        pickup_node_id = ps_order.get_pickup_node_id()
+        # Create a tuple representing the node pair (the trip).
+        node_pair = (pickup_node_id, delivery_node_id)
+        # Get all actions of the Micro-Hub assignment type.
+        actions_by_type = p_action_index.get_actions_of_type([SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB])
+        # Get all actions associated with this specific node pair.
+        actions_by_node_pair = p_action_index.actions_involving_entity["Node Pair", node_pair]
+        # Get all actions associated with the assigned Micro-Hub.
+        actions_by_mh = []
+        for mh_id in set(mh_node_ids):
+            actions_by_mh.extend(p_action_index.actions_involving_entity["MicroHub", mh_id])
+        print("actions_by_mh", actions_by_mh)
+        # Find actions that match all three criteria and add them to the invalidation list.
+        invalidation_idx.extend(list(actions_by_type.intersection(actions_by_node_pair).intersection(set(actions_by_mh))))
+        print(invalidation_idx)
+
+        # Return the final list of invalidations.
+        return invalidation_idx, []
 
 #----------------------------------------------------------------------------------------------------
 

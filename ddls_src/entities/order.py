@@ -89,6 +89,7 @@ class Order(LogisticEntity):
         self._state = State(self._state_space)
         self.pseudo_orders:[Order] = []
         self.predecessor_orders = []
+        self.mh_assignment_history = []
         self.reset()
 
     @staticmethod
@@ -199,7 +200,7 @@ class Order(LogisticEntity):
         return self.global_state
 
     def __repr__(self):
-        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])} - {self.assigned_vehicle_id}"
+        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])} - {self.assigned_vehicle_id} - {self.assigned_micro_hub_id}"
 
     def __str__(self):
         return f"Order {self.get_id()} - {self.pickup_node_id, self.delivery_node_id}"
@@ -237,6 +238,7 @@ class Order(LogisticEntity):
             global_state=self.global_state,
             p_parent_order=self
         )
+        self.pseudo_orders.extend([pseudo_order_1])
         pseudo_order_2 = PseudoOrder(
             p_id=str(self.get_id()) + "_2",
             p_pickup_node_id=hub_id,
@@ -244,8 +246,8 @@ class Order(LogisticEntity):
             global_state=self.global_state,
             p_parent_order=self
         )
-        pseudo_order_2.predecessor_orders.append(pseudo_order_1)
-        self.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
+        # pseudo_order_2.predecessor_orders.append(pseudo_order_1)
+        self.pseudo_orders.extend([pseudo_order_2])
 
         return [pseudo_order_1, pseudo_order_2]
 
@@ -288,8 +290,13 @@ class PseudoOrder(Order):
                        p_logging=p_logging,
                        **p_kwargs)
         self.parent_order = p_parent_order
+        self.predecessor_orders.extend(self.parent_order.predecessor_orders)
+        self.predecessor_orders.extend(self.parent_order.pseudo_orders)
         self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
                                     self.parent_order.handle_pseudo_delivery)
+        self.mh_assignment_history.extend([self.parent_order.assigned_micro_hub_id]+self.parent_order.mh_assignment_history)
+        self.mh_assignment_history.extend([ordr.assigned_micro_hub_id for ordr in self.predecessor_orders if ordr.assigned_micro_hub_id is not None])
+        print(self, self.mh_assignment_history)
 
 
     def reset(self, p_seed=None) -> None:
