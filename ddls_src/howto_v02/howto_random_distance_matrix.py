@@ -25,7 +25,7 @@ def run_matrix_scenario_demo():
             "generator_type": "distance_matrix",  # <-- Specify the new generator type
             "generator_config": {
                 # Config for the DistanceMatrixDataGenerator
-                "base_scale_factor": 10,
+                "base_scale_factor": 20,
                 "num_nodes": 20,  # Optionally define exact number of nodes
                 # "distance_matrix": { ... }, # Optionally provide your own matrix
                 "max_travel_time": 1800.0,  # Used if generating matrix randomly (max seconds)

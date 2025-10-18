@@ -396,6 +396,7 @@ class OrderRequestAssignabilityConstraint(Constraint):
     """
     # Define the unique name for this constraint.
     C_NAME = "OrderTripAssignabilityConstraint"
+    C_ACTIVE = False
     # Specify the entity types this constraint is associated with.
     C_ASSOCIATED_ENTITIES = ["Order", "Truck", "Drone", "Micro-Hub"]
     # List the assignment actions affected by this constraint.
@@ -453,6 +454,44 @@ class OrderRequestAssignabilityConstraint(Constraint):
 
         # Return the final list of invalidated action indices.
         return invalidation_idx, []
+
+
+
+
+class OrderRequestAssignabilityConstraint2(Constraint):
+    """
+    Constraint that invalidates order assignment actions based on vehicle/hub status
+    and the existence of active order requests.
+    """
+    # Define the unique name for this constraint.
+    C_NAME = "OrderTripAssignabilityConstraint"
+    C_ACTIVE = True
+    # Specify the entity types this constraint is associated with.
+    C_ASSOCIATED_ENTITIES = ["Order", "Truck", "Drone", "Micro-Hub"]
+    # List the assignment actions affected by this constraint.
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+                          SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
+                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
+
+
+    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
+        invalidation_idx = []
+        vehicles = list(p_entity.global_state.trucks.values()) + list(p_entity.global_state.drones.values())
+        unassignabile_vehicles = [veh for veh in vehicles if not veh.check_assignability()]
+        vehicle_related_actions = p_action_index.get_actions_involving_entities("Vehicle", unassignabile_vehicles)
+        inv_veh_asgn_actions = vehicle_related_actions.intersection(p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED))
+
+        order_request_node_pairs = list(p_entity.global_state.get_order_requests().keys())
+        invalid_order_requests = [pair for pair in p_entity.global_state.node_pairs if pair not in order_request_node_pairs]
+        pair_related_actions = p_action_index.get_actions_involving_entities("Node Pair", invalid_order_requests)
+        inv_pair_asgn_actions = pair_related_actions.intersection(p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED))
+
+        invalidation_idx = list(inv_pair_asgn_actions.union(inv_veh_asgn_actions))
+
+        return invalidation_idx,[]
+
+
+
 
 #----------------------------------------------------------------------------------------------------
 
@@ -791,7 +830,7 @@ class MicroHubAssignabilityConstraint(Constraint):
         # Iterate through each leg of the trip.
 
         mh_node_ids = mh_node_id+ps_order.mh_assignment_history
-        print(ps_order, mh_node_ids)
+        # print(ps_order, mh_node_ids)
         # Get the delivery and pickup nodes for this leg.
         delivery_node_id = ps_order.get_delivery_node_id()
         pickup_node_id = ps_order.get_pickup_node_id()
@@ -805,10 +844,10 @@ class MicroHubAssignabilityConstraint(Constraint):
         actions_by_mh = []
         for mh_id in set(mh_node_ids):
             actions_by_mh.extend(p_action_index.actions_involving_entity["MicroHub", mh_id])
-        print("actions_by_mh", actions_by_mh)
+        # print("actions_by_mh", actions_by_mh)
         # Find actions that match all three criteria and add them to the invalidation list.
         invalidation_idx.extend(list(actions_by_type.intersection(actions_by_node_pair).intersection(set(actions_by_mh))))
-        print(invalidation_idx)
+        # print(invalidation_idx)
 
         # Return the final list of invalidations.
         return invalidation_idx, []
@@ -882,7 +921,7 @@ class CoOrdinatedDeliveryAssignmentConstraint(Constraint):
 #         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
 #         actions_by_entity = p_action_index.actions_involving_entity["Order", p_entity.get_id()]
 #
-# 
+#
 #
 #
 #         # invalidation_idx.extend(list(actions_by_type.intersection(actions_by_entity)))
@@ -1092,8 +1131,7 @@ class ConstraintManager(EventManager):
         validations = set()
 
         # Get all actions involving this specific entity instance.
-        related_actions_by_entity = self.action_index.actions_involving_entity.get((entity.C_NAME, entity.get_id()),
-                                                                                   set())
+        related_actions_by_entity = self.action_index.actions_involving_entity.get((entity.C_NAME, entity.get_id()), set())
 
         # If the entity is an Order, also consider actions related to its node pair (trip).
         if isinstance(entity, Order):

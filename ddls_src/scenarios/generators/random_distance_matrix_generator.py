@@ -235,8 +235,8 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
 
         # --- Generate Initial Orders ---
         order_id_counter = 1000
-        possible_pickup_nodes = depot_ids + micro_hub_ids + customer_ids # Where orders might originate
-        possible_delivery_nodes = customer_ids + micro_hub_ids # Where orders might go
+        possible_pickup_nodes = depot_ids # Where orders might originate
+        possible_delivery_nodes = customer_ids # Where orders might go
 
         if not possible_pickup_nodes or not possible_delivery_nodes:
             print("Warning: Not enough nodes (depots/customers/hubs) to generate orders.")
@@ -244,9 +244,9 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
             for i in range(self.num_initial_orders):
                  # Ensure pickup and delivery nodes are different
                  pickup_node_id = random.choice(possible_pickup_nodes)
-                 delivery_node_id = random.choice([n for n in possible_delivery_nodes if n != pickup_node_id])
-                 if not delivery_node_id: # Fallback if only one possible node type exists
-                      delivery_node_id = pickup_node_id # Allow self-delivery if needed, though unlikely
+                 delivery_node_id = random.choice(possible_delivery_nodes)
+                 # if not delivery_node_id: # Fallback if only one possible node type exists
+                 #      delivery_node_id = pickup_node_id # Allow self-delivery if needed, though unlikely
 
                  time_received = 0.0
                  sla_deadline = time_received + random.uniform(self.sla_min_seconds, self.sla_max_seconds)

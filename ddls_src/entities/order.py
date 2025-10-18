@@ -266,6 +266,8 @@ class Order(LogisticEntity):
                         precedence_satisfied = False
             return precedence_satisfied
 
+    # def check_assignability(self):
+
 class PseudoOrder(Order):
 
     C_TYPE = "Pseudo Order"
