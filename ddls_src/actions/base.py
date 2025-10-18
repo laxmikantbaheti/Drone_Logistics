@@ -32,6 +32,8 @@ class ActionIndex:
                 # if entity_type == "Order":
                 entity_id = action_tuple[i + 1]
                 self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
+                if entity_type == "Truck" or entity_type == "Drone":
+                    self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
 
     def update_indexes(self, global_state, action_map):
         self.actions_by_type = defaultdict(set)
@@ -43,6 +45,20 @@ class ActionIndex:
         for action_type in action_types:
             ids.update(self.actions_by_type[action_type])
         return ids
+
+    def get_actions_involving_entities(self, p_entity_type, p_entity_ids):
+        """
+
+        :param p_entity_type:
+        :param p_entity_ids:
+        :return:
+        """
+        actions = set()
+
+        for ent in p_entity_ids:
+            actions = actions.union(self.actions_involving_entity[p_entity_type, ent])
+
+        return actions
 
     # def _handle_new_entity(self, p_event_str, p_event_obj):
     #     self._build_indexes(global_state, action_map=)
