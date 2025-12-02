@@ -40,7 +40,7 @@ class DataLoader:
         Raises:
             ValueError: If an unsupported generator type is specified.
         """
-        if self.generator_type == 'json_f[[;;ile':
+        if self.generator_type == 'json_file':
             # Pass the file_path from generator_config
             return JsonFileDataGenerator(self.generator_config)
         elif self.generator_type == 'random':
