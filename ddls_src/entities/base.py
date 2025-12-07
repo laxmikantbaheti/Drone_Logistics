@@ -27,6 +27,14 @@ class LogisticEntity(System):
         self.setup_event_string()
         self.data_storage = {}
 
+        # [NEW] Set to store actions involved with this entity
+        self.associated_actions = set()
+
+        # [NEW] Dictionary to store operability flags for each associated action
+        # Key: ActionType, Value: bool (True = Operable/Valid)
+        self.action_operability = {}
+
+
     def setup_discrete_spaces(self):
         for dim in self.C_DIS_DIMS:
             self._state_space.add_dim(Dimension(dim[0],
@@ -49,6 +57,7 @@ class LogisticEntity(System):
         self.log(self.C_LOG_TYPE_S, f"{dim.get_name_long()} updated.")
         print(f"{self.C_NAME}{self.get_id()} - {dim.get_name_long()} updated to {p_value}.")
         self._state.set_value(dim.get_id(), p_value)
+        self.raise_state_change_event()
 
     def raise_state_change_event(self):
         self._raise_event(self.C_EVENT_ENTITY_STATE_CHANGE, Event(self))

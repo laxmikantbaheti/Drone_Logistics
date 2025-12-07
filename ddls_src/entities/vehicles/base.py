@@ -452,7 +452,7 @@ class Vehicle(LogisticEntity, ABC):
                     self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
                 else:
                     self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
-
+                self.raise_state_change_event()
             # New: Update coordinates to be exactly at the new node
             self._update_location_coords(self.current_node_id, self.current_node_id, self.route_progress)
         else:
@@ -520,6 +520,7 @@ class Vehicle(LogisticEntity, ABC):
                 self.current_node_id = self.route_nodes[0]
             elif self.current_node_id is None:
                 self.current_node_id = self.start_node_id
+            self.raise_state_change_event()
             return
 
         self.current_route = route

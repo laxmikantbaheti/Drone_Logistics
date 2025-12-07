@@ -14,10 +14,10 @@ from ddls_src.functions.plotting import plot_vehicle_gantt_chart, plot_vehicle_s
 class LogisticsScenario(Scenario):
     C_NAME = 'LogisticsScenario'
 
-    def __init__(self, p_mode=Mode.C_MODE_SIM, p_cycle_limit=100, p_visualize: bool = False, p_logging=False,
+    def __init__(self, p_mode=Mode.C_MODE_SIM, p_cycle_limit=100, p_visualize: bool = False, p_logging=False, p_system = None,
                  **p_kwargs):
         self._config = p_kwargs.pop('config', {})
-        self._system: LogisticsSystem = None
+        self._system: LogisticsSystem = p_system
         self._logging = p_logging
         # Store the visualization flag
         self._visualize = p_visualize
@@ -27,7 +27,8 @@ class LogisticsScenario(Scenario):
 
     def _setup(self, p_mode, p_ada, p_visualize, p_logging):
         self.log(self.C_LOG_TYPE_I, "Setting up scenario...")
-        self._system = LogisticsSystem(p_id='logsys_001', p_visualize=p_visualize, p_logging=p_logging,
+        if self._system == None:
+            self._system = LogisticsSystem(p_id='logsys_001', p_visualize=p_visualize, p_logging=p_logging,
                                        config=self._config)
 
         # --- NEW: Setup visualization if enabled ---
@@ -116,7 +117,7 @@ class LogisticsScenario(Scenario):
         # 1. Decision Phase
         self.log(self.C_LOG_TYPE_I, "Entering Decision Phase...")
 
-        while not all(self._system.get_masks()):
+        while True:#not all(self._system.get_masks()):
             if not len(self._system.get_automatic_actions()):
 
                 current_state = self._system.get_state()
@@ -156,8 +157,9 @@ class LogisticsScenario(Scenario):
             self._system.network.update_plot()
 
         if self._system.get_success():
-            plot_vehicle_gantt_chart(self._system.global_state)
-            plot_vehicle_states(self._system.global_state)
+            # plot_vehicle_gantt_chart(self._system.global_state)
+            # plot_vehicle_states(self._system.global_state)
+            pass
 
         new_state = self._system.get_state()
         return self._system.get_success(), self._system.get_broken(), adapted, eof_data

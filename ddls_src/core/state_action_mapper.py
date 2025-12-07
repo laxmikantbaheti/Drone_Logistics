@@ -141,6 +141,26 @@ class Constraint(ABC, EventManager):
         # This is an abstract method that must be implemented by all subclasses.
         raise NotImplementedError
 
+
+    # --- [START OF MODIFICATION] ---
+    # [NEW] New interface for updating entity-level operability flags directly.
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Evaluates the constraint against the provided entity and updates the
+        entity's 'action_operability' flags.
+
+        This method operates on the principle of 'Veto Power':
+        - If the constraint is satisfied, it leaves the flags alone (they default to True).
+        - If the constraint is violated, it sets the relevant flags to False.
+
+        Parameters
+        ----------
+        p_entity : LogisticEntity
+            The entity to evaluate.
+        """
+        pass
+    # --- [END OF MODIFICATION] ---
+
 #----------------------------------------------------------------------------------------------------
 
 
@@ -203,10 +223,37 @@ class VehicleAvailableConstraint(Constraint):
             # Return the list of invalidated action indices.
             return invalidation_idx, []
 
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update with reset logic
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates the action_operability flags for a vehicle based on its availability dimension.
+        Mirrors get_invalidations: Checks the C_DIM_AVAILABLE state value.
+        """
+        # 1. Validation: Ensure we are dealing with a Vehicle
+        # (Local import to avoid circular dependencies)
+        from ddls_src.entities.vehicles.base import Vehicle
+
+        if not isinstance(p_entity, Vehicle):
+            return
+
+        # 2. Check Constraint: Get the availability value from the state
+        # In get_invalidations: if value is True/1, returns empty list (Valid).
+        # if value is False/0, returns invalid actions (Invalid).
+        is_available = p_entity.get_state_value_by_dim_name(Vehicle.C_DIM_AVAILABLE[0])
+
+        # Ensure it's treated as a boolean for the flag
+        is_operable = bool(is_available)
+
+        # 3. Update Flags: Set to True if available, False if not.
+        for action_type in self.C_ACTIONS_AFFECTED:
+            # Only update if this action is actually associated with this specific entity
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = is_operable
+    # --- [END OF MODIFICATION] ---
+
+
 #----------------------------------------------------------------------------------------------------
-
-
-
 
 
 class VehicleAtDeliveryNodeConstraint(Constraint):
@@ -294,10 +341,49 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
         # Return the list of actions to mask.
         return list(actions_to_mask), []
 
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update using Sets for precision
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability with a SET of valid order IDs that can be delivered at the current node.
+        - If no orders are deliverable here -> False (Veto)
+        - If specific orders are deliverable -> Set{order_id_1, ...} (Restricted)
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+
+        # 1. Validation
+        if not (isinstance(p_entity, Truck) or isinstance(p_entity, Drone)):
+            return
+
+        vehicle = p_entity
+        node_vehicle = vehicle.get_current_node()
+        delivery_orders = vehicle.get_delivery_orders()
+
+        # 2. Identify specific orders valid for this location
+        valid_orders = set()
+
+        if delivery_orders:
+            for order_obj in delivery_orders:
+                try:
+                    # Strict check: Can THIS specific order be delivered HERE?
+                    if order_obj.get_delivery_node_id() == node_vehicle:
+                        valid_orders.add(order_obj.get_id())
+                except (KeyError, AttributeError):
+                    continue
+
+        # 3. Determine Operability
+        # If set is empty, action is disabled. Otherwise, pass the specific set.
+        is_operable = valid_orders if valid_orders else False
+
+        # 4. Update Flags
+        for action_type in self.C_ACTIONS_AFFECTED:
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = is_operable
+    # --- [END OF MODIFICATION] ---
+
+
 #----------------------------------------------------------------------------------------------------
-
-
-
 
 
 class VehicleAtPickUpNodeConstraint(Constraint):
@@ -383,10 +469,57 @@ class VehicleAtPickUpNodeConstraint(Constraint):
         # Return the list of actions to mask.
         return list(actions_to_mask), []
 
+    # --- [START OF MODIFICATION] ---
+    # [MODIFIED] Implementation with explicit 'not at node' check
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability with a SET of valid order IDs that can be delivered at the current node.
+        - If vehicle is not at any node -> False (Veto)
+        - If no orders are deliverable here -> False (Veto)
+        - If specific orders are deliverable -> Set{order_id_1, ...} (Restricted)
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+
+        # 1. Validation
+        if not (isinstance(p_entity, Truck) or isinstance(p_entity, Drone)):
+            return
+
+        vehicle = p_entity
+        node_vehicle = vehicle.get_current_node()
+
+        # 2. Explicit Check: Is the vehicle at a node?
+        # If the vehicle is en-route (node_vehicle is None), it cannot perform node-based actions.
+        if node_vehicle is None:
+            for action_type in self.C_ACTIONS_AFFECTED:
+                if action_type in p_entity.action_operability:
+                    p_entity.action_operability[action_type] = False
+            return
+
+        # 3. Identify specific orders valid for this location
+        delivery_orders = vehicle.get_delivery_orders()
+        valid_orders = set()
+
+        if delivery_orders:
+            for order_obj in delivery_orders:
+                try:
+                    # Strict check: Can THIS specific order be delivered HERE?
+                    if order_obj.get_delivery_node_id() == node_vehicle:
+                        valid_orders.add(order_obj.get_id())
+                except (KeyError, AttributeError):
+                    continue
+
+        # 4. Determine Operability
+        is_operable = valid_orders if valid_orders else False
+
+        # 5. Update Flags
+        for action_type in self.C_ACTIONS_AFFECTED:
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = is_operable
+    # --- [END OF MODIFICATION] ---
+
+
 #----------------------------------------------------------------------------------------------------
-
-
-
 
 
 class OrderRequestAssignabilityConstraint(Constraint):
@@ -455,6 +588,51 @@ class OrderRequestAssignabilityConstraint(Constraint):
         # Return the final list of invalidated action indices.
         return invalidation_idx, []
 
+    # --- [START OF MODIFICATION] ---
+    # [MODIFIED] Implementation with explicit 'not at node' check
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability with a SET of valid order IDs that can be picked up at the current node.
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+
+        # 1. Validation
+        if not (isinstance(p_entity, Truck) or isinstance(p_entity, Drone)):
+            return
+
+        vehicle = p_entity
+        node_vehicle = vehicle.get_current_node()
+
+        # 2. Explicit Check: Is the vehicle at a node?
+        if node_vehicle is None:
+            for action_type in self.C_ACTIONS_AFFECTED:
+                if action_type in p_entity.action_operability:
+                    p_entity.action_operability[action_type] = False
+            return
+
+        # 3. Identify specific orders valid for this location
+        pickup_orders = vehicle.get_pickup_orders()
+        valid_orders = set()
+
+        if pickup_orders:
+            for order_obj in pickup_orders:
+                try:
+                    # Strict check: Can THIS specific order be picked up HERE?
+                    if order_obj.get_pickup_node_id() == node_vehicle:
+                        valid_orders.add(order_obj.get_id())
+                except (KeyError, AttributeError):
+                    continue
+
+        # 4. Determine Operability
+        is_operable = valid_orders if valid_orders else False
+
+        # 5. Update Flags
+        for action_type in self.C_ACTIONS_AFFECTED:
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = is_operable
+    # --- [END OF MODIFICATION] ---
+
 
 
 
@@ -490,6 +668,40 @@ class OrderRequestAssignabilityConstraint2(Constraint):
 
         return invalidation_idx,[]
 
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update mirroring get_invalidations logic
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability.
+        - Vehicles: Checks check_assignability() (e.g., is Idle?).
+        - Orders: Checks if status is PLACED (mirroring get_order_requests logic).
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+        from ddls_src.entities.order import Order
+
+        # 1. Vehicle Logic
+        # Mirroring: unassignabile_vehicles = [... if not veh.check_assignability()]
+        if isinstance(p_entity, (Truck, Drone)):
+            is_assignable = p_entity.check_assignability()
+
+            for action_type in self.C_ACTIONS_AFFECTED:
+                if action_type in p_entity.action_operability:
+                    p_entity.action_operability[action_type] = is_assignable
+
+        # 2. Order Logic
+        # Mirroring: invalid_order_requests = [... if pair not in get_order_requests()]
+        # get_order_requests() only includes orders with status == C_STATUS_PLACED.
+        # If an order is PLACED, it constitutes a valid request.
+        elif isinstance(p_entity, Order):
+            current_status = p_entity.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
+            is_active_request = (current_status == Order.C_STATUS_PLACED)
+
+            for action_type in self.C_ACTIONS_AFFECTED:
+                if action_type in p_entity.action_operability:
+                    p_entity.action_operability[action_type] = is_active_request
+    # --- [END OF MODIFICATION] ---
+
 
 
 
@@ -513,33 +725,103 @@ class VehicleCapacityConstraint(Constraint):
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
 
+    # def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
+    #     """
+    #     Invalidates order assignment if the vehicle is at full capacity.
+    #     """
+    #     # Initialize an empty list for invalidated action indices.
+    #     invalidation_idx = []
+    #     # Assign the entity to a more specific variable name.
+    #     vehicle = p_entity
+    #     # Get the vehicle's total cargo capacity.
+    #     vehicle_capacity = vehicle.get_cargo_capacity()
+    #     # Get the current size of the cargo being carried.
+    #     current_cargo_size = vehicle.get_current_cargo_size()
+    #
+    #     # Check if there is space for at least one more item.
+    #     if vehicle_capacity - current_cargo_size >= 1:
+    #         # If there is capacity, return the empty list (no invalidations).
+    #         return invalidation_idx, []
+    #     else:
+    #         # If the vehicle is full, invalidate assignment actions.
+    #         # Get all actions of the affected assignment types.
+    #         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+    #         # Get all actions involving this specific vehicle.
+    #         actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+    #         # The actions to invalidate are the intersection of the two sets.
+    #         invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+    #         # Return the list of invalidations.
+    #         return invalidation_idx, []
+
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
-        Invalidates order assignment if the vehicle is at full capacity.
+        Invalidates order assignment if the vehicle's committed capacity is full.
         """
         # Initialize an empty list for invalidated action indices.
         invalidation_idx = []
+
         # Assign the entity to a more specific variable name.
         vehicle = p_entity
-        # Get the vehicle's total cargo capacity.
-        vehicle_capacity = vehicle.get_cargo_capacity()
-        # Get the current size of the cargo being carried.
-        current_cargo_size = vehicle.get_current_cargo_size()
 
-        # Check if there is space for at least one more item.
-        if vehicle_capacity - current_cargo_size >= 1:
-            # If there is capacity, return the empty list (no invalidations).
-            return invalidation_idx, []
-        else:
-            # If the vehicle is full, invalidate assignment actions.
+        # --- MODIFICATION START ---
+        # 1. Get total capacity
+        vehicle_capacity = vehicle.get_cargo_capacity()
+
+        # 2. Calculate 'Committed Load':
+        #    Items currently on board (delivery_orders) + Items assigned to be picked up (pickup_orders)
+        #    We use getter methods to ensure we access the latest state.
+        committed_load = len(vehicle.get_pickup_orders()) + len(vehicle.get_delivery_orders())
+
+        # 3. Check if there is space for at least one NEW assignment
+        #    If committed_load is equal to or greater than capacity, we cannot accept more.
+        if committed_load >= vehicle_capacity:
+            # If the vehicle is full (committed), invalidate assignment actions.
+
             # Get all actions of the affected assignment types.
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
             # Get all actions involving this specific vehicle.
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+
             # The actions to invalidate are the intersection of the two sets.
             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+
             # Return the list of invalidations.
             return invalidation_idx, []
+        # --- MODIFICATION END ---
+
+        else:
+            # If there is capacity, return empty lists (no invalidations).
+            return [], []
+
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update based on cargo capacity
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability based on available cargo capacity.
+        If capacity allows for at least one more item, assignment actions are operable.
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+
+        # 1. Validation
+        if not (isinstance(p_entity, Truck) or isinstance(p_entity, Drone)):
+            return
+
+        vehicle = p_entity
+
+        # 2. Check Capacity
+        # We use the standard getter methods defined in the Vehicle class
+        vehicle_capacity = vehicle.get_cargo_capacity()
+        current_cargo_size = vehicle.get_current_cargo_size()
+
+        # Condition: Is there space for at least 1 more order?
+        has_capacity = (vehicle_capacity - current_cargo_size >= 1)
+
+        # 3. Update Flags
+        for action_type in self.C_ACTIONS_AFFECTED:
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = has_capacity
+    # --- [END OF MODIFICATION] ---
 
 #----------------------------------------------------------------------------------------------------
 
@@ -609,6 +891,56 @@ class TripWithinRangeConstraint(Constraint):
         # Return the resulting list of invalidations.
         return list(invalidation_set), []
 
+
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update using Sets for precision
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability with a SET of valid order IDs that are within range.
+        - If no orders are in range -> False
+        - If specific orders are in range -> Set{order_id_1, order_id_2, ...}
+        """
+        from ddls_src.entities.vehicles.drone import Drone
+
+        # 1. Validation
+        if not isinstance(p_entity, Drone):
+            return
+
+        drone = p_entity
+        available_range = drone.get_remaining_range()
+        orders = drone.global_state.orders
+
+        # 2. Feasibility Scan
+        # We identify exactly WHICH orders are reachable
+        reachable_orders = set()
+
+        # Optimization: We could filter for only 'pending' orders here if desired,
+        # but to mirror standard constraint logic, we check feasibility for all.
+        for order in orders.values():
+            try:
+                loc_pick_up = order.get_pickup_node_id()
+                loc_delivery = order.get_delivery_node_id()
+
+                # Calculate distance using the network
+                distance = drone.global_state.network.calculate_distance(loc_pick_up, loc_delivery)
+
+                # Relational Check: Does this specific order fit?
+                if distance < available_range:
+                    reachable_orders.add(order.get_id())
+            except (KeyError, AttributeError):
+                continue
+
+        # 3. Determine Operability
+        # If the set is empty, the action is disabled (False).
+        # Otherwise, we store the SET of valid targets.
+        is_operable = reachable_orders if reachable_orders else False
+
+        # 4. Update Flags
+        for action_type in self.C_ACTIONS_AFFECTED:
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = is_operable
+    # --- [END OF MODIFICATION] ---
+
 #----------------------------------------------------------------------------------------------------
 
 
@@ -661,6 +993,49 @@ class VehicleRoutingConstraint(Constraint):
             return [], []
         # For any other entity type, return an empty list.
         return [], []
+
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update using Sets for valid destinations
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability with a SET of valid destination Node IDs.
+        The vehicle can only move to nodes where it has a pickup or delivery task.
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+
+        # 1. Validation
+        if not (isinstance(p_entity, Truck) or isinstance(p_entity, Drone)):
+            return
+
+        vehicle = p_entity
+        valid_destinations = set()
+
+        # 2. Collect valid pickup nodes
+        # (Where the vehicle needs to go to pick things up)
+        for order in vehicle.get_pickup_orders():
+            try:
+                valid_destinations.add(order.get_pickup_node_id())
+            except (KeyError, AttributeError):
+                continue
+
+        # 3. Collect valid delivery nodes
+        # (Where the vehicle needs to go to drop things off)
+        for order in vehicle.get_delivery_orders():
+            try:
+                valid_destinations.add(order.get_delivery_node_id())
+            except (KeyError, AttributeError):
+                continue
+
+        # 4. Determine Operability
+        # If no orders, no valid movement targets (vehicle stays idle or follows other logic)
+        is_operable = valid_destinations if valid_destinations else False
+
+        # 5. Update Flags
+        for action_type in self.C_ACTIONS_AFFECTED:
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = is_operable
+    # --- [END OF MODIFICATION] ---
 
 #----------------------------------------------------------------------------------------------------
 
@@ -724,6 +1099,65 @@ class ConsolidationConstraint(Constraint):
 
         # Return the final list of invalidations.
         return invalidation_idx, []
+
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update matching get_invalidations logic
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability for Consolidation actions.
+        Operable if:
+        1. Vehicle is Idle or Halted.
+        2. Vehicle has orders (Pickup or Cargo).
+        3. Vehicle is NOT blocked by immediate tasks at the current node (e.g. orders ready to load/unload).
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+        from ddls_src.entities.vehicles.base import Vehicle
+
+        # 1. Validation
+        if not isinstance(p_entity, (Truck, Drone)):
+            return
+
+        vehicle = p_entity
+
+        # 2. Base Readiness Check
+        # Check Trip State (must be Idle or Halted)
+        trip_state = vehicle.get_state_value_by_dim_name(Vehicle.C_DIM_TRIP_STATE[0])
+        is_stable_state = (trip_state in [Vehicle.C_TRIP_STATE_IDLE, Vehicle.C_TRIP_STATE_HALT])
+
+        # Check Workload (must have something to do)
+        has_orders = (len(vehicle.pickup_orders) > 0 or vehicle.get_current_cargo_size() > 0)
+
+        is_ready = is_stable_state and has_orders
+
+        # 3. Immediate Task Check (Blocking)
+        # If we have tasks at the current node, we might need to stay and perform them instead of consolidating.
+        if is_ready:
+            current_node = vehicle.current_node_id
+
+            # Collect all orders interacting with the current node
+            orders_at_node = []
+            if vehicle.pickup_orders:
+                orders_at_node.extend([o for o in vehicle.pickup_orders if o.get_pickup_node_id() == current_node])
+            if vehicle.delivery_orders:
+                orders_at_node.extend([o for o in vehicle.delivery_orders if o.get_delivery_node_id() == current_node])
+
+            if orders_at_node:
+                # Check if these orders are "valid" (precedence satisfied, ready to process).
+                # If they are ready, we should process them (Load/Unload), so we are NOT ready to consolidate.
+                are_orders_actionable = True
+                for ordr in orders_at_node:
+                    # Mirroring logic: check_order_precedence returns True if ready
+                    are_orders_actionable = ordr.check_order_precedence() and True
+
+                # If orders are actionable, we block consolidation.
+                is_ready = not are_orders_actionable
+
+        # 4. Update Flags
+        for action_type in self.C_ACTIONS_AFFECTED:
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = is_ready
+    # --- [END OF MODIFICATION] ---
 
 #----------------------------------------------------------------------------------------------------
 
@@ -797,6 +1231,59 @@ class CollaborationPrecedenceConstraint(Constraint):
 
         return invalidation_idx, []
 
+    # [NEW] Implementation of operability update
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability based on order precedence.
+        - Vehicles: Set of Order IDs that are at the current node AND satisfy precedence.
+        - Orders: Boolean True/False based on precedence check.
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+        from ddls_src.entities.order import Order
+
+        # 1. Vehicle Logic (Relational)
+        if isinstance(p_entity, (Truck, Drone)):
+            vehicle = p_entity
+            current_node = vehicle.get_current_node()
+
+            # If not at a node, we can't load anything.
+            if current_node is None:
+                for action in self.C_ACTIONS_AFFECTED:
+                    if action in p_entity.action_operability:
+                        p_entity.action_operability[action] = False
+                return
+
+            valid_orders = set()
+            pickup_orders = vehicle.get_pickup_orders()
+
+            if pickup_orders:
+                for order in pickup_orders:
+                    # Check 1: Is order at this node?
+                    if order.get_pickup_node_id() == current_node:
+                        # Check 2: Is precedence satisfied?
+                        if order.check_order_precedence():
+                            valid_orders.add(order.get_id())
+
+            # Determine Operability: Set of IDs or False
+            is_operable = valid_orders if valid_orders else False
+
+            for action in self.C_ACTIONS_AFFECTED:
+                if action in p_entity.action_operability:
+                    p_entity.action_operability[action] = is_operable
+
+        # 2. Order Logic (State)
+        elif isinstance(p_entity, Order):
+            # Check if this specific order is ready to be loaded
+            is_ready = p_entity.check_order_precedence()
+
+            for action in self.C_ACTIONS_AFFECTED:
+                if action in p_entity.action_operability:
+                    p_entity.action_operability[action] = is_ready
+
+
+# --- [END OF MODIFICATION] ---
+
 
 
 
@@ -852,6 +1339,49 @@ class MicroHubAssignabilityConstraint(Constraint):
         # Return the final list of invalidations.
         return invalidation_idx, []
 
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update using Sets for allowed MicroHubs
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability with a SET of allowed MicroHub IDs.
+        Calculates: All MicroHubs - (Visited/Assigned MicroHubs).
+        """
+        from ddls_src.entities.order import Order, PseudoOrder
+
+        # 1. Validation
+        if not isinstance(p_entity, Order):
+            return
+
+        # 2. Identify Forbidden MicroHubs (History + Parent Assignment)
+        forbidden_ids = set()
+
+        if isinstance(p_entity, PseudoOrder):
+            # Check parent's assignment
+            if p_entity.parent_order.assigned_micro_hub_id is not None:
+                forbidden_ids.add(p_entity.parent_order.assigned_micro_hub_id)
+
+            # Check assignment history (prevent loops)
+            if hasattr(p_entity, 'mh_assignment_history'):
+                forbidden_ids.update(p_entity.mh_assignment_history)
+
+        # 3. Identify All Possible MicroHubs
+        # (We query the global state to get the full list of potential targets)
+        all_hub_ids = set(p_entity.global_state.micro_hubs.keys())
+
+        # 4. Calculate Allowed Set (Difference)
+        allowed_ids = all_hub_ids.difference(forbidden_ids)
+
+        # 5. Determine Operability
+        # If set is empty, no valid hubs exist -> False.
+        # Otherwise, restrict to the allowed set.
+        is_operable = allowed_ids if allowed_ids else False
+
+        # 6. Update Flags
+        for action_type in self.C_ACTIONS_AFFECTED:
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = is_operable
+    # --- [END OF MODIFICATION] ---
+
 #----------------------------------------------------------------------------------------------------
 
 
@@ -902,6 +1432,41 @@ class CoOrdinatedDeliveryAssignmentConstraint(Constraint):
 
         return invalidation_idx, validation_idx
 
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update for PseudoOrder precedence
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability for PseudoOrders.
+        - Checks if predecessors have progressed past PLACED/ACCEPTED/FAILED.
+        - If not ready, assignment actions are set to False.
+        """
+        from ddls_src.entities.order import Order, PseudoOrder
+
+        # This constraint acts on Orders (specifically PseudoOrders).
+        # It determines if the *Order* is ready to be assigned.
+        if not isinstance(p_entity, Order):
+            return
+
+        # Default to True (operable) unless proven otherwise
+        is_ready = True
+
+        if isinstance(p_entity, PseudoOrder) and p_entity.predecessor_orders:
+            # Check Precedence: Are all predecessors in an active state?
+            # Mirroring logic: Predecessor must NOT be in [PLACED, ACCEPTED, FAILED]
+            # i.e., Predecessor must be ASSIGNED, EN_ROUTE, or DELIVERED.
+            for pre_order in p_entity.predecessor_orders:
+                status = pre_order.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
+
+                # If any predecessor is still inactive (or failed), this order cannot start.
+                if status in [Order.C_STATUS_PLACED, Order.C_STATUS_ACCEPTED, Order.C_STATUS_FAILED]:
+                    is_ready = False
+                    break
+
+        # Update Flags
+        for action_type in self.C_ACTIONS_AFFECTED:
+            if action_type in p_entity.action_operability:
+                p_entity.action_operability[action_type] = is_ready
+    # --- [END OF MODIFICATION] ---
 
 # This is another commented-out, likely deprecated or incomplete, constraint class.
 
@@ -974,6 +1539,83 @@ class OrderLoadConstraint(Constraint):
 
             return list(relevant_actions), []
 
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update with INTERSECTION logic
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability for Loading actions.
+        - Vehicle: Restricts valid targets to assigned pickup_orders.
+        - Order: Restricts valid targets to the assigned vehicle (if at pickup node).
+        Uses INTERSECTION to ensure compatibility with other constraints (e.g. location checks).
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+        from ddls_src.entities.order import Order
+
+        # 1. Vehicle Logic
+        if isinstance(p_entity, (Truck, Drone)):
+            vehicle = p_entity
+            valid_orders = set()
+
+            # Allow loading only orders in the pickup manifest
+            for order in vehicle.get_pickup_orders():
+                valid_orders.add(order.get_id())
+
+            # Determine proposed operability
+            new_val = valid_orders if valid_orders else False
+
+            # Apply with Intersection
+            for action in self.C_ACTIONS_AFFECTED:
+                if action in p_entity.action_operability:
+                    current_val = p_entity.action_operability[action]
+
+                    # Logic: False takes precedence. True yields to specific Set. Sets get intersected.
+                    if current_val is False or new_val is False:
+                        p_entity.action_operability[action] = False
+                    elif current_val is True:
+                        p_entity.action_operability[action] = new_val
+                    else:  # Both are Sets
+                        intersection = current_val.intersection(new_val)
+                        p_entity.action_operability[action] = intersection if intersection else False
+
+        # 2. Order Logic
+        elif isinstance(p_entity, Order):
+            order = p_entity
+            valid_vehicles = set()
+
+            assigned_id = order.assigned_vehicle_id
+            status = order.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
+
+            # Condition 1: Must be assigned
+            if assigned_id is not None and status == Order.C_STATUS_ASSIGNED:
+                # Retrieve the vehicle instance safely
+                vehicle = None
+                if assigned_id in order.global_state.trucks:
+                    vehicle = order.global_state.trucks[assigned_id]
+                elif assigned_id in order.global_state.drones:
+                    vehicle = order.global_state.drones[assigned_id]
+
+                # Condition 2: Vehicle must be at the pickup node
+                if vehicle and vehicle.current_node_id == order.get_pickup_node_id():
+                    valid_vehicles.add(assigned_id)
+
+            # Determine proposed operability
+            new_val = valid_vehicles if valid_vehicles else False
+
+            # Apply with Intersection
+            for action in self.C_ACTIONS_AFFECTED:
+                if action in p_entity.action_operability:
+                    current_val = p_entity.action_operability[action]
+
+                    if current_val is False or new_val is False:
+                        p_entity.action_operability[action] = False
+                    elif current_val is True:
+                        p_entity.action_operability[action] = new_val
+                    else:
+                        intersection = current_val.intersection(new_val)
+                        p_entity.action_operability[action] = intersection if intersection else False
+    # --- [END OF MODIFICATION] ---
+
 
 class OrderUnloadConstraint(Constraint):
     C_NAME = "OrderUnloadConstraint"
@@ -1017,6 +1659,85 @@ class OrderUnloadConstraint(Constraint):
                     return invalidation_idx, []
 
             return list(relevant_actions), []
+
+    # --- [START OF MODIFICATION] ---
+    # [NEW] Implementation of operability update with INTERSECTION logic
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Updates action_operability for Unloading actions.
+        - Vehicle: Valid targets = Intersection of (Delivery Manifest) AND (Current Cargo).
+        - Order: Valid targets = Assigned Vehicle (only if En Route and at Delivery Node).
+        Uses INTERSECTION to refine existing operability sets.
+        """
+        from ddls_src.entities.vehicles.truck import Truck
+        from ddls_src.entities.vehicles.drone import Drone
+        from ddls_src.entities.order import Order
+
+        # 1. Vehicle Logic
+        if isinstance(p_entity, (Truck, Drone)):
+            vehicle = p_entity
+            valid_orders = set()
+
+            # Identify orders that are supposed to be delivered AND are actually on board
+            # (This prevents trying to unload phantom orders)
+            current_cargo_ids = set(vehicle.get_current_cargo())
+            delivery_manifest_ids = set([o.get_id() for o in vehicle.get_delivery_orders()])
+
+            valid_orders = current_cargo_ids.intersection(delivery_manifest_ids)
+
+            # Determine proposed operability
+            new_val = valid_orders if valid_orders else False
+
+            # Apply with Intersection Logic
+            for action in self.C_ACTIONS_AFFECTED:
+                if action in p_entity.action_operability:
+                    current_val = p_entity.action_operability[action]
+
+                    if current_val is False or new_val is False:
+                        p_entity.action_operability[action] = False
+                    elif current_val is True:
+                        p_entity.action_operability[action] = new_val
+                    else:  # Both are Sets
+                        intersection = current_val.intersection(new_val)
+                        p_entity.action_operability[action] = intersection if intersection else False
+
+        # 2. Order Logic
+        elif isinstance(p_entity, Order):
+            order = p_entity
+            valid_vehicles = set()
+
+            assigned_id = order.assigned_vehicle_id
+            status = order.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
+
+            # Condition 1: Must be assigned and currently En Route
+            if assigned_id is not None and status == Order.C_STATUS_EN_ROUTE:
+                # Retrieve the vehicle instance safely
+                vehicle = None
+                if assigned_id in order.global_state.trucks:
+                    vehicle = order.global_state.trucks[assigned_id]
+                elif assigned_id in order.global_state.drones:
+                    vehicle = order.global_state.drones[assigned_id]
+
+                # Condition 2: Vehicle must be at the delivery node
+                if vehicle and vehicle.current_node_id == order.get_delivery_node_id():
+                    valid_vehicles.add(assigned_id)
+
+            # Determine proposed operability
+            new_val = valid_vehicles if valid_vehicles else False
+
+            # Apply with Intersection Logic
+            for action in self.C_ACTIONS_AFFECTED:
+                if action in p_entity.action_operability:
+                    current_val = p_entity.action_operability[action]
+
+                    if current_val is False or new_val is False:
+                        p_entity.action_operability[action] = False
+                    elif current_val is True:
+                        p_entity.action_operability[action] = new_val
+                    else:
+                        intersection = current_val.intersection(new_val)
+                        p_entity.action_operability[action] = intersection if intersection else False
+    # --- [END OF MODIFICATION] ---
 
 
 
