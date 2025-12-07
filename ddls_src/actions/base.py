@@ -268,6 +268,16 @@ class SimulationActions:
         action_map = {}
         current_index = 0
 
+        # --- [START OF MODIFICATION 1] ---
+        # [NEW] 0. Clear existing associations and flags on all entities
+        for entity_dict in global_state.get_all_entities():
+            for entity in entity_dict.values():
+                if hasattr(entity, 'associated_actions'):
+                    entity.associated_actions.clear()
+                if hasattr(entity, 'action_operability'):
+                    entity.action_operability.clear()
+        # --- [END OF MODIFICATION 1] ---
+
         # 1. Get the actual ID ranges from the global_state
         entity_id_ranges = {
             'Order': list(global_state.orders.keys()),
@@ -279,8 +289,42 @@ class SimulationActions:
             'Node Pair': global_state.node_pairs
         }
 
+        # [NEW] Helper mapping to get actual entity objects
+        entity_objects_map = {
+            'Order': global_state.orders,
+            'Truck': global_state.trucks,
+            'Drone': global_state.drones,
+            'Node': global_state.nodes,
+            'MicroHub': global_state.micro_hubs,
+        }
+
         # 2. Iterate through each action defined in our blueprint
         for action_type in self.get_all_actions():
+
+            # --- [START OF MODIFICATION 2] ---
+            # [NEW] Populate properties on involved entities
+            if action_type.params:
+                for param in action_type.params:
+                    param_type = param['type']
+
+                    # Define a list of entity collections to process for this parameter type
+                    target_collections = []
+
+                    if param_type in entity_objects_map:
+                        target_collections.append(entity_objects_map[param_type].values())
+                    elif param_type == 'Vehicle':
+                        target_collections.append(global_state.trucks.values())
+                        target_collections.append(global_state.drones.values())
+
+                    # Apply updates to all found entities
+                    for collection in target_collections:
+                        for entity in collection:
+                            # 1. Add to associated actions set
+                            entity.associated_actions.add(action_type)
+                            # 2. Initialize operability flag to True (Default: Operable)
+                            entity.action_operability[action_type] = True
+            # --- [END OF MODIFICATION 2] ---
+
             # This loop now includes ALL actions to ensure a static action map size
             if not action_type.params:
                 action_tuple = (action_type,)

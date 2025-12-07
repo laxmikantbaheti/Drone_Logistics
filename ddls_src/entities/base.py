@@ -27,6 +27,14 @@ class LogisticEntity(System):
         self.setup_event_string()
         self.data_storage = {}
 
+        # [NEW] Set to store actions involved with this entity
+        self.associated_actions = set()
+
+        # [NEW] Dictionary to store operability flags for each associated action
+        # Key: ActionType, Value: bool (True = Operable/Valid)
+        self.action_operability = {}
+
+
     def setup_discrete_spaces(self):
         for dim in self.C_DIS_DIMS:
             self._state_space.add_dim(Dimension(dim[0],
