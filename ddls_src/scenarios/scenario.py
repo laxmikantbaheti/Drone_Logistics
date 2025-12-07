@@ -157,8 +157,9 @@ class LogisticsScenario(Scenario):
             self._system.network.update_plot()
 
         if self._system.get_success():
-            plot_vehicle_gantt_chart(self._system.global_state)
-            plot_vehicle_states(self._system.global_state)
+            # plot_vehicle_gantt_chart(self._system.global_state)
+            # plot_vehicle_states(self._system.global_state)
+            pass
 
         new_state = self._system.get_state()
         return self._system.get_success(), self._system.get_broken(), adapted, eof_data

@@ -3,104 +3,107 @@ import sys
 import numpy as np
 import time
 
-# Ensure the project root is in the python path so imports work correctly
+# Ensure the project root is in the python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import the environment wrapper
-# Ensure your wrapper file is named 'logistic_rl_scenario.py'
+# (Make sure this matches the filename where you saved the class above)
 from ddls_src.rl_interface.rl_scenario import LogisticRLScenario
 
 
 def random_policy(mask):
     """
     A simple policy that picks a random valid action from the mask.
-    In a real training scenario, this would be your PPO/DQN model.
     """
-    # np.where returns a tuple, we take the first element (the array of indices)
     valid_indices = np.where(mask)[0]
-
     if len(valid_indices) > 0:
         return np.random.choice(valid_indices)
-
-    # Fallback: This case should ideally not happen if the environment
-    # logic correctly finds a state with available agent actions.
-    return 0
+    return 0  # Should not happen if mask logic is correct
 
 
-def run_main_simulation():
+def run_multi_episode_simulation():
     print("=========================================================")
-    print("===   Running LogisticRLScenario (Step-Logic Demo)    ===")
+    print("===   Running Multi-Episode LogisticRLScenario        ===")
     print("=========================================================")
 
-    # 1. Define the simulation configuration
+    # 1. Define Configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
-    # Point to the new matrix-specific data file
     config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
     config_file_path = os.path.normpath(config_file_path)
 
     sim_config = {
-        "movement_mode":"matrix",
+        "movement_mode": "matrix",
         "initial_time": 0.0,
-        "main_timestep_duration": 300.0,  # 5 minutes per internal step
+        "main_timestep_duration": 300.0,
         "data_loader_config": {
             "generator_type": "json_file",
             "generator_config": {
                 "file_path": config_file_path
             }
         },
-        }
-
+    }
 
     # 2. Initialize Environment
-    # Set visualize=True to see the matplotlib plots
+    # We initialize it ONCE. reset() handles the episode restarts.
     env = LogisticRLScenario(sim_config, visualize=False)
 
-    # 3. Reset Environment
-    # Note: With your logic, this might return t=0. The first step() will then
-    # fast-forward to the first actual decision point.
-    obs = env.reset()
+    # 3. Define Training Parameters
+    NUM_EPISODES = 100
+    all_episode_rewards = []
+    all_episode_steps = []
 
-    done = False
-    step_count = 0
-    total_reward = 0
+    # 4. Main Episode Loop
+    for episode in range(1, NUM_EPISODES + 1):
+        print(f"\n--- Starting Episode {episode}/{NUM_EPISODES} ---")
 
-    print(f"Initial Observation: {obs}")
+        # Reset environment for the new episode
+        obs = env.reset(seed=episode)  # Optional: Pass seed for reproducibility
 
-    # 4. Main RL Loop
-    while not done:
-        step_count += 1
+        done = False
+        step_count = 0
+        episode_reward = 0
 
-        # --- A. Get Valid Actions (Masking) ---
-        # We access the mask from the system (or info dict if available from previous step)
-        # For the very first step, we query the env directly.
-        current_mask = env._get_agent_mask()  # Using helper method for demo purposes
+        start_time = time.time()
 
-        # --- B. Select Action ---
-        action = random_policy(current_mask)
+        # Inner Step Loop
+        while not done:
+            step_count += 1
 
-        # --- C. Step Environment ---
-        # This call enters your 'while' loop logic:
-        # It will Auto-Execute -> Advance Time -> Repeat until Agent Action is needed.
-        obs, reward, done, info = env.step(action)
+            # A. Get Valid Actions
+            # For the first step we query env, for subsequent steps we could use 'info'
+            current_mask = env._get_agent_mask()
 
-        total_reward += reward
+            # B. Select Action (Policy)
+            action = random_policy(current_mask)
 
-        # --- D. Logging ---
-        # print(f"\n[Step {step_count}]")
-        # print(f"  Agent Action Selected: {action}")
-        # print(f"  System Time Reached:   {info['current_time']:.1f}s")
-        # print(f"  Reward Received:       {reward}")
-        # print(f"  Observation (Orders):  Total={obs[0]}, Delivered={obs[1]}")
+            # C. Step
+            obs, reward, done, info = env.step(action)
 
-        # Optional: Slow down to watch visualization
-        # time.sleep(0.5)
+            episode_reward += reward
 
+            # Optional: Print progress every N steps
+            if step_count % 10 == 0:
+                print(f"Ep {episode} | Step {step_count} | Time {info['current_time']:.0f}s | Reward {episode_reward}")
+
+        # Episode Complete
+        duration = time.time() - start_time
+        all_episode_rewards.append(episode_reward)
+        all_episode_steps.append(step_count)
+
+        print(f"--- Episode {episode} Finished ---")
+        print(f"    Steps: {step_count}")
+        print(f"    Total Reward: {episode_reward}")
+        print(f"    Real-world Duration: {duration:.2f}s")
+
+    # 5. Final Summary
     print("\n=========================================================")
-    print(f"=== Simulation Finished. Total Steps: {step_count}, Reward: {total_reward} ===")
+    print(f"=== Training Summary ({NUM_EPISODES} Episodes) ===")
+    print(f"  Average Reward: {np.mean(all_episode_rewards):.2f}")
+    print(f"  Average Steps:  {np.mean(all_episode_steps):.2f}")
     print("=========================================================")
 
     env.close()
 
 
 if __name__ == "__main__":
-    run_main_simulation()
+    run_multi_episode_simulation()
