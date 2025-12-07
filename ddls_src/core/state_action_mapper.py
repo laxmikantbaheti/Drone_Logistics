@@ -725,33 +725,73 @@ class VehicleCapacityConstraint(Constraint):
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
 
+    # def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
+    #     """
+    #     Invalidates order assignment if the vehicle is at full capacity.
+    #     """
+    #     # Initialize an empty list for invalidated action indices.
+    #     invalidation_idx = []
+    #     # Assign the entity to a more specific variable name.
+    #     vehicle = p_entity
+    #     # Get the vehicle's total cargo capacity.
+    #     vehicle_capacity = vehicle.get_cargo_capacity()
+    #     # Get the current size of the cargo being carried.
+    #     current_cargo_size = vehicle.get_current_cargo_size()
+    #
+    #     # Check if there is space for at least one more item.
+    #     if vehicle_capacity - current_cargo_size >= 1:
+    #         # If there is capacity, return the empty list (no invalidations).
+    #         return invalidation_idx, []
+    #     else:
+    #         # If the vehicle is full, invalidate assignment actions.
+    #         # Get all actions of the affected assignment types.
+    #         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+    #         # Get all actions involving this specific vehicle.
+    #         actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+    #         # The actions to invalidate are the intersection of the two sets.
+    #         invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+    #         # Return the list of invalidations.
+    #         return invalidation_idx, []
+
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> (List, List):
         """
-        Invalidates order assignment if the vehicle is at full capacity.
+        Invalidates order assignment if the vehicle's committed capacity is full.
         """
         # Initialize an empty list for invalidated action indices.
         invalidation_idx = []
+
         # Assign the entity to a more specific variable name.
         vehicle = p_entity
-        # Get the vehicle's total cargo capacity.
-        vehicle_capacity = vehicle.get_cargo_capacity()
-        # Get the current size of the cargo being carried.
-        current_cargo_size = vehicle.get_current_cargo_size()
 
-        # Check if there is space for at least one more item.
-        if vehicle_capacity - current_cargo_size >= 1:
-            # If there is capacity, return the empty list (no invalidations).
-            return invalidation_idx, []
-        else:
-            # If the vehicle is full, invalidate assignment actions.
+        # --- MODIFICATION START ---
+        # 1. Get total capacity
+        vehicle_capacity = vehicle.get_cargo_capacity()
+
+        # 2. Calculate 'Committed Load':
+        #    Items currently on board (delivery_orders) + Items assigned to be picked up (pickup_orders)
+        #    We use getter methods to ensure we access the latest state.
+        committed_load = len(vehicle.get_pickup_orders()) + len(vehicle.get_delivery_orders())
+
+        # 3. Check if there is space for at least one NEW assignment
+        #    If committed_load is equal to or greater than capacity, we cannot accept more.
+        if committed_load >= vehicle_capacity:
+            # If the vehicle is full (committed), invalidate assignment actions.
+
             # Get all actions of the affected assignment types.
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
             # Get all actions involving this specific vehicle.
             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+
             # The actions to invalidate are the intersection of the two sets.
             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+
             # Return the list of invalidations.
             return invalidation_idx, []
+        # --- MODIFICATION END ---
+
+        else:
+            # If there is capacity, return empty lists (no invalidations).
+            return [], []
 
     # --- [START OF MODIFICATION] ---
     # [NEW] Implementation of operability update based on cargo capacity
