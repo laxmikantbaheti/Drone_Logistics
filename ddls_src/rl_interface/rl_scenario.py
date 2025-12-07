@@ -75,6 +75,7 @@ class LogisticRLScenario(gym.Env):
         while True:
             # Check termination
             if self._check_done():
+                print(self._system.global_state.current_time)
                 return self._get_observation(), self._calculate_reward(), True, self._get_info()
 
             # --- Check availability ---
@@ -127,6 +128,8 @@ class LogisticRLScenario(gym.Env):
                     self._system.network.update_plot()
 
                 # "and the step function returns"
+                if self._check_done():
+                    print(self._system.global_state.current_time)
                 return self._get_observation(), self._calculate_reward(), self._check_done(), self._get_info()
 
     # --- Helpers ---
@@ -141,9 +144,10 @@ class LogisticRLScenario(gym.Env):
         return self._system.get_agent_mask().astype(np.int8)
 
     def _calculate_reward(self):
-        # Placeholder
-        mlpro_state = self._system.get_state()
-        return mlpro_state.get_value(mlpro_state.get_related_set().get_dim_by_name("delivered_orders").get_id())
+        if self._check_done():
+            return -self._system.global_state.current_time
+        else:
+            return 0
 
     def _check_done(self):
         success = self._system.get_success()

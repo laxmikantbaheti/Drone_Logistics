@@ -48,7 +48,7 @@ def run_multi_episode_simulation():
     env = LogisticRLScenario(sim_config, visualize=False)
 
     # 3. Define Training Parameters
-    NUM_EPISODES = 100
+    NUM_EPISODES = 10
     all_episode_rewards = []
     all_episode_steps = []
 
