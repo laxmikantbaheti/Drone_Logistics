@@ -141,6 +141,26 @@ class Constraint(ABC, EventManager):
         # This is an abstract method that must be implemented by all subclasses.
         raise NotImplementedError
 
+
+    # --- [START OF MODIFICATION] ---
+    # [NEW] New interface for updating entity-level operability flags directly.
+    def update_operability(self, p_entity, **p_kwargs):
+        """
+        Evaluates the constraint against the provided entity and updates the
+        entity's 'action_operability' flags.
+
+        This method operates on the principle of 'Veto Power':
+        - If the constraint is satisfied, it leaves the flags alone (they default to True).
+        - If the constraint is violated, it sets the relevant flags to False.
+
+        Parameters
+        ----------
+        p_entity : LogisticEntity
+            The entity to evaluate.
+        """
+        pass
+    # --- [END OF MODIFICATION] ---
+
 #----------------------------------------------------------------------------------------------------
 
 
