@@ -79,7 +79,7 @@
         {
             "id": 104,
             "start_node_id": 0,
-            "max_payload_capacity": 1,
+            "max_payload_capacity": 3,
             "max_speed": 70.0
         }
     ],

@@ -47,7 +47,7 @@ def run_multi_episode_simulation():
     env = LogisticRLScenario(sim_config, visualize=False)
 
     # 3. Define Training Parameters
-    NUM_EPISODES = 10
+    NUM_EPISODES = 1000
 
     # --- Storage for Plotting ---
     episode_indices = []
@@ -127,7 +127,7 @@ def plot_results(episodes, total_rewards, makespans, real_durations):
 
     # --- Figure 1: Total Reward per Episode ---
     plt.figure(figsize=(10, 6))
-    plt.plot(episodes, total_rewards, marker='o', color='b', linewidth=2, label='Episode Reward')
+    plt.plot(episodes, total_rewards, color='b', linewidth=1, label='Episode Reward')
     plt.xlabel('Episode')
     plt.ylabel('Total Reward')
     plt.title('Training Performance: Total Reward per Episode')
@@ -138,7 +138,7 @@ def plot_results(episodes, total_rewards, makespans, real_durations):
 
     # --- Figure 2: Delivery Makespan (Simulation Time) ---
     plt.figure(figsize=(10, 6))
-    plt.plot(episodes, makespans, marker='^', color='r', linewidth=2, label='Makespan (Sim Time)')
+    plt.plot(episodes, makespans, color='r', linewidth=1, label='Makespan (Sim Time)')
     plt.xlabel('Episode')
     plt.ylabel('Simulation Time (s)')
     plt.title('Operational Efficiency: Delivery Makespan per Episode')
@@ -149,7 +149,7 @@ def plot_results(episodes, total_rewards, makespans, real_durations):
 
     # --- Figure 3: Real-World Computational Duration ---
     plt.figure(figsize=(10, 6))
-    plt.plot(episodes, real_durations, marker='s', color='purple', linewidth=2, label='Computation Time')
+    plt.plot(episodes, real_durations, color='purple', linewidth=1, label='Computation Time')
     plt.xlabel('Episode')
     plt.ylabel('Real-World Time (s)')
     plt.title('Computational Performance: Real-Time Duration per Episode')

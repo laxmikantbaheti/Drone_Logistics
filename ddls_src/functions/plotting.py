@@ -290,6 +290,198 @@ def plot_vehicle_cargo_history(global_state):
     plt.show()
 
 
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
+from typing import Any
+
+
+def plot_invalid_delivery_gantt_chart(global_state: Any, show_order_labels: bool = True) -> None:
+    """
+    Generates a Gantt chart for ALL vehicles to visualize delivery sequences.
+
+    Highlights invalid deliveries with a red hatched pattern (//).
+    A delivery is INVALID if Leg 2 starts before Leg 1 ends (Start_2 < End_1),
+    regardless of which vehicle carries which leg.
+    """
+    truck_data = getattr(global_state, 'trucks', {})
+    drone_data = getattr(global_state, 'drones', {})
+    all_vehicle_ids = sorted(list(truck_data.keys()) + list(drone_data.keys()))
+
+    if not all_vehicle_ids:
+        print("No vehicles found.")
+        return
+
+    # --- Step 1: Global Order Registry ---
+    # Collect start/end times for EVERY order from EVERY vehicle.
+    # This enables us to cross-reference Leg 1 on a Truck with Leg 2 on a Drone.
+    all_orders_map = {}
+
+    for vehicle_id in all_vehicle_ids:
+        vehicle_obj = truck_data.get(vehicle_id) or drone_data.get(vehicle_id)
+        timeline_data = vehicle_obj.data_storage.get(vehicle_obj.C_DATA_FRAME_VEH_TIMELINE, {})
+
+        for order_id, times in timeline_data.items():
+            if not times: continue
+
+            # Start time is always the first event
+            start_time = times[0][0]
+
+            # End time is the second event, OR current_time if the order is still in transit
+            if len(times) >= 2:
+                end_time = times[1][0]
+            else:
+                end_time = global_state.current_time
+
+            if end_time > start_time:
+                clean_id = str(order_id).split(" - ")[0]
+                all_orders_map[clean_id] = {'start': start_time, 'end': end_time}
+
+    # --- Step 2: Plotting Loop ---
+    processed_vehicles = {}
+
+    # Pre-process lanes for plotting
+    for vehicle_id in all_vehicle_ids:
+        vehicle_obj = truck_data.get(vehicle_id) or drone_data.get(vehicle_id)
+        timeline_data = vehicle_obj.data_storage.get(vehicle_obj.C_DATA_FRAME_VEH_TIMELINE, {})
+
+        orders = []
+        for order_id, times in timeline_data.items():
+            if not times: continue
+
+            start_time = times[0][0]
+            if len(times) >= 2:
+                end_time = times[1][0]
+            else:
+                end_time = global_state.current_time
+
+            if end_time > start_time:
+                orders.append({'id': str(order_id).strip(), 'start': start_time, 'end': end_time})
+
+        if not orders:
+            continue
+
+        orders.sort(key=lambda x: x['start'])
+        lanes = []
+        for order in orders:
+            placed = False
+            for lane in lanes:
+                if order['start'] >= lane[-1]['end']:
+                    lane.append(order)
+                    placed = True
+                    break
+            if not placed:
+                lanes.append([order])
+
+        vehicle_type = 'truck' if vehicle_id in truck_data else 'drone'
+        processed_vehicles[vehicle_id] = {'lanes': lanes, 'type': vehicle_type}
+
+    # Setup Figure
+    total_lanes = sum(len(v['lanes']) for v in processed_vehicles.values())
+    num_unused = len(all_vehicle_ids) - len(processed_vehicles)
+    fig_height = total_lanes + num_unused + (len(all_vehicle_ids) * 0.5)
+
+    fig, ax = plt.subplots(figsize=(16, max(6, fig_height * 0.6)))
+    color_map = {'truck': 'tab:blue', 'drone': 'tab:green'}
+    y_ticks, y_tick_labels, y_pos = [], [], 0
+
+    for vehicle_id in all_vehicle_ids:
+        if vehicle_id in processed_vehicles:
+            data = processed_vehicles[vehicle_id]
+            lanes, num_lanes = data['lanes'], len(data['lanes'])
+
+            y_ticks.append(y_pos + (num_lanes - 1) / 2.0)
+            y_tick_labels.append(vehicle_id)
+
+            for lane in lanes:
+                normal_ranges = []
+                invalid_ranges = []
+
+                for order in lane:
+                    is_invalid = False
+                    order_id = order['id']
+
+                    # --- VALIDATION LOGIC ---
+                    # We only check validity if we are "Leg 2" (_2)
+                    if "_2" in order_id:
+                        base_id = order_id.split("_")[0]
+                        sibling_id = f"{base_id}_1"
+
+                        # We are Leg 2. Start time is s2.
+                        s2 = order['start']
+
+                        # Look up Leg 1 in the GLOBAL map (could be on any vehicle)
+                        if sibling_id in all_orders_map:
+                            e1 = all_orders_map[sibling_id]['end']
+
+                            # INVALID CONDITION: Leg 2 starts before Leg 1 ends
+                            if s2 < e1:
+                                is_invalid = True
+
+                    if "_1" in order_id:
+                        base_id = order_id.split("_")[0]
+                        sibling_id = f"{base_id}_2"
+
+                        # We are Leg 2. Start time is s2.
+                        e1 = order['end']
+
+                        # Look up Leg 1 in the GLOBAL map (could be on any vehicle)
+                        if sibling_id in all_orders_map:
+                            s2 = all_orders_map[sibling_id]['start']
+
+                            # INVALID CONDITION: Leg 2 starts before Leg 1 ends
+                            if s2 < e1:
+                                is_invalid = True
+                    # ------------------------
+
+                    duration = order['end'] - order['start']
+                    if is_invalid:
+                        invalid_ranges.append((order['start'], duration))
+                    else:
+                        normal_ranges.append((order['start'], duration))
+
+                # Draw Valid Bars
+                if normal_ranges:
+                    ax.broken_barh(normal_ranges, (y_pos - 0.2, 0.4),
+                                   facecolors=color_map[data['type']],
+                                   edgecolor='black', alpha=0.85)
+
+                # Draw Invalid Bars (Red + Hatched)
+                if invalid_ranges:
+                    ax.broken_barh(invalid_ranges, (y_pos - 0.2, 0.4),
+                                   facecolors="white",
+                                   edgecolor='gray', hatch='//', linewidth=1.0, alpha=0.5)
+
+                if show_order_labels:
+                    for order in lane:
+                        start, duration = order['start'], order['end'] - order['start']
+                        ax.text(start + duration / 2, y_pos, order['id'],
+                                ha='center', va='center', color='black', fontsize=8, clip_on=True)
+                y_pos += 1
+        else:
+            y_ticks.append(y_pos)
+            y_tick_labels.append(f"{vehicle_id} (Unused)")
+            y_pos += 1
+
+        ax.axhline(y_pos - 0.5, color='gray', linestyle='--', alpha=0.5)
+        y_pos += 0.5
+
+    if y_ticks:
+        ax.set_yticks(y_ticks)
+        ax.set_yticklabels(y_tick_labels, fontsize=10)
+
+    ax.invert_yaxis()
+    ax.set_xlabel("Time (seconds)")
+    ax.set_ylabel("Vehicle ID")
+    ax.set_title("Vehicle Order Timeline (Red// = Invalid Sequence: Leg 2 starts before Leg 1 ends)")
+
+    legend_elements = [Patch(facecolor=c, label=l.capitalize()) for l, c in color_map.items()]
+    legend_elements.append(Patch(facecolor='white', edgecolor='gray', hatch='//', label='Invalid Sequence'))
+
+    ax.legend(handles=legend_elements, loc='upper right')
+    plt.tight_layout()
+    plt.show()
+
+
 # --- Example Usage ---
 
 if __name__ == '__main__':

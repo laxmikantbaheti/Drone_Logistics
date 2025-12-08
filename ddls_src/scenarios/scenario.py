@@ -8,7 +8,7 @@ from ddls_src.core.basics import LogisticsAction
 from ddls_src.core.logistics_system import LogisticsSystem
 from ddls_src.actions.base import SimulationActions
 from agents.dummy_agent import DummyAgent
-from ddls_src.functions.plotting import plot_vehicle_gantt_chart, plot_vehicle_states, plot_vehicle_cargo_history
+from ddls_src.functions.plotting import plot_vehicle_gantt_chart, plot_vehicle_states, plot_vehicle_cargo_history, plot_invalid_delivery_gantt_chart
 
 
 class LogisticsScenario(Scenario):
@@ -160,6 +160,7 @@ class LogisticsScenario(Scenario):
             plot_vehicle_gantt_chart(self._system.global_state)
             plot_vehicle_states(self._system.global_state)
             plot_vehicle_cargo_history(self._system.global_state)
+            plot_invalid_delivery_gantt_chart(self._system.global_state)
             pass
 
         new_state = self._system.get_state()
