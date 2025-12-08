@@ -121,10 +121,10 @@ def run_ppo_simulation():
     )
 
     # 4. Training
-    NUM_EPISODES = 1000
+    NUM_EPISODES = 100
     # Approximate timesteps (assuming avg 20 steps per episode, adjust as needed)
     # Or you can just train for a large number and let the loop handle it
-    TOTAL_TIMESTEPS = NUM_EPISODES * 50
+    TOTAL_TIMESTEPS = NUM_EPISODES * 5000
 
     print(f"\n--- Starting Training for {TOTAL_TIMESTEPS} timesteps ---")
 

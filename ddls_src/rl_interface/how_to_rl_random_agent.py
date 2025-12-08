@@ -47,7 +47,7 @@ def run_multi_episode_simulation():
     env = LogisticRLScenario(sim_config, visualize=False)
 
     # 3. Define Training Parameters
-    NUM_EPISODES = 1000
+    NUM_EPISODES = 10000
 
     # --- Storage for Plotting ---
     episode_indices = []
@@ -82,7 +82,7 @@ def run_multi_episode_simulation():
             action = random_policy(current_mask)
 
             # C. Step
-            obs, reward, done, info = env.step(action)
+            obs, reward, done, truncated, info = env.step(action)
 
             episode_reward += reward
 
