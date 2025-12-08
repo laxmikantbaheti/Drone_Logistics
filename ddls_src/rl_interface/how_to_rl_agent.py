@@ -2,12 +2,12 @@ import os
 import sys
 import numpy as np
 import time
+import matplotlib.pyplot as plt
 
 # Ensure the project root is in the python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import the environment wrapper
-# (Make sure this matches the filename where you saved the class above)
 from ddls_src.rl_interface.rl_scenario import LogisticRLScenario
 
 
@@ -18,7 +18,7 @@ def random_policy(mask):
     valid_indices = np.where(mask)[0]
     if len(valid_indices) > 0:
         return np.random.choice(valid_indices)
-    return 0  # Should not happen if mask logic is correct
+    return 0
 
 
 def run_multi_episode_simulation():
@@ -44,33 +44,38 @@ def run_multi_episode_simulation():
     }
 
     # 2. Initialize Environment
-    # We initialize it ONCE. reset() handles the episode restarts.
     env = LogisticRLScenario(sim_config, visualize=False)
 
     # 3. Define Training Parameters
     NUM_EPISODES = 10
-    all_episode_rewards = []
-    all_episode_steps = []
+
+    # --- Storage for Plotting ---
+    episode_indices = []
+    all_total_rewards = []
+    all_makespans = []  # Simulation time (logic time)
+    all_real_durations = []  # Computational time (wall-clock time)
+    # ----------------------------
 
     # 4. Main Episode Loop
     for episode in range(1, NUM_EPISODES + 1):
         print(f"\n--- Starting Episode {episode}/{NUM_EPISODES} ---")
 
-        # Reset environment for the new episode
-        obs = env.reset(seed=episode)  # Optional: Pass seed for reproducibility
+        obs = env.reset(seed=episode)
 
         done = False
         step_count = 0
         episode_reward = 0
 
-        start_time = time.time()
+        # Capture info for final time
+        info = {}
+
+        start_real_time = time.time()
 
         # Inner Step Loop
         while not done:
             step_count += 1
 
             # A. Get Valid Actions
-            # For the first step we query env, for subsequent steps we could use 'info'
             current_mask = env._get_agent_mask()
 
             # B. Select Action (Policy)
@@ -81,28 +86,77 @@ def run_multi_episode_simulation():
 
             episode_reward += reward
 
-            # Optional: Print progress every N steps
             if step_count % 10 == 0:
                 print(f"Ep {episode} | Step {step_count} | Time {info['current_time']:.0f}s | Reward {episode_reward}")
 
         # Episode Complete
-        duration = time.time() - start_time
-        all_episode_rewards.append(episode_reward)
-        all_episode_steps.append(step_count)
+        real_duration = time.time() - start_real_time
+        delivery_makespan = info['current_time']
+
+        # --- Store Metric Data ---
+        episode_indices.append(episode)
+        all_total_rewards.append(episode_reward)
+        all_makespans.append(delivery_makespan)
+        all_real_durations.append(real_duration)  # <--- Added Real Duration
+        # -------------------------
 
         print(f"--- Episode {episode} Finished ---")
         print(f"    Steps: {step_count}")
         print(f"    Total Reward: {episode_reward}")
-        print(f"    Real-world Duration: {duration:.2f}s")
+        print(f"    Makespan (Sim): {delivery_makespan:.2f}s")
+        print(f"    Duration (Real): {real_duration:.4f}s")
 
     # 5. Final Summary
     print("\n=========================================================")
     print(f"=== Training Summary ({NUM_EPISODES} Episodes) ===")
-    print(f"  Average Reward: {np.mean(all_episode_rewards):.2f}")
-    print(f"  Average Steps:  {np.mean(all_episode_steps):.2f}")
+    print(f"  Mean Total Reward: {np.mean(all_total_rewards):.2f}")
+    print(f"  Mean Makespan:     {np.mean(all_makespans):.2f}s")
+    print(f"  Mean Real Duration:{np.mean(all_real_durations):.4f}s")
     print("=========================================================")
 
     env.close()
+
+    # 6. Plotting Results
+    plot_results(episode_indices, all_total_rewards, all_makespans, all_real_durations)
+
+
+def plot_results(episodes, total_rewards, makespans, real_durations):
+    """
+    Generates THREE separate figures for Total Reward, Makespan, and Real Duration.
+    """
+
+    # --- Figure 1: Total Reward per Episode ---
+    plt.figure(figsize=(10, 6))
+    plt.plot(episodes, total_rewards, marker='o', color='b', linewidth=2, label='Episode Reward')
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
+    plt.title('Training Performance: Total Reward per Episode')
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    # --- Figure 2: Delivery Makespan (Simulation Time) ---
+    plt.figure(figsize=(10, 6))
+    plt.plot(episodes, makespans, marker='^', color='r', linewidth=2, label='Makespan (Sim Time)')
+    plt.xlabel('Episode')
+    plt.ylabel('Simulation Time (s)')
+    plt.title('Operational Efficiency: Delivery Makespan per Episode')
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    # --- Figure 3: Real-World Computational Duration ---
+    plt.figure(figsize=(10, 6))
+    plt.plot(episodes, real_durations, marker='s', color='purple', linewidth=2, label='Computation Time')
+    plt.xlabel('Episode')
+    plt.ylabel('Real-World Time (s)')
+    plt.title('Computational Performance: Real-Time Duration per Episode')
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":
