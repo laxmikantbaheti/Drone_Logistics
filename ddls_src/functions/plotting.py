@@ -212,14 +212,15 @@ def plot_vehicle_states(global_state: Any) -> None:
     plt.show()
 
 
-# import matplotlib.pyplot as plt
-# import math
+import matplotlib.pyplot as plt
+import math
 
 
 def plot_vehicle_cargo_history(global_state):
     """
     Plots cargo statistics for each vehicle in separate subplots within the same figure.
     Includes a reference dashed line for the vehicle's maximum payload capacity.
+    Ensures the timeline starts at t=0 with zero cargo if no initial data exists.
 
     Args:
         global_state: The GlobalState object containing 'trucks', 'drones', and 'current_time'.
@@ -254,7 +255,13 @@ def plot_vehicle_cargo_history(global_state):
         sorted_times = sorted(vehicle.cargo_stats.keys())
         loads = [vehicle.cargo_stats[t] for t in sorted_times]
 
-        # Extend line to current simulation time
+        # [NEW LOGIC] Prepend zero if the timeline doesn't start at 0.0
+        # This handles the "no cargo in the beginning" duration.
+        if sorted_times and sorted_times[0] > 0.0:
+            sorted_times.insert(0, 0.0)
+            loads.insert(0, 0)
+
+        # Extend line to current simulation time (holds the last known value)
         if sorted_times and sorted_times[-1] < global_state.current_time:
             sorted_times.append(global_state.current_time)
             loads.append(loads[-1])
@@ -264,7 +271,6 @@ def plot_vehicle_cargo_history(global_state):
         ax.step(sorted_times, loads, where='post', label='Current Load', linewidth=2)
 
         # --- Plot Capacity Reference Line ---
-        # We assume the attribute is named 'max_payload_capacity' based on your entity definitions
         capacity = getattr(vehicle, 'max_payload_capacity', None)
         if capacity is not None:
             ax.axhline(y=capacity, color='r', linestyle='--', linewidth=1.5, alpha=0.7,
