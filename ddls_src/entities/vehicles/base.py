@@ -108,6 +108,7 @@ class Vehicle(LogisticEntity, ABC):
         self.delivery_node_ids = []
         self.pickup_orders = []
         self.pickup_node_ids = []
+        self.cargo_stats = {}
         self.reset()
         self.consolidation_confirmed: bool = False
 
@@ -151,6 +152,7 @@ class Vehicle(LogisticEntity, ABC):
         self.route_nodes = []  # Clear the route nodes on reset
         self.delivery_orders = []
         self.en_route_timer = 0.0  # Reset timer
+        self.cargo_stats = {}
 
         # New: Reset coordinates to the start node
         if self.global_state and self.start_node_id is not None:
@@ -492,12 +494,14 @@ class Vehicle(LogisticEntity, ABC):
         """Adds a package to the vehicle's cargo manifest."""
         if order not in self.cargo_manifest:
             self.cargo_manifest.append(order)
+            self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
             self.raise_state_change_event()
 
     def remove_cargo(self, order: int):
         """Removes a package from the vehicle's cargo manifest."""
         if order in self.cargo_manifest:
             self.cargo_manifest.remove(order)
+            self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
             self.raise_state_change_event()
 
     def set_route(self, route: List[int]):

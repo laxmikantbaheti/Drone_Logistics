@@ -212,6 +212,78 @@ def plot_vehicle_states(global_state: Any) -> None:
     plt.show()
 
 
+# import matplotlib.pyplot as plt
+# import math
+
+
+def plot_vehicle_cargo_history(global_state):
+    """
+    Plots cargo statistics for each vehicle in separate subplots within the same figure.
+    Includes a reference dashed line for the vehicle's maximum payload capacity.
+
+    Args:
+        global_state: The GlobalState object containing 'trucks', 'drones', and 'current_time'.
+    """
+    # 1. Gather all vehicles (Trucks and Drones)
+    all_vehicles = list(global_state.trucks.values()) + list(global_state.drones.values())
+
+    # 2. Filter for vehicles that actually have cargo data
+    active_vehicles = [
+        v for v in all_vehicles
+        if hasattr(v, 'cargo_stats') and v.cargo_stats
+    ]
+
+    num_vehicles = len(active_vehicles)
+
+    if num_vehicles == 0:
+        print("No cargo statistics available to plot.")
+        return
+
+    # 3. Setup the subplots (Vertical stack)
+    # Share x-axis to easily compare timelines across vehicles
+    fig, axes = plt.subplots(nrows=num_vehicles, ncols=1, figsize=(10, 3 * num_vehicles), sharex=True)
+
+    # Handle the case where there is only 1 vehicle (axes is not a list)
+    if num_vehicles == 1:
+        axes = [axes]
+
+    for i, vehicle in enumerate(active_vehicles):
+        ax = axes[i]
+
+        # --- Prepare Data ---
+        sorted_times = sorted(vehicle.cargo_stats.keys())
+        loads = [vehicle.cargo_stats[t] for t in sorted_times]
+
+        # Extend line to current simulation time
+        if sorted_times and sorted_times[-1] < global_state.current_time:
+            sorted_times.append(global_state.current_time)
+            loads.append(loads[-1])
+
+        # --- Plot Cargo Load (Step Chart) ---
+        label_str = f"{vehicle.C_NAME} {vehicle.get_id()}"
+        ax.step(sorted_times, loads, where='post', label='Current Load', linewidth=2)
+
+        # --- Plot Capacity Reference Line ---
+        # We assume the attribute is named 'max_payload_capacity' based on your entity definitions
+        capacity = getattr(vehicle, 'max_payload_capacity', None)
+        if capacity is not None:
+            ax.axhline(y=capacity, color='r', linestyle='--', linewidth=1.5, alpha=0.7,
+                       label=f'Max Capacity ({capacity})')
+
+        # --- Formatting ---
+        ax.set_ylabel("Cargo Units")
+        ax.set_title(label_str, loc='left', fontsize=10, fontweight='bold')
+        ax.grid(True, linestyle=':', alpha=0.6)
+        ax.legend(loc='upper right', fontsize='small')
+
+        # Only set the X-label for the bottom-most subplot
+        if i == num_vehicles - 1:
+            ax.set_xlabel("Simulation Time (s)")
+
+    plt.tight_layout()
+    plt.show()
+
+
 # --- Example Usage ---
 
 if __name__ == '__main__':
