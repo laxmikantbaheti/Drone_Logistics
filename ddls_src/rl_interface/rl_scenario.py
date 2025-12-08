@@ -1,5 +1,5 @@
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 from typing import Dict, Any
 
@@ -18,7 +18,7 @@ class LogisticRLScenario(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, sim_config: Dict[str, Any], visualize: bool = False):
-        super(LogisticRLScenario, self).__init__()
+        super().__init__()
 
         self.visualize = visualize
 
@@ -31,25 +31,59 @@ class LogisticRLScenario(gym.Env):
         # self._system.initialize_simulation()
 
         # 2. Define Action Space
-        self.action_space = spaces.Discrete(self._system.action_space_size)
+        self.action_space = spaces.Discrete(self._system.agent_action_space_size)
 
-        # 3. Define Observation Space (Placeholder: [Total Orders, Delivered Orders])
+        # --- Dynamic Observation Space Setup (CRITICAL FIX) ---
+
+        # A. Create the Node ID -> Index Mapping
+        # This dictionary maps your simulation's specific Node IDs (e.g., 101, 102)
+        # to sequential matrix indices (0, 1) required for the Numpy observation array.
+        sorted_node_ids = sorted(self._system.global_state.nodes.keys())
+        self.node_id_to_idx = {node_id: i for i, node_id in enumerate(sorted_node_ids)}
+        self.num_nodes = len(sorted_node_ids)
+
+        # B. Vehicle Counts
+        self.num_trucks = len(self._system.global_state.trucks)
+        self.num_drones = len(self._system.global_state.drones)
+
+        # C. Feature Sizes
+        self.truck_feat_size = 3  # [Location, Status, Cargo]
+        self.drone_feat_size = 4  # [Location, Status, Cargo, Battery]
+
+        # D. Calculate Total Observation Size
+        self.obs_size = (self.num_nodes * self.num_nodes) + \
+                        (self.num_trucks * self.truck_feat_size) + \
+                        (self.num_drones * self.drone_feat_size)
+
+        # 3. Define Observation Space
         self.observation_space = spaces.Box(
-            low=0,
-            high=9999,
-            shape=(2,),
+            low=-1.0,
+            high=9999.0,
+            shape=(self.obs_size,),
             dtype=np.float32
         )
 
         # Cache NO_OPERATION index
         self._no_op_idx = self._system.action_map.get((SimulationAction.NO_OPERATION,))
 
-    def reset(self, seed=None):
+        # Status Mapping for Encoding
+        self.status_map = {
+            "idle": 0,
+            "en_route": 1,
+            "loading": 2,
+            "unloading": 3,
+            "maintenance": 4,
+            "charging": 5,
+            "broken_down": 6,
+            "halted": 7
+        }
+
+    def reset(self, seed=None, options = None):
         """
         Resets the simulation. Note: This calls step() with a dummy action to
         fast-forward to the first decision point if the loop logic dictates it.
         """
-        super().reset(seed=seed)
+        super().reset(seed=seed, options = options)
         self._system.reset(p_seed=seed)
 
         # To ensure we start at a valid decision point, we can trigger the logic.
@@ -61,7 +95,7 @@ class LogisticRLScenario(gym.Env):
             # self._system.network.update_plot()
             pass
 
-        return self._get_observation()
+        return self._get_observation(), self._get_info()
 
     def step(self, action_idx: int):
         """
@@ -76,7 +110,7 @@ class LogisticRLScenario(gym.Env):
             # Check termination
             if self._check_done():
                 print(self._system.global_state.current_time)
-                return self._get_observation(), self._calculate_reward(), True, self._get_info()
+                return self._get_observation(), self._calculate_reward(), True, False, self._get_info()
 
             # --- Check availability ---
             auto_actions = self._system.get_automatic_actions()
@@ -117,10 +151,11 @@ class LogisticRLScenario(gym.Env):
             # "Once there are no automatic actions available we check if there are any
             #  unmasked actions available for the agent to take."
             if has_agent:
+                sys_action_id = self._system.agent_to_system_map[action_idx]
                 # "If there are the agent takes action and executes in the environment"
                 action_obj = LogisticsAction(
                     p_action_space=self._system.get_action_space(),
-                    p_values=[action_idx]
+                    p_values=[sys_action_id]
                 )
                 self._system.process_action(action_obj)
 
@@ -130,15 +165,83 @@ class LogisticRLScenario(gym.Env):
                 # "and the step function returns"
                 if self._check_done():
                     print(self._system.global_state.current_time)
-                return self._get_observation(), self._calculate_reward(), self._check_done(), self._get_info()
+                return self._get_observation(), self._calculate_reward(), self._check_done(), False, self._get_info()
 
     # --- Helpers ---
 
     def _get_observation(self):
-        mlpro_state = self._system.get_state()
-        total = mlpro_state.get_value(mlpro_state.get_related_set().get_dim_by_name("total_orders").get_id())
-        delivered = mlpro_state.get_value(mlpro_state.get_related_set().get_dim_by_name("delivered_orders").get_id())
-        return np.array([total, delivered], dtype=np.float32)
+        """
+        Constructs a flattened state vector representing:
+        1. Node Pair Order Counts (Demand) - Using get_order_requests()
+        2. Truck States (Supply)
+        3. Drone States (Supply)
+        """
+        global_state = self._system.global_state
+
+        # 1. Node Pair Matrix (Demand) - Size: N * N
+        demand_matrix = np.zeros((len(self._system.global_state.nodes), len(self._system.global_state.nodes)),
+                                 dtype=np.float32)
+
+        # Use native method to get orders grouped by (pickup, delivery)
+        # Note: This method filters for orders with status == C_STATUS_PLACED
+        active_requests = global_state.get_order_requests()
+
+        for (pickup_id, delivery_id), orders in active_requests.items():
+            if pickup_id in self.node_id_to_idx and delivery_id in self.node_id_to_idx:
+                p_idx = self.node_id_to_idx[pickup_id]
+                d_idx = self.node_id_to_idx[delivery_id]
+                demand_matrix[p_idx, d_idx] = float(len(orders))
+
+        demand_vector = demand_matrix.flatten()
+
+        # 2. Truck States - Size: T * 3
+        truck_vectors = []
+        for t_id in sorted(global_state.trucks.keys()):
+            truck = global_state.trucks[t_id]
+
+            # Feature 1: Location (Node Index)
+            loc_idx = -1.0
+            if truck.current_node_id is not None and truck.current_node_id in self.node_id_to_idx:
+                loc_idx = float(self.node_id_to_idx[truck.current_node_id])
+
+            # Feature 2: Status
+            status_code = float(self.status_map.get(truck.status.lower(), -1))
+
+            # Feature 3: Current Cargo Count
+            cargo_count = float(len(truck.cargo_manifest))
+
+            truck_vectors.extend([loc_idx, status_code, cargo_count])
+
+        # 3. Drone States - Size: D * 4
+        drone_vectors = []
+        for d_id in sorted(global_state.drones.keys()):
+            drone = global_state.drones[d_id]
+
+            # Feature 1: Location
+            loc_idx = -1.0
+            if drone.current_node_id is not None and drone.current_node_id in self.node_id_to_idx:
+                loc_idx = float(self.node_id_to_idx[drone.current_node_id])
+
+            # Feature 2: Status
+            status_code = float(self.status_map.get(drone.status.lower(), -1))
+
+            # Feature 3: Cargo Count
+            cargo_count = float(len(drone.cargo_manifest))
+
+            # Feature 4: Battery Level
+            battery = float(drone.battery_level)
+
+            drone_vectors.extend([loc_idx, status_code, cargo_count, battery])
+
+        # Combine into single observation vector
+        obs = np.concatenate([
+            demand_vector,
+            np.array(truck_vectors, dtype=np.float32),
+            np.array(drone_vectors, dtype=np.float32)
+        ])
+
+        return obs
+
 
     def _get_agent_mask(self):
         return self._system.get_agent_mask().astype(np.int8)

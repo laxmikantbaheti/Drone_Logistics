@@ -124,7 +124,10 @@ class LogisticsScenario(Scenario):
                 # --- MODIFIED: Get the mask for the agent ---
                 agent_mask = self._system.get_agent_mask()
                 # --------------------------------------------
+                # System No Op Index
                 no_op_idx = list(self._system.action_map.values())[-1]
+                # Agent No Op Index
+                no_op_idx = self._system.agent_to_system_map.index(no_op_idx)
 
                 # Condition 1: Are there any valid actions left for the agent?
                 agent_has_moves = np.any(agent_mask)
@@ -135,11 +138,14 @@ class LogisticsScenario(Scenario):
                 # Agent selects an action based on its specific mask
                 action = self._model.compute_action(p_state=current_state, p_action_mask=agent_mask)
                 action_idx = action.get_sorted_values()[0]
+                sys_action_id = self._system.agent_to_system_map[int(action_idx)]
 
                 # Condition 2: Did the agent choose NO_OPERATION?
                 if action_idx == no_op_idx:
                     self.log(self.C_LOG_TYPE_I, "Agent chose NO_OPERATION. Ending Decision Phase.")
                     break
+
+                action = LogisticsAction(p_action_space=self._system._action_space, p_values=[sys_action_id])
 
             # Process the agent's chosen action
                 self._system.process_action(action)

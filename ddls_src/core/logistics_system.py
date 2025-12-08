@@ -180,11 +180,15 @@ class LogisticsSystem(System, EventManager):
 
         # Generate the mapping from action tuples to integer IDs based on the initial global state.
         self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+        # Generate agent action map and action space size
+        # self.agent_action_map, self.agent_action_space_size = self.actions.generate_agent_action_map(self.global_state, self.automatic_logic_config)
+        # Get non-automatic agent actions
         # Create an ActionIndex for efficient lookup of actions.
         self.action_index = ActionIndex(self.global_state, self.action_map)
         # Create the reverse mapping from integer IDs back to action tuples.
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
-
+        # Create Agent actions and agent to system map
+        self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
         # Initialize the network graph using the distance matrix from the loaded data.
         self.network = Network(self.global_state, self.movement_mode, raw_entity_data['distance_matrix'])
         # Link the network to the global state.
@@ -266,6 +270,36 @@ class LogisticsSystem(System, EventManager):
                 automatic_actions.append(action_tuple)
         # Return the list of valid automatic actions.
         return automatic_actions
+
+
+    def get_non_automatic_action_map(self) -> (List[Tuple], List):
+        """
+        Identifies all valid actions that are NOT configured to be executed automatically.
+        These are the actions available for the agent to choose from.
+
+        Returns:
+            A list of action tuples that are valid and require agent decision.
+        """
+        # Get the mask of all currently valid actions in the system.
+        system_mask = self.get_current_mask()
+
+        # Initialize a list to store non-automatic (agent) actions.
+        agent_actions = []
+        agent_to_system_map = []
+
+        # Iterate through the indices of all actions.
+        for action_tuple, id in self.action_map.items():
+
+            # Check if the action is NOT configured as automatic.
+            # We default to False (non-automatic) if the action type isn't in the config.
+            if action_tuple and not self.automatic_logic_config.get(action_tuple[0], False):
+                # If it is not automatic, add it to the list.
+                agent_actions.append(action_tuple)
+                agent_to_system_map.append(id)
+
+
+        # Return the list of valid agent actions.
+        return agent_actions, agent_to_system_map, len(agent_actions)
 
     # --------------------------------------------------------------------------------------------------
 
@@ -418,19 +452,19 @@ class LogisticsSystem(System, EventManager):
         # Get the complete mask of all valid actions.
         system_mask = self.get_current_mask()
         # Create a new mask of zeros, which will be populated with agent-available actions.
-        agent_mask = np.zeros(self.action_space_size, dtype=bool)
+        agent_mask = np.zeros(self.agent_action_space_size, dtype=bool)
         # Iterate through all defined actions.
-        for action_tuple, idx in self.action_map.items():
-            # Get the type of the action (e.g., MOVE, LOAD).
-            action_type = action_tuple[0]
-            # Check if the action is not automatic AND is currently valid according to the system mask.
-            if not self.automatic_logic_config.get(action_type, False) and system_mask[idx]:
+        for idx, action_tuple in enumerate(self.agent_actions):
+
+            sys_id = self.agent_to_system_map[idx]
+            # Check if the action is currently valid according to the system mask.
+            if system_mask[sys_id]:
                 # If so, mark it as available for the agent.
                 agent_mask[idx] = True
         # Ensure the NO_OPERATION action is always available to the agent.
         no_op_idx = self.action_map.get((SimulationActions.NO_OPERATION,))
         if no_op_idx is not None:
-            agent_mask[no_op_idx] = True
+            agent_mask[self.agent_to_system_map.index(no_op_idx)] = True
         # Return the final agent-specific mask.
         return agent_mask
 
@@ -473,6 +507,8 @@ class LogisticsSystem(System, EventManager):
         self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
         # Update the reverse action map.
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
+        # Agent maps
+        self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
         # Update the action index with the new action map.
         self.action_index.update_indexes(global_state=self.global_state, action_map=self.action_map)
         # Link the updated action index to the constraint manager.

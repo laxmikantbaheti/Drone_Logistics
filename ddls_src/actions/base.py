@@ -377,6 +377,91 @@ class SimulationActions:
         self.action_space_size = action_space_size
         return action_map, action_space_size
 
+    def generate_agent_action_map(self, global_state: 'GlobalState', automatic_logic_config: Dict[Any, bool]) -> Tuple[
+        Dict[Tuple, int], int]:
+        """
+        Generates a simplified action map containing ONLY non-automatic actions.
+        This defines the agent's reduced action space.
+
+        Args:
+            global_state: The current global state of the simulation.
+            automatic_logic_config: A dictionary defining which ActionTypes are automatic.
+
+        Returns:
+            agent_action_map: Dict mapping action tuples to a reduced integer index (0 to N-1).
+            agent_action_space_size: The size of this reduced action space.
+        """
+        agent_action_map = {}
+        current_index = 0
+
+        # 1. Get ranges (same as standard generation)
+        entity_id_ranges = {
+            'Order': list(global_state.orders.keys()),
+            'Truck': list(global_state.trucks.keys()),
+            'Drone': list(global_state.drones.keys()),
+            'Node': list(global_state.nodes.keys()),
+            'MicroHub': list(global_state.micro_hubs.keys()),
+            'Vehicle': list(global_state.trucks.keys()) + list(global_state.drones.keys()),
+            'Node Pair': global_state.node_pairs
+        }
+
+        # 2. Iterate through all actions
+        for action_type in self.get_all_actions():
+            # --- FILTERING STEP ---
+            # Check if the action is configured as AUTOMATIC.
+            # We check the config first; if not found, we fall back to the action's default setting.
+            is_auto = automatic_logic_config.get(action_type, action_type.is_automatic)
+
+            # If it is automatic, the AGENT does not need to see it. Skip.
+            if is_auto:
+                continue
+            # ----------------------
+
+            # 3. Parameter Expansion (Same logic as standard map)
+            if not action_type.params:
+                action_tuple = (action_type,)
+                if action_tuple not in agent_action_map:
+                    agent_action_map[action_tuple] = current_index
+                    current_index += 1
+                continue
+
+            param_ranges = []
+            possible = True
+            for param in action_type.params:
+                if 'range' in param:
+                    param_ranges.append(param['range'])
+                else:
+                    param_type = param['type']
+                    ids = entity_id_ranges.get(param_type, [])
+                    if not ids:
+                        possible = False
+                        break
+                    param_ranges.append(ids)
+
+            if not possible:
+                continue
+
+            param_combinations = list(itertools.product(*param_ranges))
+
+            # Apply same constraints as the full map (e.g. MicroHub validity)
+            if action_type.name == "ASSIGN_ORDER_TO_MICRO_HUB":
+                filtered_combinations = []
+                for combo in param_combinations:
+                    node_pair, micro_hub_id = combo
+                    pickup_node_id, delivery_node_id = node_pair
+                    if micro_hub_id != pickup_node_id and micro_hub_id != delivery_node_id:
+                        filtered_combinations.append(combo)
+                param_combinations = filtered_combinations
+
+            for combo in param_combinations:
+                action_tuple = (action_type,) + combo
+                if action_tuple not in agent_action_map:
+                    agent_action_map[action_tuple] = current_index
+                    current_index += 1
+
+        agent_action_space_size = len(agent_action_map)
+        return agent_action_map, agent_action_space_size
+
 
 
 #
