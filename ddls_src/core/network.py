@@ -28,15 +28,16 @@ class Network:
     Encapsulates the graph structure (nodes and edges) and provides efficient methods
     for network queries, pathfinding, and live visualization.
     """
-
-    def __init__(self, global_state: 'GlobalState', movement_mode: str = 'network', distance_matrix: Dict = None):
+    C_NETWORK_AIR = "Air"
+    C_NETWORK_GROUND = "Land"
+    def __init__(self, global_state: 'GlobalState', movement_mode: str = 'network', land_distance_matrix: Dict = None, air_distance_matrix: Dict = None):
         """
         Initializes the Network class.
 
         Args:
             global_state (GlobalState): The global state of the simulation.
             movement_mode (str): The movement mode ('network' or 'matrix').
-            distance_matrix (Dict): The distance matrix for matrix-based movement.
+            land_distance_matrix (Dict): The distance matrix for matrix-based movement.
         """
         self.global_state = global_state
         self.nodes: Dict[int, Node] = global_state.nodes
@@ -47,11 +48,14 @@ class Network:
         # New attributes for distance matrix mode
         self.movement_mode = movement_mode
         if self.movement_mode:
-            if distance_matrix is None:
+            if land_distance_matrix is None or air_distance_matrix is None:
                 raise ParamError("Please provide distance matrix when using matrix movement mode.")
-            self.distance_matrix = distance_matrix
+            self.land_distance_matrix = land_distance_matrix
+            self.air_distance_matrix = air_distance_matrix
         else:
-            self.distance_matrix = {}
+            self.land_distance_matrix = {}
+            self.air_distance_matrix = {}
+
 
         # Visualization attributes
         self.fig = None
@@ -76,24 +80,39 @@ class Network:
                 return edge
         return None
 
-    def get_travel_time(self, start_node_id: int, end_node_id: int) -> Optional[float]:
+    def get_travel_time(self, start_node_id: int, end_node_id: int, network_type = None) -> Optional[float]:
         """Gets the travel time between two nodes based on the current movement mode."""
         if self.movement_mode == 'matrix':
-            try:
-                # Ensure keys are strings for JSON compatibility
-                return self.distance_matrix[str(start_node_id)][str(end_node_id)]
-            except KeyError:
-                return None
+            if network_type == None:
+                raise ValueError("Please provide a valide network type to get distance when in matrix mode")
+            elif network_type == self.C_NETWORK_AIR:
+                try:
+                    # Ensure keys are strings for JSON compatibility
+                    return self.air_distance_matrix[str(start_node_id)][str(end_node_id)]
+                except KeyError:
+                    return None
+            elif network_type == self.C_NETWORK_GROUND:
+                try:
+                    # Ensure keys are strings for JSON compatibility
+                    return self.land_distance_matrix[str(start_node_id)][str(end_node_id)]
+                except KeyError:
+                    return None
         else: # network mode
             edge = self.get_edge_between_nodes(start_node_id, end_node_id)
             return edge.get_current_travel_time() if edge else None
 
-    def calculate_shortest_path(self, start_node_id: int, end_node_id: int, vehicle_type: str) -> List[int]:
+    def calculate_shortest_path(self, start_node_id: int, end_node_id: int, vehicle_type: str, network_type=None) -> List[int]:
         if self.movement_mode == 'matrix':
             # For matrix mode, we assume a direct path.
             # You could implement a more complex pathfinding algorithm here if needed.
-            if str(start_node_id) in self.distance_matrix and str(end_node_id) in self.distance_matrix[str(start_node_id)]:
-                return [start_node_id, end_node_id]
+            if network_type is None:
+                raise ValueError("Please provide network type when working with dist matrix, to get distance.")
+            elif network_type == self.C_NETWORK_AIR:
+                if str(start_node_id) in self.air_distance_matrix and str(end_node_id) in self.air_distance_matrix[str(start_node_id)]:
+                    return [start_node_id, end_node_id]
+            elif network_type == self.C_NETWORK_GROUND:
+                if str(start_node_id) in self.land_distance_matrix and str(end_node_id) in self.land_distance_matrix[str(start_node_id)]:
+                    return [start_node_id, end_node_id]
             else:
                 return []
         else: # network mode

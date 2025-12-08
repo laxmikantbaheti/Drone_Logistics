@@ -329,7 +329,13 @@ class Vehicle(LogisticEntity, ABC):
                     self.raise_state_change_event()
                 else:
                     start_node_id, end_node_id = self.current_route[0], self.current_route[1]
-                    self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id)
+                    if self.C_NAME == "Drone":
+                        network_type = self.global_state.network.C_NETWORK_AIR
+                    elif self.C_NAME == "Truck":
+                        network_type = self.global_state.network.C_NETWORK_GROUND
+                    else:
+                        raise ValueError("Please provide a valid vehicle type.")
+                    self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id, network_type=network_type)
                     # self.current_node_id = None
                     self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
                     if self.global_state is not None:
@@ -355,7 +361,13 @@ class Vehicle(LogisticEntity, ABC):
                 self.raise_state_change_event()
             else:
                 start_node_id, end_node_id = self.current_route[0], self.current_route[1]
-                self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id)
+                if self.C_NAME == "Drone":
+                    network_type = self.global_state.network.C_NETWORK_AIR
+                elif self.C_NAME == "Truck":
+                    network_type = self.global_state.network.C_NETWORK_GROUND
+                else:
+                    raise ValueError("Please provide a valid vehicle type.")
+                self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id, network_type=network_type)
                 # self.current_node_id = None
                 self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
                 if self.global_state is not None:
@@ -533,7 +545,13 @@ class Vehicle(LogisticEntity, ABC):
 
         if self.movement_mode == 'matrix':
             start_node_id, end_node_id = self.current_route[0], self.current_route[1]
-            self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id)
+            if self.C_NAME == "Drone":
+                network_type = self.global_state.network.C_NETWORK_AIR
+            elif self.C_NAME == "Truck":
+                network_type = self.global_state.network.C_NETWORK_GROUND
+            else:
+                raise ValueError("Please provide a valid vehicle type.")
+            self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id, network_type=network_type)
             self.current_node_id = None
             # else:
             #     self.status = "idle"  # Or handle error appropriately

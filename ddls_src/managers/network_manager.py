@@ -292,7 +292,13 @@ class NetworkManager(System):
             # For simplicity, we'll visit the stops in the order they were gathered.
             # A more complex algorithm (e.g., TSP) could be used here.
             for next_stop in all_stops:
-                path_to_next_stop = self.network.calculate_shortest_path(current_node, next_stop, vehicle_type_str)
+                if vehicle.C_NAME == "Drone":
+                    network_type = self.global_state.network.C_NETWORK_AIR
+                elif vehicle.C_NAME == "Truck":
+                    network_type = self.global_state.network.C_NETWORK_GROUND
+                else:
+                    raise ValueError("Please provide a valid vehicle type.")
+                path_to_next_stop = self.network.calculate_shortest_path(current_node, next_stop, vehicle_type_str, network_type = network_type)
                 if path_to_next_stop and len(path_to_next_stop) > 1:
                     full_path.extend(path_to_next_stop[1:])
                     current_node = next_stop

@@ -190,7 +190,7 @@ class LogisticsSystem(System, EventManager):
         # Create Agent actions and agent to system map
         self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
         # Initialize the network graph using the distance matrix from the loaded data.
-        self.network = Network(self.global_state, self.movement_mode, raw_entity_data['distance_matrix'])
+        self.network = Network(self.global_state, self.movement_mode, raw_entity_data['ground_distance_matrix'], raw_entity_data["air_distance_matrix"])
         # Link the network to the global state.
         self.global_state.network = self.network
         # Initialize the mapper that determines valid actions based on the state.
