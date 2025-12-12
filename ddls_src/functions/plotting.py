@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from typing import Dict, Any, List
 
+from numpy.ma.extras import apply_over_axes
+
 
 # --- Consolidated Mocks for a Runnable Example ---
 
@@ -93,7 +95,7 @@ def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) 
                     for order in lane:
                         start, duration = order['start'], order['end'] - order['start']
                         ax.text(start + duration / 2, y_pos, order['id'], ha='center', va='center', color='black',
-                                fontsize=9)
+                                fontsize=11)
                 y_pos += 1
         else:
             y_ticks.append(y_pos)
@@ -105,7 +107,7 @@ def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) 
 
     if y_ticks:
         ax.set_yticks(y_ticks)
-        ax.set_yticklabels(y_tick_labels, fontsize=10)
+        ax.set_yticklabels(y_tick_labels, fontsize=11)
     ax.invert_yaxis()
     ax.set_xlabel("Time")
     ax.set_ylabel("Vehicle ID")
@@ -182,33 +184,33 @@ def plot_vehicle_states(global_state: Any) -> None:
             # --- NEW: Add text labels for node IDs to bars ---
             for iv in data['intervals']:
                 center_x = iv['start'] + iv['duration'] / 2
-                ax.text(center_x, i, iv['node'], ha='center', va='center', color='white', fontsize=8, fontweight='bold')
+                ax.text(center_x, i, iv['node'], ha='center', va='center', color='white', fontsize=9, fontweight='bold')
 
         # Plot milestones as diamonds
-        if data['milestones']:
-            milestone_times = [m['time'] for m in data['milestones']]
-            y_vals = [i] * len(milestone_times)
-            ax.plot(milestone_times, y_vals, 'D', markersize=8, color='black', label='Milestone' if i == 0 else "")
-
-            # --- NEW: Add text labels for node IDs to milestones ---
-            for m in data['milestones']:
-                ax.text(m['time'], i - 0.05, m['node'], ha='center', va='bottom', color='black', fontsize=7)
+        # if data['milestones']:
+        #     milestone_times = [m['time'] for m in data['milestones']]
+        #     y_vals = [i] * len(milestone_times)
+        #     ax.plot(milestone_times, y_vals, 'D', markersize=8, color='black', label='Milestone' if i == 0 else "")
+        #
+        #     # --- NEW: Add text labels for node IDs to milestones ---
+        #     for m in data['milestones']:
+        #         ax.text(m['time'], i - 0.05, m['node'], ha='center', va='bottom', color='black', fontsize=7)
 
     ax.set_yticks(range(len(vehicle_ids)))
     ax.set_yticklabels(vehicle_ids)
     ax.invert_yaxis()
     ax.set_xlabel("Time")
     ax.set_ylabel("Vehicle ID")
-    ax.set_title("Vehicle State Timeline (with Milestones)")
+    ax.set_title("Vehicle State Timeline")
     ax.grid(axis='x', linestyle=':', alpha=0.7)
 
     legend_elements = [Patch(facecolor=c, label=s) for s, c in state_colors.items()]
     if any(p.get('milestones') for p in processed_data.values()):
         legend_elements.append(
             plt.Line2D([0], [0], marker='D', color='w', label='Milestone', markerfacecolor='black', markersize=10))
-    ax.legend(handles=legend_elements, bbox_to_anchor=(1.02, 1), loc='upper left')
+    ax.legend(handles=legend_elements)
 
-    plt.tight_layout(rect=[0, 0, 0.9, 1])
+    plt.tight_layout()
     plt.show()
 
 
@@ -242,8 +244,8 @@ def plot_vehicle_cargo_history(global_state):
 
     # 3. Setup the subplots (Vertical stack)
     # Share x-axis to easily compare timelines across vehicles
-    fig, axes = plt.subplots(nrows=num_vehicles, ncols=1, figsize=(10, 3 * num_vehicles), sharex=True)
-
+    fig, axes = plt.subplots(nrows=math.ceil(num_vehicles/2), ncols=2, sharex=True)
+    axes = axes.flatten()
     # Handle the case where there is only 1 vehicle (axes is not a list)
     if num_vehicles == 1:
         axes = [axes]
@@ -278,9 +280,9 @@ def plot_vehicle_cargo_history(global_state):
 
         # --- Formatting ---
         ax.set_ylabel("Cargo Units")
-        ax.set_title(label_str, loc='left', fontsize=10, fontweight='bold')
+        ax.set_title(label_str, loc='left', fontsize=11, fontweight='bold')
         ax.grid(True, linestyle=':', alpha=0.6)
-        ax.legend(loc='upper right', fontsize='small')
+        ax.legend(loc='lower right', fontsize='small')
 
         # Only set the X-label for the bottom-most subplot
         if i == num_vehicles - 1:
@@ -455,7 +457,7 @@ def plot_invalid_delivery_gantt_chart(global_state: Any, show_order_labels: bool
                     for order in lane:
                         start, duration = order['start'], order['end'] - order['start']
                         ax.text(start + duration / 2, y_pos, order['id'],
-                                ha='center', va='center', color='black', fontsize=8, clip_on=True)
+                                ha='center', va='center', color='black', fontsize=11, clip_on=True)
                 y_pos += 1
         else:
             y_ticks.append(y_pos)
@@ -467,12 +469,12 @@ def plot_invalid_delivery_gantt_chart(global_state: Any, show_order_labels: bool
 
     if y_ticks:
         ax.set_yticks(y_ticks)
-        ax.set_yticklabels(y_tick_labels, fontsize=10)
+        ax.set_yticklabels(y_tick_labels, fontsize=11)
 
     ax.invert_yaxis()
     ax.set_xlabel("Time (seconds)")
     ax.set_ylabel("Vehicle ID")
-    ax.set_title("Vehicle Order Timeline (Red// = Invalid Sequence: Leg 2 starts before Leg 1 ends)")
+    ax.set_title("Vehicle Order Delivery Timeline")
 
     legend_elements = [Patch(facecolor=c, label=l.capitalize()) for l, c in color_map.items()]
     legend_elements.append(Patch(facecolor='white', edgecolor='gray', hatch='//', label='Invalid Sequence'))

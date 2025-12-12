@@ -136,7 +136,7 @@ class SupplyChainManager(System):
                 if (truck and truck.get_state_value_by_dim_name(truck.C_DIM_TRIP_STATE[0])
                         in [truck.C_TRIP_STATE_IDLE, truck.C_TRIP_STATE_HALT, truck.C_TRIP_STATE_EN_ROUTE] and (len(truck.pickup_orders) > 0 or truck.get_current_cargo_size()>0)):
                     truck.consolidation_confirmed = True
-                    print(f"Consolidation confirmed for Truck {truck_id}. Starting route.")
+                    # print(f"Consolidation confirmed for Truck {truck_id}. Starting route.")
                     # self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Truck {truck_id}. Starting route.")
                     self.system.network_manager.route_for_assigned_orders(truck_id)
                     return True
@@ -150,7 +150,7 @@ class SupplyChainManager(System):
                                 len(drone.pickup_orders) > 0 or drone.get_current_cargo_size() > 0)):
                     drone.consolidation_confirmed = True
                     # self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Drone {drone_id}. Starting route.")
-                    print(f"Consolidation confirmed for Drone {drone_id}. Starting route.")
+                    # print(f"Consolidation confirmed for Drone {drone_id}. Starting route.")
                     self.system.network_manager.route_for_assigned_orders(drone_id)
                     return True
                 return False
@@ -182,14 +182,16 @@ class SupplyChainManager(System):
                 truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
                 assigned = self.assign_order(order, truck)
                 if assigned:
-                    print(f"Order {order.get_id()} assigned to vehicle {truck.get_id()}.")
+                    pass
+                    # print(f"Order {order.get_id()} assigned to vehicle {truck.get_id()}.")
                 return assigned
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_DRONE:
                 drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
                 assigned = self.assign_order(order, drone)
                 if assigned:
-                    print(f"Order {order.get_id()} assigned to vehicle {drone.get_id()}.")
+                    pass
+                    # print(f"Order {order.get_id()} assigned to vehicle {drone.get_id()}.")
                 return assigned
 
             # elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
@@ -221,7 +223,8 @@ class SupplyChainManager(System):
                     self.create_order_requests([pseudo_order_1, pseudo_order_2])
                     # order.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
                 if assigned:
-                    print(f"Order {order.get_id()} assigned to micro-hub {hub.get_id()}.")
+                    pass
+                    # print(f"Order {order.get_id()} assigned to micro-hub {hub.get_id()}.")
                 return assigned
 
         except KeyError as e:

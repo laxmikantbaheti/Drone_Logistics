@@ -358,7 +358,7 @@ class LogisticsSystem(System, EventManager):
 
         # Check if the action is valid and is not the "No Operation" action.
         if action_tuple and action_tuple[0] != SimulationActions.NO_OPERATION:
-            print(f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
+            # print(f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
             # Execute the action via the ActionManager.
             action_processed = self.action_manager.execute_action(action_tuple)
 

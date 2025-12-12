@@ -1,7 +1,7 @@
 {
     "nodes": [
         {
-            "id": 0,
+            "id": "N0",
             "coords": [50, 50],
             "type": "depot",
             "is_loadable": true,
@@ -36,7 +36,7 @@
         {
             "id": 6,
             "coords": [70, 30],
-            "type": "customer"
+            "type": "micro_hub"
         },
         {
             "id": 7,
@@ -51,13 +51,13 @@
         {
             "id": 9,
             "coords": [95, 60],
-            "type": "micro_hub"
+            "type": "customer"
         }
     ],
     "edges": [],
     "trucks": [
         {
-            "id": 101,
+            "id": "T101",
             "start_node_id": 0,
             "max_payload_capacity": 2,
             "max_speed": 60.0
@@ -65,13 +65,13 @@
         {
             "id": 102,
             "start_node_id": 0,
-            "max_payload_capacity": 1,
+            "max_payload_capacity": 2,
             "max_speed": 50.0
         },
         {
             "id": 103,
             "start_node_id": 0,
-            "max_payload_capacity": 1,
+            "max_payload_capacity": 2,
             "max_speed": 55.0
         }
     ],
@@ -79,7 +79,7 @@
         {
             "id": 104,
             "start_node_id": 0,
-            "max_payload_capacity": 3,
+            "max_payload_capacity": 1,
             "max_speed": 70.0
         }
     ],
@@ -102,7 +102,7 @@
         },
         {
             "id": 1004,
-            "p_pickup_node_id": 6,
+            "p_pickup_node_id": 9,
             "p_delivery_node_id": 0
         },
         {
