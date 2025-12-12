@@ -66,8 +66,6 @@ class LogisticRLScenario(gym.Env):
         # Cache NO_OPERATION index
         self._no_op_idx = self._system.action_map.get((SimulationAction.NO_OPERATION,))
 
-        self.no_op_counter = 0
-
         # Status Mapping for Encoding
         self.status_map = {
             "idle": 0,
@@ -108,15 +106,11 @@ class LogisticRLScenario(gym.Env):
         4. If Agent -> Executes 'action_idx' and RETURNS.
         """
 
-        if action_idx == self._system.agent_action_space_size:
-            self.no_op_counter += 1
-        else:
-            self._no_op_idx = 0
         while True:
             # Check termination
             if self._check_done():
                 print(self._system.global_state.current_time)
-                return self._get_observation(), self._calculate_reward(), True, self._get_truncated(), self._get_info()
+                return self._get_observation(), self._calculate_reward(), True, False, self._get_info()
 
             # --- Check availability ---
             auto_actions = self._system.get_automatic_actions()
@@ -127,10 +121,10 @@ class LogisticRLScenario(gym.Env):
             # We assume NO_OP is handled by the time advance logic if it's the only option.
             valid_agent_indices = np.where(agent_mask)[0]
             # Filter out NO_OP from "available actions" count if we want the loop to handle waiting
-            # meaningful_agent_actions = [i for i in valid_agent_indices if i != self._no_op_idx]
-            meaningful_agent_actions = [i for i in valid_agent_indices if i != (self._system.agent_action_space_size - 1)]
+            meaningful_agent_actions = [i for i in valid_agent_indices if i != self._no_op_idx]
+
             has_auto = len(auto_actions) > 0
-            has_agent = len(meaningful_agent_actions) > 0
+            has_agent = len(meaningful_agent_actions) > 1
 
             # "checks if there is any action available (automatic or non automatic),
             #  if not the the simulation is advanced in time"
@@ -171,7 +165,7 @@ class LogisticRLScenario(gym.Env):
                 # "and the step function returns"
                 if self._check_done():
                     print(self._system.global_state.current_time)
-                return self._get_observation(), self._calculate_reward(), self._check_done(), self._get_truncated(), self._get_info()
+                return self._get_observation(), self._calculate_reward(), self._check_done(), False, self._get_info()
 
     # --- Helpers ---
 
@@ -252,6 +246,11 @@ class LogisticRLScenario(gym.Env):
     def _get_agent_mask(self):
         return self._system.get_agent_mask().astype(np.int8)
 
+    def _calculate_reward(self):
+        if self._check_done():
+            return -self._system.global_state.current_time
+        else:
+            return 0
 
     def _check_done(self):
         success = self._system.get_success()
@@ -268,18 +267,3 @@ class LogisticRLScenario(gym.Env):
             "action_mask": self._get_agent_mask(),
             "current_time": self._system.global_state.current_time
         }
-
-    def _get_truncated(self):
-        if self.no_op_counter > 100:
-            return True
-        else:
-            return False
-
-
-    def _calculate_reward(self):
-        if self._check_done():
-            return -self._system.global_state.current_time
-        elif self._get_truncated():
-            return -5000
-        else:
-            return 0

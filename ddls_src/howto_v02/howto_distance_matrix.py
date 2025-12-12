@@ -19,7 +19,7 @@ def run_matrix_scenario_demo():
     sim_config = {
         "movement_mode": "matrix",
         "initial_time": 0.0,
-        "main_timestep_duration": 10.0,  # 1-second steps for clear validation
+        "main_timestep_duration": 1.0,  # 1-second steps for clear validation
         "data_loader_config": {
             "generator_type": "json_file",
             "generator_config": {"file_path": config_file_path}

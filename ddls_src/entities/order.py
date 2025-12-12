@@ -298,7 +298,7 @@ class PseudoOrder(Order):
                                     self.parent_order.handle_pseudo_delivery)
         self.mh_assignment_history.extend([self.parent_order.assigned_micro_hub_id]+self.parent_order.mh_assignment_history)
         self.mh_assignment_history.extend([ordr.assigned_micro_hub_id for ordr in self.predecessor_orders if ordr.assigned_micro_hub_id is not None])
-        # print(self, self.mh_assignment_history)
+        print(self, self.mh_assignment_history)
 
 
     def reset(self, p_seed=None) -> None:
