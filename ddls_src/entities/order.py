@@ -72,6 +72,7 @@ class Order(LogisticEntity):
                          p_mode=System.C_MODE_SIM,
                          p_latency=timedelta(0, 0, 0))
 
+        self.custom_log = False
         # Order-specific attributes
         self.customer_node_id: int = p_kwargs.get('customer_node_id')
         self.time_received: float = p_kwargs.get('time_received', 0.0)
@@ -227,7 +228,8 @@ class Order(LogisticEntity):
             else:
                 delivered = False
         if delivered:
-            print(f"Collaborative order {self.get_id()} is delivered.")
+            if self.custom_log:
+                    print(f"Collaborative order {self.get_id()} is delivered.")
             self.set_delivered()
 
     def create_pseudo_orders(self, hub_id):
@@ -298,7 +300,8 @@ class PseudoOrder(Order):
                                     self.parent_order.handle_pseudo_delivery)
         self.mh_assignment_history.extend([self.parent_order.assigned_micro_hub_id]+self.parent_order.mh_assignment_history)
         self.mh_assignment_history.extend([ordr.assigned_micro_hub_id for ordr in self.predecessor_orders if ordr.assigned_micro_hub_id is not None])
-        print(self, self.mh_assignment_history)
+        if self.custom_log:
+                    print(self, self.mh_assignment_history)
 
 
     def reset(self, p_seed=None) -> None:

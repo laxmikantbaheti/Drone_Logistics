@@ -39,6 +39,7 @@ class Network:
             movement_mode (str): The movement mode ('network' or 'matrix').
             land_distance_matrix (Dict): The distance matrix for matrix-based movement.
         """
+        self.custom_log = False
         self.global_state = global_state
         self.nodes: Dict[int, Node] = global_state.nodes
         self.edges: Dict[int, Edge] = global_state.edges
@@ -63,7 +64,8 @@ class Network:
         self.graph = nx.DiGraph()
         self.node_positions = {}
         self.node_colors = {}
-        print("Network class initialized.")
+        if self.custom_log:
+            print("Network class initialized.")
 
     def _build_adjacency_list(self) -> None:
         self.adjacency_list = {node_id: [] for node_id in self.nodes.keys()}

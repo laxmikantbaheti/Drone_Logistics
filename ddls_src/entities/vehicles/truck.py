@@ -100,7 +100,8 @@ class Truck(Vehicle):
             for order_id in self.cargo_manifest:
                 order = self.global_state.get_entity("order", order_id)
                 if order.customer_node_id == self.current_node_id:
-                    print(f"  - AUTOMATIC LOGIC (Truck {self.id}): Unloading Order {order_id} at destination.")
+                    if self.custom_log:
+                        print(f"  - AUTOMATIC LOGIC (Truck {self.id}): Unloading Order {order_id} at destination.")
                     self._unload_order(order_id)
                     return  # Only do one action per cycle
 
@@ -110,7 +111,8 @@ class Truck(Vehicle):
             for order_id in current_node.packages_held:
                 order = self.global_state.get_entity("order", order_id)
                 if order.assigned_vehicle_id == self.id:
-                    print(f"  - AUTOMATIC LOGIC (Truck {self.id}): Loading assigned Order {order_id}.")
+                    if self.custom_log:
+                        print(f"  - AUTOMATIC LOGIC (Truck {self.id}): Loading assigned Order {order_id}.")
                     self._load_order(order_id)
                     return  # Only do one action per cycle
 

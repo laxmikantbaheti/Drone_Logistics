@@ -6,7 +6,8 @@ from typing import Dict, Any
 # Local Imports from your uploaded files
 from ddls_src.core.logistics_system import LogisticsSystem
 from ddls_src.core.basics import LogisticsAction
-from ddls_src.actions.action_enums import SimulationAction
+# from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.actions.base import SimulationActions
 from ddls_src.functions.plotting import plot_vehicle_gantt_chart, plot_vehicle_states
 
 
@@ -47,8 +48,8 @@ class LogisticRLScenario(gym.Env):
         self.num_drones = len(self._system.global_state.drones)
 
         # C. Feature Sizes
-        self.truck_feat_size = 3  # [Location, Status, Cargo]
-        self.drone_feat_size = 4  # [Location, Status, Cargo, Battery]
+        self.truck_feat_size = 1  # [Location, Status, Cargo]
+        self.drone_feat_size = 1  # [Location, Status, Cargo, Battery]
 
         # D. Calculate Total Observation Size
         self.obs_size = (self.num_nodes * self.num_nodes) + \
@@ -64,7 +65,7 @@ class LogisticRLScenario(gym.Env):
         )
 
         # Cache NO_OPERATION index
-        self._no_op_idx = self._system.action_map.get((SimulationAction.NO_OPERATION,))
+        self._no_op_idx = self._system.action_map.get((SimulationActions.NO_OPERATION,))
 
         # Status Mapping for Encoding
         self.status_map = {
@@ -77,6 +78,7 @@ class LogisticRLScenario(gym.Env):
             "broken_down": 6,
             "halted": 7
         }
+        self.truncate_counter = 0
 
     def reset(self, seed=None, options = None):
         """
@@ -85,6 +87,7 @@ class LogisticRLScenario(gym.Env):
         """
         super().reset(seed=seed, options = options)
         self._system.reset(p_seed=seed)
+        self.truncate_counter = 0
 
         # To ensure we start at a valid decision point, we can trigger the logic.
         # However, standard reset just returns the initial state.
@@ -105,12 +108,12 @@ class LogisticRLScenario(gym.Env):
         3. If Auto -> Executes Auto.
         4. If Agent -> Executes 'action_idx' and RETURNS.
         """
-
+        self.truncate_counter += 1
         while True:
             # Check termination
-            if self._check_done():
+            if self._check_done()[0] or self._check_done()[1]:
                 print(self._system.global_state.current_time)
-                return self._get_observation(), self._calculate_reward(), True, False, self._get_info()
+                return self._get_observation(), self._calculate_reward(), self._check_done()[0], self._check_done()[1], self._get_info()
 
             # --- Check availability ---
             auto_actions = self._system.get_automatic_actions()
@@ -122,10 +125,9 @@ class LogisticRLScenario(gym.Env):
             valid_agent_indices = np.where(agent_mask)[0]
             # Filter out NO_OP from "available actions" count if we want the loop to handle waiting
             meaningful_agent_actions = [i for i in valid_agent_indices if i != self._no_op_idx]
-
+            # meaningful_agent_actions.remove(436)
             has_auto = len(auto_actions) > 0
-            has_agent = len(meaningful_agent_actions) > 1
-
+            has_agent = len(meaningful_agent_actions) > 0
             # "checks if there is any action available (automatic or non automatic),
             #  if not the the simulation is advanced in time"
             if not has_auto and not has_agent:
@@ -163,9 +165,9 @@ class LogisticRLScenario(gym.Env):
                     self._system.network.update_plot()
 
                 # "and the step function returns"
-                if self._check_done():
+                if self._check_done()[0] or self._check_done()[1]:
                     print(self._system.global_state.current_time)
-                return self._get_observation(), self._calculate_reward(), self._check_done(), False, self._get_info()
+                return self._get_observation(), self._calculate_reward(), self._check_done()[0], self._check_done()[1], self._get_info()
 
     # --- Helpers ---
 
@@ -180,7 +182,7 @@ class LogisticRLScenario(gym.Env):
 
         # 1. Node Pair Matrix (Demand) - Size: N * N
         demand_matrix = np.zeros((len(self._system.global_state.nodes), len(self._system.global_state.nodes)),
-                                 dtype=np.float32)
+                                 dtype=np.float64)
 
         # Use native method to get orders grouped by (pickup, delivery)
         # Note: This method filters for orders with status == C_STATUS_PLACED
@@ -205,12 +207,12 @@ class LogisticRLScenario(gym.Env):
                 loc_idx = float(self.node_id_to_idx[truck.current_node_id])
 
             # Feature 2: Status
-            status_code = float(self.status_map.get(truck.status.lower(), -1))
+            # status_code = float(self.status_map.get(truck.status.lower(), -1))
+            #
+            # # Feature 3: Current Cargo Count
+            # cargo_count = float(len(truck.cargo_manifest))
 
-            # Feature 3: Current Cargo Count
-            cargo_count = float(len(truck.cargo_manifest))
-
-            truck_vectors.extend([loc_idx, status_code, cargo_count])
+            truck_vectors.extend([loc_idx])
 
         # 3. Drone States - Size: D * 4
         drone_vectors = []
@@ -223,23 +225,24 @@ class LogisticRLScenario(gym.Env):
                 loc_idx = float(self.node_id_to_idx[drone.current_node_id])
 
             # Feature 2: Status
-            status_code = float(self.status_map.get(drone.status.lower(), -1))
-
-            # Feature 3: Cargo Count
-            cargo_count = float(len(drone.cargo_manifest))
+            # status_code = float(self.status_map.get(drone.status.lower(), -1))
+            #
+            # # Feature 3: Cargo Count
+            # cargo_count = float(len(drone.cargo_manifest))
 
             # Feature 4: Battery Level
-            battery = float(drone.battery_level)
+            # battery = float(drone.battery_level)
 
-            drone_vectors.extend([loc_idx, status_code, cargo_count, battery])
+
+            drone_vectors.extend([loc_idx])
 
         # Combine into single observation vector
         obs = np.concatenate([
             demand_vector,
-            np.array(truck_vectors, dtype=np.float32),
-            np.array(drone_vectors, dtype=np.float32)
+            np.array(truck_vectors, dtype=np.float64),
+            np.array(drone_vectors, dtype=np.float64)
         ])
-
+        # print(obs)
         return obs
 
 
@@ -247,20 +250,22 @@ class LogisticRLScenario(gym.Env):
         return self._system.get_agent_mask().astype(np.int8)
 
     def _calculate_reward(self):
-        if self._check_done():
+        if self._check_done()[0]:
             return -self._system.global_state.current_time
+        if self._check_done()[1]:
+            return -5000
         else:
             return 0
 
     def _check_done(self):
         success = self._system.get_success()
-        broken = self._system.get_broken()
+        broken = True if self.truncate_counter > 500 else False
         if success and self.visualize:
             plot_vehicle_gantt_chart(self._system.global_state)
             plot_vehicle_states(self._system.global_state)
         if success or broken:
             print(True)
-        return success or broken
+        return success, broken
 
     def _get_info(self):
         return {

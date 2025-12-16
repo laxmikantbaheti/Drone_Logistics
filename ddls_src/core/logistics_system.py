@@ -75,6 +75,7 @@ class LogisticsSystem(System, EventManager):
             **p_kwargs: Additional keyword arguments, expected to contain 'config'.
         """
         # Retrieve the configuration dictionary from keyword arguments.
+        self.custom_log = False
         self._config = p_kwargs.get('config', {})
 
         # Initialize the parent System class from MLPro.
@@ -321,18 +322,21 @@ class LogisticsSystem(System, EventManager):
             automatic_actions_to_take = self.get_automatic_actions()
             # If the list is empty, the system is stable.
             if not automatic_actions_to_take:
-                print(f"Auto-action loop stable after {i} iterations.")
+                if self.custom_log:
+                    print(f"Auto-action loop stable after {i} iterations.")
                 break
             # Select the first available automatic action to execute.
             auto_action_tuple = automatic_actions_to_take[0]
-            print(f"  - Auto Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
+            if self.custom_log:
+                    print(f"  - Auto Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
             # Execute the action using the ActionManager.
             self.action_manager.execute_action(auto_action_tuple)
             # Increment the counter.
             i += 1
             # A safety break to prevent infinite loops.
             if i > 20:
-                print("Auto-action loop exceeded safety limit of 20 iterations.")
+                if self.custom_log:
+                    print("Auto-action loop exceeded safety limit of 20 iterations.")
                 break
 
     # --------------------------------------------------------------------------------------------------
@@ -358,7 +362,8 @@ class LogisticsSystem(System, EventManager):
 
         # Check if the action is valid and is not the "No Operation" action.
         if action_tuple and action_tuple[0] != SimulationActions.NO_OPERATION:
-            print(f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
+            if self.custom_log:
+                    print(f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
             # Execute the action via the ActionManager.
             action_processed = self.action_manager.execute_action(action_tuple)
 
@@ -438,7 +443,7 @@ class LogisticsSystem(System, EventManager):
         if self.state_action_mapper:
             return self.state_action_mapper.generate_masks()
         # As a fallback, return a mask of all ones (all actions considered possible).
-        return np.ones(len(self.action_map), dtype=bool)
+        return np.ones(len(self.action_map), dtype=np.float64)
 
     # --------------------------------------------------------------------------------------------------
 
@@ -452,7 +457,7 @@ class LogisticsSystem(System, EventManager):
         # Get the complete mask of all valid actions.
         system_mask = self.get_current_mask()
         # Create a new mask of zeros, which will be populated with agent-available actions.
-        agent_mask = np.zeros(self.agent_action_space_size, dtype=bool)
+        agent_mask = np.zeros(self.agent_action_space_size, dtype=np.float64)
         # Iterate through all defined actions.
         for idx, action_tuple in enumerate(self.agent_actions):
 
@@ -464,7 +469,7 @@ class LogisticsSystem(System, EventManager):
         # Ensure the NO_OPERATION action is always available to the agent.
         no_op_idx = self.action_map.get((SimulationActions.NO_OPERATION,))
         if no_op_idx is not None:
-            agent_mask[self.agent_to_system_map.index(no_op_idx)] = True
+            agent_mask[self.agent_to_system_map.index(no_op_idx)] = False
         # Return the final agent-specific mask.
         return agent_mask
 

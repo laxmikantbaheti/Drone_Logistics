@@ -49,7 +49,7 @@ class FleetManager(System):
                          p_logging=p_logging,
                          p_mode=System.C_MODE_SIM,
                          p_latency=timedelta(0, 0, 0))
-
+        self.custom_log = False
         self.global_state: 'GlobalState' = p_kwargs.get('global_state')
         if self.global_state is None:
             raise ValueError("FleetManager requires a reference to GlobalState.")

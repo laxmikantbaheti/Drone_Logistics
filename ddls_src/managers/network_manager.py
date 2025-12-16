@@ -50,7 +50,7 @@ class NetworkManager(System):
                          p_logging=p_logging,
                          p_mode=System.C_MODE_SIM,
                          p_latency=timedelta(0, 0, 0))
-
+        self.custom_log = False
         self.global_state: 'GlobalState' = p_kwargs.get('global_state')
         self.network: 'Network' = p_kwargs.get('network')
         self.automatic_logic_config = p_kwargs.get('p_automatic_logic_config', {})
@@ -149,7 +149,8 @@ class NetworkManager(System):
                 path = self.network.calculate_shortest_path(vehicle.current_node_id, destination_node_id,
                                                             vehicle_type_str)
                 if path and len(path) > 1:
-                    print(
+                    if self.custom_log:
+                        print(
                         f"  - AUTOMATIC LOGIC (NetworkManager): Vehicle {vehicle_id} is at pickup. Routing directly to destination via {path}.")
                     vehicle.set_route(path)
                 return
@@ -164,7 +165,8 @@ class NetworkManager(System):
 
             full_path = path_to_pickup + path_to_destination[1:]
 
-            print(
+            if self.custom_log:
+                    print(
                 f"  - AUTOMATIC LOGIC (NetworkManager): Routing Vehicle {vehicle_id} on path {full_path} for Order {order_id}")
             vehicle.set_route(full_path)
 
@@ -338,7 +340,8 @@ if __name__ == '__main__':
 
         def process_action(self, p_action):
             self.last_action_received = p_action
-            print(
+            if self.custom_log:
+                    print(
                 f"  - MockVehicle '{self.get_id()}' received action with ID {p_action.get_sorted_values()[0]} and data {p_action.data}")
             return True
 

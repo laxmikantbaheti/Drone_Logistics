@@ -47,7 +47,7 @@ def run_multi_episode_simulation():
     env = LogisticRLScenario(sim_config, visualize=False)
 
     # 3. Define Training Parameters
-    NUM_EPISODES = 10000
+    NUM_EPISODES = 1
 
     # --- Storage for Plotting ---
     episode_indices = []
