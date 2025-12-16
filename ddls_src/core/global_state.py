@@ -314,5 +314,8 @@ class GlobalState:
     def get_all_entities(self):
         return [self.orders, self.trucks, self.drones, self.micro_hubs, self.nodes]
 
+    def reset(self):
+        self.current_time = 0
+
 
 

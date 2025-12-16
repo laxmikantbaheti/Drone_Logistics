@@ -159,10 +159,11 @@ class LogisticsScenario(Scenario):
         self.log(self.C_LOG_TYPE_I, "Entering Progression Phase...")
         self._system.advance_time()
 
-        if self._visualize and self._system.movement_mode == "network":
-            self._system.network.update_plot()
+        # if self._visualize and self._system.movement_mode == "network":
+            # self._system.network.update_plot()
 
-        if self._system.get_success() and self._visualize:
+        # if self._system.get_success() and self._visualize:
+        if self._system.get_success():
             plot_vehicle_gantt_chart(self._system.global_state)
             plot_vehicle_states(self._system.global_state)
             plot_vehicle_cargo_history(self._system.global_state)

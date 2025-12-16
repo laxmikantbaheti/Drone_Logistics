@@ -127,7 +127,8 @@ class LogisticsSystem(System, EventManager):
         # An object for indexing actions.
         self.action_index = None
         # Call the reset method to perform the main setup.
-        self.reset()
+        self.setup = False
+        self.setup = self.reset()
 
     # --------------------------------------------------------------------------------------------------
 
@@ -166,77 +167,98 @@ class LogisticsSystem(System, EventManager):
         Parameters:
             p_seed: A seed for random number generators to ensure reproducibility.
         """
-        # Configure which actions are to be handled automatically by the system's internal logic.
-        self.automatic_logic_config = {action: action.is_automatic for action in self.actions.get_all_actions()}
+        if not self.setup:
+            # Configure which actions are to be handled automatically by the system's internal logic.
+            self.automatic_logic_config = {action: action.is_automatic for action in self.actions.get_all_actions()}
 
-        # Load the initial simulation data (e.g., from a JSON file).
-        raw_entity_data = self.data_loader.load_initial_simulation_data()
-        # Use a ScenarioGenerator to create entity objects from the raw data.
-        scenario_generator = ScenarioGenerator(raw_entity_data)
-        self.entities = scenario_generator.build_entities(p_logging=self.get_log_level(),
-                                                          p_movement_mode=self.movement_mode)
+            # Load the initial simulation data (e.g., from a JSON file).
+            raw_entity_data = self.data_loader.load_initial_simulation_data()
+            # Use a ScenarioGenerator to create entity objects from the raw data.
+            scenario_generator = ScenarioGenerator(raw_entity_data)
+            self.entities = scenario_generator.build_entities(p_logging=self.get_log_level(),
+                                                              p_movement_mode=self.movement_mode)
 
-        # Initialize the GlobalState, which holds all entities and simulation state.
-        self.global_state = GlobalState(initial_entities=self.entities, movement_mode=self.movement_mode)
+            # Initialize the GlobalState, which holds all entities and simulation state.
+            self.global_state = GlobalState(initial_entities=self.entities, movement_mode=self.movement_mode)
 
-        # Generate the mapping from action tuples to integer IDs based on the initial global state.
-        self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
-        # Generate agent action map and action space size
-        # self.agent_action_map, self.agent_action_space_size = self.actions.generate_agent_action_map(self.global_state, self.automatic_logic_config)
-        # Get non-automatic agent actions
-        # Create an ActionIndex for efficient lookup of actions.
-        self.action_index = ActionIndex(self.global_state, self.action_map)
-        # Create the reverse mapping from integer IDs back to action tuples.
-        self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
-        # Create Agent actions and agent to system map
-        self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
-        # Initialize the network graph using the distance matrix from the loaded data.
-        self.network = Network(self.global_state, self.movement_mode, raw_entity_data['ground_distance_matrix'], raw_entity_data["air_distance_matrix"])
-        # Link the network to the global state.
-        self.global_state.network = self.network
-        # Initialize the mapper that determines valid actions based on the state.
-        self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
+            # Generate the mapping from action tuples to integer IDs based on the initial global state.
+            self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+            # Generate agent action map and action space size
+            # self.agent_action_map, self.agent_action_space_size = self.actions.generate_agent_action_map(self.global_state, self.automatic_logic_config)
+            # Get non-automatic agent actions
+            # Create an ActionIndex for efficient lookup of actions.
+            self.action_index = ActionIndex(self.global_state, self.action_map)
+            # Create the reverse mapping from integer IDs back to action tuples.
+            self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
+            # Create Agent actions and agent to system map
+            self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
+            # Initialize the network graph using the distance matrix from the loaded data.
+            self.network = Network(self.global_state, self.movement_mode, raw_entity_data['ground_distance_matrix'], raw_entity_data["air_distance_matrix"])
+            # Link the network to the global state.
+            self.global_state.network = self.network
+            # Initialize the mapper that determines valid actions based on the state.
+            self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
+
+            # # Ensure all entities have a reference to the global state.
+            all_entity_dicts = self.global_state.get_all_entities()
+            for entity_dict in all_entity_dicts:
+                for entity in entity_dict.values():
+                    entity.global_state = self.global_state
+                    # entity.reset()
+
+            # Initialize the ConstraintManager which is responsible for tracking action constraints.
+            self.constraint_manager = ConstraintManager(action_index=self.action_index,
+                                                        reverse_action_map=self._reverse_action_map)
+            # Initialize the SupplyChainManager.
+            self.supply_chain_manager = SupplyChainManager(p_id='scm', global_state=self.global_state,
+                                                           p_automatic_logic_config=self.automatic_logic_config)
+            # Initialize the ResourceManager.
+            self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
+            # Initialize the NetworkManager.
+            self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
+                                                  p_automatic_logic_config=self.automatic_logic_config)
+            # Set up the event handling system.
+            self.setup_events()
+
+            # Create a dictionary of managers for easy access.
+            managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
+                        'NetworkManager': self.network_manager}
+
+            # Give each manager a reference to the parent system.
+            for manager in managers.values():
+                manager.system = self
+
+            # Initialize the ActionManager, passing it the managers it needs to orchestrate.
+            self.action_manager = ActionManager(self.global_state, managers, self.action_map)
+
+            # Give each vehicle a reference to the NetworkManager for movement.
+            for vehicle in list(self.global_state.trucks.values()) + list(self.global_state.drones.values()):
+                vehicle.network_manager = self.network_manager
+
+            # Initialize the OrderGenerator to create new orders over time.
+            self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
+            # Register an event handler for when new orders are created.
+            self.register_event_handler(self.C_EVENT_NEW_ORDER, self._handle_new_order_request)
+
+            # Set the initial simulation time.
+            initial_sim_time = self.entities.get('initial_time', 0.0)
+            self.time_manager.reset_time(new_initial_time=initial_sim_time)
+            self.global_state.current_time = initial_sim_time
+
+            # # Perform an initial update of the MLPro state object.
+            # self._update_state()
+
+        self.global_state.reset()
 
         # Ensure all entities have a reference to the global state.
         all_entity_dicts = self.global_state.get_all_entities()
         for entity_dict in all_entity_dicts:
             for entity in entity_dict.values():
                 entity.global_state = self.global_state
-                # entity.reset()
-
-        # Initialize the ConstraintManager which is responsible for tracking action constraints.
-        self.constraint_manager = ConstraintManager(action_index=self.action_index,
-                                                    reverse_action_map=self._reverse_action_map)
-        # Initialize the SupplyChainManager.
-        self.supply_chain_manager = SupplyChainManager(p_id='scm', global_state=self.global_state,
-                                                       p_automatic_logic_config=self.automatic_logic_config)
-        # Initialize the ResourceManager.
-        self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
-        # Initialize the NetworkManager.
-        self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
-                                              p_automatic_logic_config=self.automatic_logic_config)
-        # Set up the event handling system.
-        self.setup_events()
-
-        # Create a dictionary of managers for easy access.
-        managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
-                    'NetworkManager': self.network_manager}
-
-        # Give each manager a reference to the parent system.
-        for manager in managers.values():
-            manager.system = self
-
-        # Initialize the ActionManager, passing it the managers it needs to orchestrate.
-        self.action_manager = ActionManager(self.global_state, managers, self.action_map)
-
-        # Give each vehicle a reference to the NetworkManager for movement.
-        for vehicle in list(self.global_state.trucks.values()) + list(self.global_state.drones.values()):
-            vehicle.network_manager = self.network_manager
+                entity.reset()
 
         # Initialize the OrderGenerator to create new orders over time.
         self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
-        # Register an event handler for when new orders are created.
-        self.register_event_handler(self.C_EVENT_NEW_ORDER, self._handle_new_order_request)
 
         # Set the initial simulation time.
         initial_sim_time = self.entities.get('initial_time', 0.0)
@@ -245,6 +267,8 @@ class LogisticsSystem(System, EventManager):
 
         # Perform an initial update of the MLPro state object.
         self._update_state()
+
+        return True
 
     # --------------------------------------------------------------------------------------------------
 
