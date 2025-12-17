@@ -275,6 +275,7 @@ class LogisticsSystem(System, EventManager):
 
         return True
 
+
     # --------------------------------------------------------------------------------------------------
 
     def get_automatic_actions(self) -> List[Tuple]:
