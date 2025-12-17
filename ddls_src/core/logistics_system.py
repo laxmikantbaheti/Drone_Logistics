@@ -63,6 +63,7 @@ class LogisticsSystem(System, EventManager):
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,
+                 custom_log = False,
                  **p_kwargs):
         """
         Initializes the LogisticsSystem.
@@ -75,7 +76,7 @@ class LogisticsSystem(System, EventManager):
             **p_kwargs: Additional keyword arguments, expected to contain 'config'.
         """
         # Retrieve the configuration dictionary from keyword arguments.
-        self.custom_log = False
+        self.custom_log = custom_log
         self._config = p_kwargs.get('config', {})
 
         # Initialize the parent System class from MLPro.
@@ -204,6 +205,7 @@ class LogisticsSystem(System, EventManager):
             for entity_dict in all_entity_dicts:
                 for entity in entity_dict.values():
                     entity.global_state = self.global_state
+                    entity.custom_log = self.custom_log
                     # entity.reset()
 
             # Initialize the ConstraintManager which is responsible for tracking action constraints.
@@ -227,6 +229,7 @@ class LogisticsSystem(System, EventManager):
             # Give each manager a reference to the parent system.
             for manager in managers.values():
                 manager.system = self
+                manager.custom_log = self.custom_log
 
             # Initialize the ActionManager, passing it the managers it needs to orchestrate.
             self.action_manager = ActionManager(self.global_state, managers, self.action_map)

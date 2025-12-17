@@ -18,7 +18,7 @@ class LogisticRLScenario(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, sim_config: Dict[str, Any], visualize: bool = False):
+    def __init__(self, sim_config: Dict[str, Any], visualize: bool = False, custom_log = False):
         super().__init__()
 
         self.visualize = visualize
@@ -27,7 +27,8 @@ class LogisticRLScenario(gym.Env):
         self._system = LogisticsSystem(
             p_id='gym_env',
             p_visualize=visualize,
-            config=sim_config
+            config=sim_config,
+            custom_log=custom_log
         )
         # self._system.initialize_simulation()
 

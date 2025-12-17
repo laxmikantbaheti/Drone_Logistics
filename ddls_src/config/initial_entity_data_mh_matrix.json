@@ -65,13 +65,13 @@
         {
             "id": 102,
             "start_node_id": 0,
-            "max_payload_capacity": 1,
+            "max_payload_capacity": 2,
             "max_speed": 50.0
         },
         {
             "id": 103,
             "start_node_id": 0,
-            "max_payload_capacity": 1,
+            "max_payload_capacity": 2,
             "max_speed": 55.0
         }
     ],
@@ -79,7 +79,7 @@
         {
             "id": 104,
             "start_node_id": 0,
-            "max_payload_capacity": 3,
+            "max_payload_capacity": 1,
             "max_speed": 70.0
         }
     ],

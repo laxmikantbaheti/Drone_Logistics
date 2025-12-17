@@ -718,7 +718,7 @@ class VehicleCapacityConstraint(Constraint):
     """
     # Define the unique name for this constraint.
     C_NAME = "VehicleCapacityConstraint"
-    C_ACTIVE = False
+    C_ACTIVE = True
     # Specify that this constraint applies to "Truck" and "Drone" entities.
     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
     # List the order assignment actions affected by this constraint.
@@ -1167,7 +1167,7 @@ class ConsolidationConstraint(Constraint):
 # # This entire class is commented out, representing a potential or deprecated constraint.
 class CollaborationPrecedenceConstraint(Constraint):
     C_NAME = "Collaboration Precedence Constraint"
-    C_ACTIVE = False
+    C_ACTIVE = True
     C_ASSOCIATED_ENTITIES = ["Order", "Truck", "Drone"]
     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION, SimulationActions.LOAD_DRONE_ACTION]
 

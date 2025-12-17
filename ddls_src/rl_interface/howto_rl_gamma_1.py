@@ -12,6 +12,7 @@ from stable_baselines3.common.monitor import Monitor
 
 # [OPTIONAL] Use this if your environment runs forever
 from gymnasium.wrappers import TimeLimit
+from torch.cuda.amp import custom_bwd
 
 # Ensure the project root is in the python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -122,7 +123,7 @@ def run_ppo_simulation():
     }
 
     # 2. Initialize Environment
-    env = LogisticRLScenario(sim_config, visualize=False)
+    env = LogisticRLScenario(sim_config, visualize=False, custom_log = True)
 
     # [CRITICAL] Set Max Episode Steps
     # We set this to 5000. It is crucial that n_steps below is > 5000.
