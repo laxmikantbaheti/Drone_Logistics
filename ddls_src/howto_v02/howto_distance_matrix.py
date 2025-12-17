@@ -1,4 +1,8 @@
 import os
+from datetime import datetime, timedelta
+
+from dateutil.tz import datetime_ambiguous
+
 from ddls_src.scenarios.scenario import LogisticsScenario
 
 def run_matrix_scenario_demo():
@@ -36,9 +40,13 @@ def run_matrix_scenario_demo():
                                  custom_log = True)
 
     print("\n--- Starting Scenario Run ---")
+    start = datetime.now()
+    print("start---",start)
     scenario.run()
     print("\n--- Scenario Finished ---")
-
+    end = datetime.now()
+    print("end ---",end)
+    print(end-start)
     print("\n=============================================")
     print("=========   Validation Complete   =========")
     print("=============================================")

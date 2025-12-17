@@ -1,4 +1,6 @@
 # Import numpy for numerical operations, although not directly used in this snippet, it's a common dependency.
+from datetime import datetime
+
 import numpy as np
 # Import various typing hints for better code readability and static analysis.
 from typing import Dict, Any, Tuple, Set, List
@@ -1846,6 +1848,7 @@ class ConstraintManager(EventManager):
         p_event_object : Event
             The event object containing details about the state change.
         """
+        # print("start---",datetime.now())
         # Get the entity that raised the state change event.
         entity = p_event_object.get_raising_object()
         # Initialize a set to store indices of actions to be masked.
@@ -1892,6 +1895,7 @@ class ConstraintManager(EventManager):
                               p_event_object=Event(p_raising_object=self,
                                                    idx_to_mask=idx_to_mask,
                                                    idx_to_unmask=idx_to_unmask))
+        # print("end ---",datetime.now())
 
 #----------------------------------------------------------------------------------------------------
 
@@ -2079,10 +2083,13 @@ class StateActionMapper:
 
 #----------------------------------------------------------------------------------------------------
 
-    def update_action_space(self, action_map):
+    def update_action_space(self, action_map, old_action_map):
         # When the action space changes, re-initialize the masks list to the new size.
+        old_masks = self.masks.copy()
         self.masks = [False for _ in range(len(action_map))]
-
+        for action,index in old_action_map.items():
+            if action in action_map.keys():
+                self.masks[action_map[action]] = old_masks[index]
 
 # -------------------------------------------------------------------------------------------------
 # -- Validation Block (Expanded for Larger Instances)

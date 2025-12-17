@@ -35,10 +35,22 @@ class ActionIndex:
                 if entity_type == "Truck" or entity_type == "Drone":
                     self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
 
-    def update_indexes(self, global_state, action_map):
+    def update_indexes(self, global_state, action_map, old_action_map, state_action_mapper):
         self.actions_by_type = defaultdict(set)
         self.actions_involving_entity = defaultdict(set)
-        self.build_indexes(global_state, action_map)
+        # self.build_indexes(global_state, action_map)
+        for action_tuple, action_index in action_map.items():
+            action_type = action_tuple[0]
+            self.actions_by_type[action_type].add(action_index)
+            if not action_type.params: continue
+            for i, param_def in enumerate(action_type.params):
+                entity_type = param_def['type']
+                # if entity_type == "Order":
+                entity_id = action_tuple[i + 1]
+                self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
+                if entity_type == "Truck" or entity_type == "Drone":
+                    self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
+
 
     def get_actions_of_type(self, action_types: List['ActionType']) -> Set[int]:
         ids = set()

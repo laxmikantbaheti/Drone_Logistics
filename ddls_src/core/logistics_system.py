@@ -1,5 +1,5 @@
 # In file: ddls_src/core/logistics_system.py
-
+from datetime import datetime
 # Import the 'random' module for generating random numbers, used in the validation block.
 import random
 # Import typing hints for better code readability and static analysis.
@@ -129,7 +129,8 @@ class LogisticsSystem(System, EventManager):
         self.action_index = None
         # Call the reset method to perform the main setup.
         self.setup = False
-        self.setup = self.reset()
+        self.reset()
+        # self.setup = True
 
     # --------------------------------------------------------------------------------------------------
 
@@ -169,6 +170,7 @@ class LogisticsSystem(System, EventManager):
             p_seed: A seed for random number generators to ensure reproducibility.
         """
         if not self.setup:
+            # self.setup = True
             # Configure which actions are to be handled automatically by the system's internal logic.
             self.automatic_logic_config = {action: action.is_automatic for action in self.actions.get_all_actions()}
 
@@ -251,7 +253,7 @@ class LogisticsSystem(System, EventManager):
             # # Perform an initial update of the MLPro state object.
             # self._update_state()
 
-        self.global_state.reset()
+        self.global_state.reset(self.entities)
 
         # Ensure all entities have a reference to the global state.
         all_entity_dicts = self.global_state.get_all_entities()
@@ -378,6 +380,7 @@ class LogisticsSystem(System, EventManager):
         Returns:
             bool: True if an action was successfully processed, False otherwise.
         """
+        print("Process Started--", datetime.now())
         # Flag to track if the action was processed.
         action_processed = False
         # Extract the sorted values from the MLPro action object.
@@ -536,19 +539,24 @@ class LogisticsSystem(System, EventManager):
         self.global_state.add_dynamic_orders(orders)
         # self.state_action_mapper.add_order(p_oredrs=p_event_object.get_data()['p_orders'])
         # Regenerate the action map to include actions related to the new orders.
+        old_action_map = self.action_map.copy()
         self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
         # Update the reverse action map.
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
         # Agent maps
         self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
         # Update the action index with the new action map.
-        self.action_index.update_indexes(global_state=self.global_state, action_map=self.action_map)
+        self.action_index.update_indexes(global_state=self.global_state, action_map=self.action_map, old_action_map = old_action_map, state_action_mapper = self.state_action_mapper)
         # Link the updated action index to the constraint manager.
         self.constraint_manager.action_index = self.action_index
         # Update the state-action mapper with the new action space.
-        self.state_action_mapper.update_action_space(self.action_map)
+        self.state_action_mapper.update_action_space(self.action_map, old_action_map)
         # Update constraints to reflect the new state.
-        self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
+        # print("Start --", datetime.now())
+        # self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
+        for order in orders:
+            order.raise_state_change_event()
+        # print("End --", datetime.now())
         # Re-generate the masks to account for the new state and actions.
         self.get_masks()
 

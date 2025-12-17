@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -86,6 +88,7 @@ class LogisticRLScenario(gym.Env):
         Resets the simulation. Note: This calls step() with a dummy action to
         fast-forward to the first decision point if the loop logic dictates it.
         """
+        print("System reset at ---", datetime.now())
         super().reset(seed=seed, options = options)
         self._system.reset(p_seed=seed)
         self.truncate_counter = 0
@@ -98,77 +101,154 @@ class LogisticRLScenario(gym.Env):
             # self._system.network.setup_visualization()
             # self._system.network.update_plot()
             pass
-
+        self._system.setup = True
         return self._get_observation(), self._get_info()
+
+    # def step(self, action_idx: int):
+    #     """
+    #     Strict implementation of the user-defined logic loop:
+    #     1. Checks for available actions (Auto or Agent).
+    #     2. If NONE -> Advances Time.
+    #     3. If Auto -> Executes Auto.
+    #     4. If Agent -> Executes 'action_idx' and RETURNS.
+    #     """
+    #     self.truncate_counter += 1
+    #     while True:
+    #         # Check termination
+    #         if self._check_done()[0] or self._check_done()[1]:
+    #             print(self._system.global_state.current_time)
+    #             return self._get_observation(), self._calculate_reward(), self._check_done()[0], self._check_done()[1], self._get_info()
+    #
+    #         # --- Check availability ---
+    #         auto_actions = self._system.get_automatic_actions()
+    #         agent_mask = self._get_agent_mask()
+    #
+    #         # Check if there are any unmasked agent actions (excluding NO_OP usually,
+    #         # but strictly checking mask here).
+    #         # We assume NO_OP is handled by the time advance logic if it's the only option.
+    #         valid_agent_indices = np.where(agent_mask)[0]
+    #         # Filter out NO_OP from "available actions" count if we want the loop to handle waiting
+    #         meaningful_agent_actions = [i for i in valid_agent_indices if i != self._no_op_idx]
+    #         # meaningful_agent_actions.pop()
+    #         has_auto = len(auto_actions) > 0
+    #         has_agent = len(meaningful_agent_actions) > 0
+    #         # "checks if there is any action available (automatic or non automatic),
+    #         #  if not the the simulation is advanced in time"
+    #         if not has_auto and not has_agent:
+    #             self._system.advance_time()
+    #
+    #             if self.visualize:
+    #                 self._system.network.update_plot()
+    #
+    #             # "after advancing time it again checks" -> Continue loop
+    #             continue
+    #
+    #         # "If automatic action available we execute the automatic action"
+    #         if has_auto:
+    #             # Execute the first one (standard queue processing)
+    #             self._system.action_manager.execute_action(auto_actions[0])
+    #
+    #             if self.visualize:
+    #                 self._system.network.update_plot()
+    #
+    #             # "We keep repeating this again and again" -> Continue loop
+    #             continue
+    #
+    #         # "Once there are no automatic actions available we check if there are any
+    #         #  unmasked actions available for the agent to take."
+    #         if has_agent:
+    #             sys_action_id = self._system.agent_to_system_map[action_idx]
+    #             # "If there are the agent takes action and executes in the environment"
+    #             action_obj = LogisticsAction(
+    #                 p_action_space=self._system.get_action_space(),
+    #                 p_values=[sys_action_id]
+    #             )
+    #             self._system.process_action(action_obj)
+    #
+    #             if self.visualize:
+    #                 self._system.network.update_plot()
+    #
+    #             # "and the step function returns"
+    #             if self._check_done()[0] or self._check_done()[1]:
+    #                 print(self._system.global_state.current_time)
+    #             return self._get_observation(), self._calculate_reward(), self._check_done()[0], self._check_done()[1], self._get_info()
 
     def step(self, action_idx: int):
         """
-        Strict implementation of the user-defined logic loop:
-        1. Checks for available actions (Auto or Agent).
-        2. If NONE -> Advances Time.
-        3. If Auto -> Executes Auto.
-        4. If Agent -> Executes 'action_idx' and RETURNS.
+        Adjusted implementation:
+        1. Executes the Agent's 'action_idx' IMMEDIATELY.
+        2. Enters a loop to process automatic reactions.
+        3. Loop continues until NO actions (Auto or Agent) are available.
+        4. Returns everything once the system settles (no actions left).
         """
         self.truncate_counter += 1
+
+        # --- Modification 1: Execute Agent Action First ---
+        # We execute the passed action_idx immediately before checking anything else.
+        sys_action_id = self._system.agent_to_system_map[action_idx]
+        action_obj = LogisticsAction(
+            p_action_space=self._system.get_action_space(),
+            p_values=[sys_action_id]
+        )
+        self._system.process_action(action_obj)
+
+        if self.visualize:
+            self._system.network.update_plot()
+
+        # --- Modification 2: Loop until no action is available ---
         while True:
             # Check termination
             if self._check_done()[0] or self._check_done()[1]:
                 print(self._system.global_state.current_time)
-                return self._get_observation(), self._calculate_reward(), self._check_done()[0], self._check_done()[1], self._get_info()
+                return self._get_observation(), self._calculate_reward(), self._check_done()[0], self._check_done()[
+                    1], self._get_info()
 
             # --- Check availability ---
             auto_actions = self._system.get_automatic_actions()
             agent_mask = self._get_agent_mask()
 
-            # Check if there are any unmasked agent actions (excluding NO_OP usually,
-            # but strictly checking mask here).
-            # We assume NO_OP is handled by the time advance logic if it's the only option.
             valid_agent_indices = np.where(agent_mask)[0]
-            # Filter out NO_OP from "available actions" count if we want the loop to handle waiting
             meaningful_agent_actions = [i for i in valid_agent_indices if i != self._no_op_idx]
-            # meaningful_agent_actions.remove(436)
+
             has_auto = len(auto_actions) > 0
             has_agent = len(meaningful_agent_actions) > 0
-            # "checks if there is any action available (automatic or non automatic),
-            #  if not the the simulation is advanced in time"
+
+            # --- Modification 3: Exit Loop if No Actions Available ---
+            # "loop is continued until no action is available. And then return"
+
             if not has_auto and not has_agent:
                 self._system.advance_time()
 
                 if self.visualize:
                     self._system.network.update_plot()
 
-                # "after advancing time it again checks" -> Continue loop
+                    # "after advancing time it again checks" -> Continue loop
                 continue
 
-            # "If automatic action available we execute the automatic action"
+            # --- Process Automatic Actions ---
             if has_auto:
-                # Execute the first one (standard queue processing)
+                # Execute the first automatic action
                 self._system.action_manager.execute_action(auto_actions[0])
 
                 if self.visualize:
                     self._system.network.update_plot()
 
-                # "We keep repeating this again and again" -> Continue loop
+                # Continue to check if this triggered more auto actions or agent actions
                 continue
 
-            # "Once there are no automatic actions available we check if there are any
-            #  unmasked actions available for the agent to take."
+            # --- Handling Agent Actions Inside Loop ---
+            # If we have no auto actions, but we DO have agent actions (has_agent=True),
+            # we must also break and return.
+            # Why? Because we cannot execute 'action_idx' again (it was already done).
+            # We need to return so the agent can select the NEXT action.
             if has_agent:
-                sys_action_id = self._system.agent_to_system_map[action_idx]
-                # "If there are the agent takes action and executes in the environment"
-                action_obj = LogisticsAction(
-                    p_action_space=self._system.get_action_space(),
-                    p_values=[sys_action_id]
-                )
-                self._system.process_action(action_obj)
+                break
+        # --- Return everything ---
+        if self._check_done()[0] or self._check_done()[1]:
+            print(self._system.global_state.current_time)
 
-                if self.visualize:
-                    self._system.network.update_plot()
-
-                # "and the step function returns"
-                if self._check_done()[0] or self._check_done()[1]:
-                    print(self._system.global_state.current_time)
-                return self._get_observation(), self._calculate_reward(), self._check_done()[0], self._check_done()[1], self._get_info()
+        return self._get_observation(), self._calculate_reward(), self._check_done()[0], self._check_done()[
+            1], self._get_info()
 
     # --- Helpers ---
 

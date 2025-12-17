@@ -107,7 +107,8 @@ def run_ppo_simulation():
 
     # 1. Define Configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
-    config_file_path = os.path.join(script_path, '..', 'config', 'large_instance.json')
+    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
+    # config_file_path = os.path.join(script_path, '..', 'config', 'large_instance.json')
     config_file_path = os.path.normpath(config_file_path)
 
     sim_config = {
@@ -123,7 +124,7 @@ def run_ppo_simulation():
     }
 
     # 2. Initialize Environment
-    env = LogisticRLScenario(sim_config, visualize=False, custom_log = True)
+    env = LogisticRLScenario(sim_config, visualize=False, custom_log = False)
 
     # [CRITICAL] Set Max Episode Steps
     # We set this to 5000. It is crucial that n_steps below is > 5000.

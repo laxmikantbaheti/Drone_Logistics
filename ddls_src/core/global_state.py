@@ -1,6 +1,8 @@
 import itertools
 from typing import Dict, Any, List, Tuple
 
+from torchgen.packaged.autograd.gen_variable_type import emit_body
+
 from ddls_src.actions.action_mapping import order_id
 from ddls_src.entities.order import PseudoOrder
 
@@ -314,8 +316,13 @@ class GlobalState:
     def get_all_entities(self):
         return [self.orders, self.trucks, self.drones, self.micro_hubs, self.nodes]
 
-    def reset(self):
+    def reset(self, entities):
         self.current_time = 0
+        for ps_order in self.pseudo_orders.keys():
+            self.orders.pop(ps_order)
+            # entities["orders"].pop(ps_order)
+        # self.orders = entities["orders"]
+        self.pseudo_orders = {}
 
 
 
