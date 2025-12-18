@@ -107,7 +107,7 @@ def run_ppo_simulation():
 
     # 1. Define Configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
-    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
+    config_file_path = os.path.join(script_path, '..', 'config', 'large_instance.json')
     # config_file_path = os.path.join(script_path, '..', 'config', 'large_instance.json')
     config_file_path = os.path.normpath(config_file_path)
 

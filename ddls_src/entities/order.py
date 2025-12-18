@@ -161,16 +161,19 @@ class Order(LogisticEntity):
     def assign_vehicle(self, vehicle_id: int):
         self.assigned_vehicle_id = vehicle_id
         self.status = "assigned"
-        self.update_state_value_by_dim_name(self.C_DIM_ASSIGNED_VEHICLE[0], vehicle_id)
-        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
-        self.raise_state_change_event()
+        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
+                                            [vehicle_id, self.C_STATUS_ASSIGNED])
+
+        # self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
+        # self.raise_state_change_event()
         return True
 
     def assign_micro_hub(self, micro_hub_id: int):
         self.assigned_micro_hub_id = micro_hub_id
         self.status = "at_micro_hub"
-        self.update_state_value_by_dim_name(self.C_DIM_ASSIGNED_VEHICLE[0], micro_hub_id)
-        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
+        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
+                                            [micro_hub_id, self.C_STATUS_ASSIGNED])
+        # self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
         self._update_state()
         return True
 
@@ -186,7 +189,7 @@ class Order(LogisticEntity):
 
     def set_enroute(self):
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)
-        self.raise_state_change_event()
+        # self.raise_state_change_event()
 
     def get_SLA_remaining(self, current_time: float) -> float:
         return self.SLA_deadline - current_time
@@ -211,12 +214,12 @@ class Order(LogisticEntity):
             raise ValueError("Invalid delivery status provided for Order entity.")
 
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], status)
-        self.raise_state_change_event()
+        # self.raise_state_change_event()
 
     def set_delivered(self):
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_DELIVERED)
         self.status = "Delivered"
-        self.raise_state_change_event()
+        # self.raise_state_change_event()
         if isinstance(self, PseudoOrder):
             self._raise_event(PseudoOrder.C_EVENT_ORDER_DELIVERED, Event(p_raising_object=self))
 

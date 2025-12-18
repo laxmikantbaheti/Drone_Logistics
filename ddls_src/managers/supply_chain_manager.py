@@ -248,7 +248,7 @@ class SupplyChainManager(System):
             assigned = p_entity.assign_orders([p_order]) and assigned
         # self.global_state.get_order_requests()[
         #         (p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)
-        p_order.raise_state_change_event()
+        # p_order.raise_state_change_event()
         return assigned
 
     def create_order_requests(self, p_orders:list):

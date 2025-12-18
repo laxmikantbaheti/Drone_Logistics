@@ -1854,7 +1854,7 @@ class ConstraintManager(EventManager):
         # Initialize a set to store indices of actions to be masked.
         idx_to_mask = set()
         validations = set()
-
+        print("Updated Constraints - ", entity)
         # Get all actions involving this specific entity instance.
         related_actions_by_entity = self.action_index.actions_involving_entity.get((entity.C_NAME, entity.get_id()), set())
 

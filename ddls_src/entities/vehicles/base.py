@@ -314,11 +314,11 @@ class Vehicle(LogisticEntity, ABC):
                     if end_node_id in self.pickup_node_ids:
                         if self.custom_log:
                             print(f"\n\n\n\n\nVehicle {self._id} reached pickup node {end_node_id}.\n\n\n\n")
-                        self.raise_state_change_event()
+                        # self.raise_state_change_event()
                     elif end_node_id in self.delivery_node_ids:
                         if self.custom_log:
                             print(f"\n\n\n\n\nVehicle {self._id} reached delivery node {end_node_id}.\n\n\n\n")
-                        self.raise_state_change_event()
+                        # self.raise_state_change_event()
                         # input("Press Enter to continue")
                     return
                 else:
@@ -333,7 +333,7 @@ class Vehicle(LogisticEntity, ABC):
                         self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
                     self.status = "idle"
                     self.route_nodes = []
-                    self.raise_state_change_event()
+                    # self.raise_state_change_event()
                 else:
                     start_node_id, end_node_id = self.current_route[0], self.current_route[1]
                     if self.C_NAME == "Drone":
@@ -350,7 +350,7 @@ class Vehicle(LogisticEntity, ABC):
                         self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
                     else:
                         self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
-                    self.raise_state_change_event()
+                    # self.raise_state_change_event()
             else:
                 self.current_node_id = None
 
@@ -365,7 +365,7 @@ class Vehicle(LogisticEntity, ABC):
                     self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
                 self.status = "idle"
                 self.route_nodes = []
-                self.raise_state_change_event()
+                # self.raise_state_change_event()
             else:
                 start_node_id, end_node_id = self.current_route[0], self.current_route[1]
                 if self.C_NAME == "Drone":
@@ -382,7 +382,7 @@ class Vehicle(LogisticEntity, ABC):
                     self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
                 else:
                     self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
-                self.raise_state_change_event()
+                # self.raise_state_change_event()
 
             # if self.en_route_timer <= 0:
             #     self.current_node_id = self.current_route[1]
@@ -517,14 +517,14 @@ class Vehicle(LogisticEntity, ABC):
         if order not in self.cargo_manifest:
             self.cargo_manifest.append(order)
             self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
-            self.raise_state_change_event()
+            # self.raise_state_change_event()
 
     def remove_cargo(self, order: int):
         """Removes a package from the vehicle's cargo manifest."""
         if order in self.cargo_manifest:
             self.cargo_manifest.remove(order)
             self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
-            self.raise_state_change_event()
+            # self.raise_state_change_event()
 
     def set_route(self, route: List[int]):
         """
@@ -546,7 +546,7 @@ class Vehicle(LogisticEntity, ABC):
                 self.current_node_id = self.route_nodes[0]
             elif self.current_node_id is None:
                 self.current_node_id = self.start_node_id
-            self.raise_state_change_event()
+            # self.raise_state_change_event()
             return
 
         self.current_route = route
@@ -575,7 +575,7 @@ class Vehicle(LogisticEntity, ABC):
             self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
         else:
             self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
-        self.raise_state_change_event()
+        # self.raise_state_change_event()
 
     def get_current_location(self):
         return self.get_state_value_by_dim_name("loc x"), self.get_state_value_by_dim_name("loc y")

@@ -1,3 +1,4 @@
+from mlpro.bf.exceptions import ParamError
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import Set, Dimension, MSpace, ESpace
 from datetime import timedelta
@@ -54,12 +55,23 @@ class LogisticEntity(System):
         return self._state.get_value(self._state.get_related_set().get_dim_by_name(p_dim_name).get_id())
 
     def update_state_value_by_dim_name(self, p_dim_name, p_value):
-        dim = self.get_state_space().get_dim_by_name(p_dim_name)
-        self.log(self.C_LOG_TYPE_S, f"{dim.get_name_long()} updated.")
-        if self.custom_log:
-            print(f"{self.C_NAME}{self.get_id()} - {dim.get_name_long()} updated to {p_value}.")
-        self._state.set_value(dim.get_id(), p_value)
-        self.raise_state_change_event()
+        if isinstance(p_dim_name, list):
+            if not len(p_value) == len(p_dim_name):
+                raise ParamError("Length of dim names is not equal to values provided.")
+            for i, dims in enumerate(p_dim_name):
+                dim = self.get_state_space().get_dim_by_name(dims)
+                self.log(self.C_LOG_TYPE_S, f"{dim.get_name_long()} updated.")
+                if self.custom_log:
+                    print(f"{self.C_NAME}{self.get_id()} - {dim.get_name_long()} updated to {p_value[i]}.")
+                self._state.set_value(dim.get_id(), p_value[i])
+            self.raise_state_change_event()
+        else:
+            dim = self.get_state_space().get_dim_by_name(p_dim_name)
+            self.log(self.C_LOG_TYPE_S, f"{dim.get_name_long()} updated.")
+            if self.custom_log:
+                print(f"{self.C_NAME}{self.get_id()} - {dim.get_name_long()} updated to {p_value}.")
+            self._state.set_value(dim.get_id(), p_value)
+            self.raise_state_change_event()
 
     def raise_state_change_event(self):
         self._raise_event(self.C_EVENT_ENTITY_STATE_CHANGE, Event(self))
