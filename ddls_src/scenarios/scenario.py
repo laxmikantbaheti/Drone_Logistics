@@ -165,10 +165,10 @@ class LogisticsScenario(Scenario):
 
         # if self._system.get_success() and self._visualize:
         if self._system.get_success():
-            plot_vehicle_gantt_chart(self._system.global_state)
-            plot_vehicle_states(self._system.global_state)
-            plot_vehicle_cargo_history(self._system.global_state)
-            plot_invalid_delivery_gantt_chart(self._system.global_state)
+            # plot_vehicle_gantt_chart(self._system.global_state)
+            # plot_vehicle_states(self._system.global_state)
+            # plot_vehicle_cargo_history(self._system.global_state)
+            # plot_invalid_delivery_gantt_chart(self._system.global_state)
             pass
 
         new_state = self._system.get_state()

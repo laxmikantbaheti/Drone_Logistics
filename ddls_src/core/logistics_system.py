@@ -381,7 +381,7 @@ class LogisticsSystem(System, EventManager):
         Returns:
             bool: True if an action was successfully processed, False otherwise.
         """
-        print("Process Started--", datetime.now())
+        # print("Process Started--", datetime.now())
         # Flag to track if the action was processed.
         action_processed = False
         # Extract the sorted values from the MLPro action object.
@@ -556,7 +556,10 @@ class LogisticsSystem(System, EventManager):
         # print("Start --", datetime.now())
         # self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
         for order in orders:
-            order.raise_state_change_event()
+            # This event is handled by the ConstraintManager to update relevant action constraints.
+            order.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
+                                                      self.constraint_manager.handle_entity_state_change)
+            # order.raise_state_change_event()
         # print("End --", datetime.now())
         # Re-generate the masks to account for the new state and actions.
         self.get_masks()

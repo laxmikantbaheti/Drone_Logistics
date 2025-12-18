@@ -32,7 +32,6 @@ from ddls_src.entities import *
 from mlpro.bf.various import Log
 from ddls_src.entities.order import PseudoOrder
 from ddls_src.core.global_state import GlobalState
-
 # # Forward declarations for type hinting to avoid circular import issues.
 # class GlobalState: pass
 # class Vehicle: pass
@@ -184,6 +183,7 @@ class VehicleAvailableConstraint(Constraint):
                           SimulationActions.DRONE_TO_NODE]
     # Set the default effect of the constraint.
     C_DEFAULT_EFFECT = True
+    C_DIMS = [Vehicle.C_DIM_AVAILABLE[0]]
 
     # # This is a commented-out event handler method, potentially for future use.
     # def _handle_vehicle_availabiliy(self, p_event_id, p_event_object):
@@ -1854,7 +1854,7 @@ class ConstraintManager(EventManager):
         # Initialize a set to store indices of actions to be masked.
         idx_to_mask = set()
         validations = set()
-        print("Updated Constraints - ", entity)
+        # print("Updated Constraints - ", entity)
         # Get all actions involving this specific entity instance.
         related_actions_by_entity = self.action_index.actions_involving_entity.get((entity.C_NAME, entity.get_id()), set())
 

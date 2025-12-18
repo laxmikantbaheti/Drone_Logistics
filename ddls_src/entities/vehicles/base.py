@@ -138,8 +138,8 @@ class Vehicle(LogisticEntity, ABC):
         Resets the vehicle to its initial state at its starting node.
         """
         self.status = "idle"
-        self.update_state_value_by_dim_name(self.C_DIM_AVAILABLE[0], 1)
-        self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+        # self.update_state_value_by_dim_name(self.C_DIM_AVAILABLE[0], 1)
+        # self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
         if self.global_state is not None:
             time = self.global_state.current_time
             self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
@@ -156,14 +156,44 @@ class Vehicle(LogisticEntity, ABC):
         self.cargo_stats = {}
 
         # New: Reset coordinates to the start node
+        # Combined the following into a single update call
+        # self.update_state_value_by_dim_name(self.C_DIM_AVAILABLE[0], 1)
+        # self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
         if self.global_state and self.start_node_id is not None:
             self.current_location_coords = self.global_state.get_entity('node', self.start_node_id).coords
-            self.update_state_value_by_dim_name("loc x", self.current_location_coords[0])
-            self.update_state_value_by_dim_name("loc y", self.current_location_coords[1])
+            self.update_state_value_by_dim_name(p_dim_name=[self.C_DIM_AVAILABLE[0],
+                                                            self.C_DIM_TRIP_STATE[0],
+                                                            "loc x",
+                                                            "loc y"],
+                                                p_value = [1,
+                                                           self.C_TRIP_STATE_IDLE,
+                                                           self.current_location_coords[0],
+                                                           self.current_location_coords[1]])
+
+            # self.update_state_value_by_dim_name("loc y", self.current_location_coords[1])
         else:
             self.current_location_coords = (0.0, 0.0)
-            self.update_state_value_by_dim_name("loc x", self.current_location_coords[0])
-            self.update_state_value_by_dim_name("loc y", self.current_location_coords[1])
+            # self.update_state_value_by_dim_name(["loc x","loc y"],
+            #                                     [self.current_location_coords[0], self.current_location_coords[1]])
+            self.update_state_value_by_dim_name(p_dim_name=[self.C_DIM_AVAILABLE[0],
+                                                            self.C_DIM_TRIP_STATE[0],
+                                                            "loc x",
+                                                            "loc y"],
+                                                p_value = [1,
+                                                           self.C_TRIP_STATE_IDLE,
+                                                           self.current_location_coords[0],
+                                                           self.current_location_coords[1]])
+
+        if self.global_state is not None:
+            time = self.global_state.current_time
+            self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id],
+                            p_frame=self.C_DATA_FRAME_VEH_STATES)
+        else:
+            self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id],
+                            p_frame=self.C_DATA_FRAME_VEH_STATES)
+
+            # self.update_state_value_by_dim_name("loc x", self.current_location_coords[0])
+            # self.update_state_value_by_dim_name("loc y", self.current_location_coords[1])
 
         # self._update_state()
 
@@ -303,13 +333,17 @@ class Vehicle(LogisticEntity, ABC):
                 self.current_node_id = end_node_id
                 self.current_edge = None
                 if (end_node_id in self.pickup_node_ids) or (end_node_id in self.delivery_node_ids):
-                    self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
+                    # Combined to a single update state call
+                    # self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
                     if self.global_state is not None:
                         time = self.global_state.current_time
                         self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
                     else:
                         self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
-                    self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
+                    self.update_state_value_by_dim_name(p_dim_name=[self.C_DIM_AT_NODE[0],
+                                                                    self.C_DIM_TRIP_STATE[0]],
+                                                        p_value=[True,
+                                                                 self.C_TRIP_STATE_HALT])
 
                     if end_node_id in self.pickup_node_ids:
                         if self.custom_log:

@@ -1,4 +1,4 @@
-from ddls_src.entities.order import Order
+from ddls_src.entities.order import Order, PseudoOrder
 from ddls_src.entities.vehicles.base import Vehicle
 from ddls_src.entities.vehicles.drone import Drone
 from ddls_src.entities.vehicles.truck import Truck
