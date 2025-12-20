@@ -136,7 +136,7 @@ def run_ppo_simulation():
 
     # [CRITICAL MODIFICATION] - Episodic Update Configuration
     # We want to collect a FULL episode before updating.
-    EPISODE_BUFFER_SIZE = 300  # Must be > MAX_STEPS (5000)
+    EPISODE_BUFFER_SIZE = 180  # Must be > MAX_STEPS (5000)
 
     # 3. Define Model
     model = MaskablePPO(
@@ -148,16 +148,16 @@ def run_ppo_simulation():
         learning_rate=5e-3,
         n_steps=EPISODE_BUFFER_SIZE,  # Wait for ~5120 steps before training
         batch_size=100,  # Standard mini-batch size (or set to 5120 for full-batch)
-        n_epochs=5,  # Train on this episode data 10 times
+        n_epochs=200,  # Train on this episode data 10 times
         gamma=0.99,
         gae_lambda=1.0,  # 1.0 = Monte Carlo (No bootstrapping)
-        ent_coef=0.01,
+        ent_coef=0.1,
         device="cuda"# Encourages exploration (helpful for sparse rewards)
     )
 
     # 4. Training Configuration
     # Increase this for real training (e.g., 500)
-    NUM_EPISODES = 700
+    NUM_EPISODES = 300
 
     # Total timesteps must be enough to cover NUM_EPISODES * MAX_STEPS
     LARGE_TIMESTEPS = NUM_EPISODES * (EPISODE_BUFFER_SIZE + 100)

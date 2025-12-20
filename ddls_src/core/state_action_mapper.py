@@ -2087,6 +2087,8 @@ class StateActionMapper:
         # When the action space changes, re-initialize the masks list to the new size.
         old_masks = self.masks.copy()
         self.masks = [False for _ in range(len(action_map))]
+        if old_action_map is None:
+            return
         for action,index in old_action_map.items():
             if action in action_map.keys():
                 self.masks[action_map[action]] = old_masks[index]

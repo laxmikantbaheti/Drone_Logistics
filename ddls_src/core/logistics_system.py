@@ -270,6 +270,18 @@ class LogisticsSystem(System, EventManager):
         self.time_manager.reset_time(new_initial_time=initial_sim_time)
         self.global_state.current_time = initial_sim_time
 
+        self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+        # Update the reverse action map.
+        self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
+        # Agent maps
+        self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
+        # Update the action index with the new action map.
+        self.action_index.update_indexes(global_state=self.global_state, action_map=self.action_map, old_action_map = None, state_action_mapper = self.state_action_mapper)
+        # Link the updated action index to the constraint manager.
+        self.constraint_manager.action_index = self.action_index
+        # Update the state-action mapper with the new action space.
+        self.state_action_mapper.update_action_space(self.action_map, None)
+
         # Perform an initial update of the MLPro state object.
         self._update_state()
 
@@ -499,8 +511,8 @@ class LogisticsSystem(System, EventManager):
                 agent_mask[idx] = True
         # Ensure the NO_OPERATION action is always available to the agent.
         no_op_idx = self.action_map.get((SimulationActions.NO_OPERATION,))
-        if no_op_idx is not None:
-            agent_mask[self.agent_to_system_map.index(no_op_idx)] = False
+        # if no_op_idx is not None:
+        agent_mask[self.agent_to_system_map.index(no_op_idx)] = False
         # Return the final agent-specific mask.
         return agent_mask
 
@@ -631,6 +643,7 @@ class LogisticsSystem(System, EventManager):
             bool: Always False.
         """
         return False
+
 
 
 # -------------------------------------------------------------------------
