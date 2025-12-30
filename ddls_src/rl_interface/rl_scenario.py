@@ -332,7 +332,7 @@ class LogisticRLScenario(gym.Env):
 
     def _calculate_reward(self):
         if self._check_done()[0]:
-            return -self._system.global_state.current_time/1000 * 1.5
+            return -self._system.global_state.current_time
         if self._check_done()[1]:
             return -5000
         else:

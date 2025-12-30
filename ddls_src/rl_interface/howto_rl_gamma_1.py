@@ -107,7 +107,7 @@ def run_ppo_simulation():
 
     # 1. Define Configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
-    config_file_path = os.path.join(script_path, '..', 'config', 'large_instance.json')
+    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
     # config_file_path = os.path.join(script_path, '..', 'config', 'large_instance.json')
     config_file_path = os.path.normpath(config_file_path)
 
@@ -128,7 +128,7 @@ def run_ppo_simulation():
 
     # [CRITICAL] Set Max Episode Steps
     # We set this to 5000. It is crucial that n_steps below is > 5000.
-    MAX_STEPS = 500000
+    MAX_STEPS = 5000000
     env = TimeLimit(env, max_episode_steps=MAX_STEPS)
 
     env = Monitor(env)
@@ -136,7 +136,7 @@ def run_ppo_simulation():
 
     # [CRITICAL MODIFICATION] - Episodic Update Configuration
     # We want to collect a FULL episode before updating.
-    EPISODE_BUFFER_SIZE = 180  # Must be > MAX_STEPS (5000)
+    EPISODE_BUFFER_SIZE = 150  # Must be > MAX_STEPS (5000)
 
     # 3. Define Model
     model = MaskablePPO(
@@ -145,19 +145,20 @@ def run_ppo_simulation():
         verbose=1,
 
         # --- Episodic Update Settings ---
-        learning_rate=5e-3,
+        learning_rate=1e-3,
         n_steps=EPISODE_BUFFER_SIZE,  # Wait for ~5120 steps before training
-        batch_size=100,  # Standard mini-batch size (or set to 5120 for full-batch)
-        n_epochs=200,  # Train on this episode data 10 times
+        batch_size=64,  # Standard mini-batch size (or set to 5120 for full-batch)
+        n_epochs=25,  # Train on this episode data 10 times
         gamma=0.99,
         gae_lambda=1.0,  # 1.0 = Monte Carlo (No bootstrapping)
-        ent_coef=0.1,
+        ent_coef=0.01,
         device="cuda"# Encourages exploration (helpful for sparse rewards)
     )
 
     # 4. Training Configuration
     # Increase this for real training (e.g., 500)
-    NUM_EPISODES = 300
+    NUM_EPISODES = 3000
+
 
     # Total timesteps must be enough to cover NUM_EPISODES * MAX_STEPS
     LARGE_TIMESTEPS = NUM_EPISODES * (EPISODE_BUFFER_SIZE + 100)
