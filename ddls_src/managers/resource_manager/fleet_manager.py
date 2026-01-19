@@ -5,7 +5,7 @@ from datetime import timedelta
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
 
-# from ddls_src.actions.action_mapping import truck_id
+from ddls_src.actions.action_mapping import truck_id
 from ddls_src.actions.base import SimulationActions, ActionType
 from ddls_src.core.basics import LogisticsAction
 
