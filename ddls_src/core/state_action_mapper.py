@@ -384,19 +384,6 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
                 p_entity.action_operability[action_type] = is_operable
     # --- [END OF MODIFICATION] ---
 
-    def update_constraint_flags(self, p_entity, **kwargs):
-
-        if not isinstance(p_entity, Vehicle):
-            raise TypeError("Vehicle at Delivery Node only works with a Vehicle Object.")
-        if p_entity.current_node_id is None:
-            unload_vehicle = False
-        else:
-            unload_vehicle = []
-            for orders in p_entity.delivery_orders:
-                pass
-
-        pass
-
 
 #----------------------------------------------------------------------------------------------------
 
@@ -1788,7 +1775,6 @@ class ConstraintManager(EventManager):
         # Initialize the EventManager parent class disabling its logging.
         EventManager.__init__(self, p_logging=False)
         # A set to hold all instantiated constraint objects.
-        self._update_counter = 0
         self.constraints = set()
         # A dictionary to map entity type names to a list of applicable constraints.
         self.entity_constraints = {}
@@ -1862,7 +1848,6 @@ class ConstraintManager(EventManager):
         p_event_object : Event
             The event object containing details about the state change.
         """
-        self._update_counter += 1
         # print("start---",datetime.now())
         # Get the entity that raised the state change event.
         entity = p_event_object.get_raising_object()
@@ -1910,7 +1895,7 @@ class ConstraintManager(EventManager):
                               p_event_object=Event(p_raising_object=self,
                                                    idx_to_mask=idx_to_mask,
                                                    idx_to_unmask=idx_to_unmask))
-        # print("end ---",datetime.now(), self._update_counter)
+        # print("end ---",datetime.now())
 
 #----------------------------------------------------------------------------------------------------
 
@@ -1926,7 +1911,6 @@ class ConstraintManager(EventManager):
         reverse_action_map : Dict
             The updated reverse action map.
         """
-        # print("constraint refresh end ---", datetime.now())
         # Update the reverse action map for this manager and all its constraints.
         self.reverse_action_map = reverse_action_map
         # Iterate through all entity types in the global state.
@@ -1981,7 +1965,7 @@ class ConstraintManager(EventManager):
                                       p_event_object=Event(p_raising_object=self,
                                                            idx_to_mask=idx_to_mask,
                                                            idx_to_unmask=idx_to_unmask))
-        # print("constraint refresh end ---", datetime.now())
+
 
 # -------------------------------------------------------------------------------------------------
 # -- StateActionMapper (Now Fully Self-Configuring)

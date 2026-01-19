@@ -340,7 +340,7 @@ class LogisticRLScenario(gym.Env):
 
     def _check_done(self):
         success = self._system.get_success()
-        broken = True if self.truncate_counter > 1000 else False
+        broken = True if self.truncate_counter > 500 else False
         if success and self.visualize:
             plot_vehicle_gantt_chart(self._system.global_state)
             plot_vehicle_states(self._system.global_state)

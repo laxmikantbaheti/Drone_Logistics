@@ -1,16 +1,19 @@
 # In ddls_src/entities/vehicles/base.py
-from abc import ABC
-from typing import List, Tuple, Optional
+from abc import ABC, abstractmethod
+from typing import List, Tuple, Any, Dict, Optional, Set
 from datetime import timedelta
 
 from mlpro.bf.exceptions import ParamError
+# MLPro Imports
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
 
 from ddls_src.actions.action_enums import SimulationAction
-from ddls_src.actions.base import SimulationActions, ActionType
+from ddls_src.actions.action_mapping import truck_id
+from ddls_src.actions.base import SimulationActions
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.entities.base import LogisticEntity
+from ddls_src.actions.base import SimulationActions, ActionType
 from ddls_src.entities.order import Order
 
 
@@ -35,7 +38,6 @@ class Vehicle(LogisticEntity, ABC):
     C_TRIP_STATE_LOADING = "Loading"
     C_TRIP_STATE_UNLOADING = "Unloading"
     C_VALID_TRIP_STATES = [C_TRIP_STATE_IDLE, C_TRIP_STATE_EN_ROUTE, C_TRIP_STATE_HALT]
-
     C_DIM_TRIP_STATE = ["trip", "Trip Status", C_VALID_TRIP_STATES]
     C_DIM_AVAILABLE = ["ava", "Is Available", [True, False]]
     C_DIM_AT_NODE = ["node_bool", "At Node", [True, False]]
@@ -76,7 +78,6 @@ class Vehicle(LogisticEntity, ABC):
                          p_latency=timedelta(0, 0, 0))
 
         self.custom_log = False
-
         # Vehicle-specific attributes
         self.start_node_id: int = p_kwargs.get('start_node_id')
         self.max_payload_capacity: float = p_kwargs.get('max_payload_capacity', 0)
@@ -96,22 +97,18 @@ class Vehicle(LogisticEntity, ABC):
         # A route is a sequence (list), not a set.
         self.route_nodes: List[int] = []
 
-        # Movement mode
+        # New attributes for matrix-based movement
         if "p_movement_mode" in p_kwargs.keys():
             self.movement_mode = p_kwargs["p_movement_mode"]
         else:
             raise ParamError("Please provide a movement mode value in the simulation config.")
-
-        # Matrix-based movement attributes
-        self.en_route_timer: float = 0.0  # travel time remaining on current leg
+        self.en_route_timer = 0.0  # Timer for matrix-based movement
 
         self._state = State(self._state_space)
-
-        self.delivery_orders: List[Order] = []
-        self.delivery_node_ids: List[int] = []
-        self.pickup_orders: List[Order] = []
-        self.pickup_node_ids: List[int] = []
-
+        self.delivery_orders = []
+        self.delivery_node_ids = []
+        self.pickup_orders = []
+        self.pickup_node_ids = []
         self.cargo_stats = {}
         self.reset()
         self.consolidation_confirmed: bool = False
@@ -123,115 +120,86 @@ class Vehicle(LogisticEntity, ABC):
         """
         state_space = MSpace()
 
-        state_space.add_dim(Dimension('loc x', "R", "Current Location X"))
-        state_space.add_dim(Dimension('loc y', "R", "Current Location Y"))
+        state_space.add_dim(Dimension('loc x',
+                                      "R",
+                                      "Current Location X"))
 
+        state_space.add_dim(Dimension('loc y',
+                                      "R",
+                                      "Current Location Y"))
         action_space = MSpace()
         action_space.add_dim(
-            Dimension(p_name_short='target_node',
-                      p_base_set='Z',
-                      p_name_long='Target Node ID',
-                      p_boundaries=[0, 999]))
+            Dimension(p_name_short='target_node', p_base_set='Z', p_name_long='Target Node ID', p_boundaries=[0, 999]))
 
         return state_space, action_space
-
-    # --------------------------
-    # Helpers (added/fixed)
-    # --------------------------
-    def _trip_time(self):
-        return self.global_state.current_time if self.global_state is not None else 0
-
-    def _log_trip_state(self):
-        self.save_data(
-            self._trip_time(),
-            [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id],
-            p_frame=self.C_DATA_FRAME_VEH_STATES
-        )
-
-    def _get_network_type(self):
-        if self.global_state is None:
-            raise RuntimeError("global_state is required to compute travel times.")
-        if self.C_NAME == "Drone":
-            return self.global_state.network.C_NETWORK_AIR
-        if self.C_NAME == "Truck":
-            return self.global_state.network.C_NETWORK_GROUND
-        raise ValueError(f"Unknown vehicle type: {self.C_NAME}")
-
-    def _has_work_at_node(self, node_id: Optional[int]) -> bool:
-        """
-        HALT should remain active while there is pickup/delivery work at this node.
-        The contract you described: work is 'dealt with' when LOAD/UNLOAD actions
-        remove this node from pickup_node_ids/delivery_node_ids.
-        """
-        if node_id is None:
-            return False
-        return (node_id in self.pickup_node_ids) or (node_id in self.delivery_node_ids)
-
-    def _start_next_leg_matrix(self) -> bool:
-        """
-        Starts the next matrix-mode leg if current_route has >= 2 nodes.
-        Returns True if EN_ROUTE started, False if went IDLE.
-        """
-        if not self.current_route or len(self.current_route) < 2:
-            # No next hop -> IDLE at current node (if known)
-            self.status = "idle"
-            self.current_edge = None
-            self.en_route_timer = 0.0
-            self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
-            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-            self.route_nodes = []
-            self._log_trip_state()
-            return False
-
-        start_node_id, end_node_id = self.current_route[0], self.current_route[1]
-        network_type = self._get_network_type()
-
-        self.en_route_timer = float(
-            self.network_manager.network.get_travel_time(start_node_id, end_node_id, network_type=network_type)
-        )
-
-        # In-transit invariants
-        self.current_node_id = None
-        self.current_edge = (start_node_id, end_node_id)
-        self.status = "en_route"
-        self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], False)
-        self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
-        self._log_trip_state()
-        return True
 
     def _reset(self, p_seed=None):
         """
         Resets the vehicle to its initial state at its starting node.
         """
         self.status = "idle"
+        # self.update_state_value_by_dim_name(self.C_DIM_AVAILABLE[0], 1)
+        # self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+        if self.global_state is not None:
+            time = self.global_state.current_time
+            self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+        else:
+            self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
         self.consolidation_confirmed = False
         self.current_node_id = self.start_node_id
         self.cargo_manifest = []
         self.current_route = []
         self.route_progress = 0.0
-        self.route_nodes = []
+        self.route_nodes = []  # Clear the route nodes on reset
         self.delivery_orders = []
-        self.en_route_timer = 0.0
+        self.en_route_timer = 0.0  # Reset timer
         self.cargo_stats = {}
 
+        # New: Reset coordinates to the start node
+        # Combined the following into a single update call
+        # self.update_state_value_by_dim_name(self.C_DIM_AVAILABLE[0], 1)
+        # self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
         if self.global_state and self.start_node_id is not None:
             self.current_location_coords = self.global_state.get_entity('node', self.start_node_id).coords
-            self.update_state_value_by_dim_name(
-                p_dim_name=[self.C_DIM_AVAILABLE[0], self.C_DIM_TRIP_STATE[0], "loc x", "loc y", self.C_DIM_AT_NODE[0]],
-                p_value=[1, self.C_TRIP_STATE_IDLE, self.current_location_coords[0], self.current_location_coords[1], True]
-            )
+            self.update_state_value_by_dim_name(p_dim_name=[self.C_DIM_AVAILABLE[0],
+                                                            self.C_DIM_TRIP_STATE[0],
+                                                            "loc x",
+                                                            "loc y"],
+                                                p_value = [1,
+                                                           self.C_TRIP_STATE_IDLE,
+                                                           self.current_location_coords[0],
+                                                           self.current_location_coords[1]])
+
+            # self.update_state_value_by_dim_name("loc y", self.current_location_coords[1])
         else:
             self.current_location_coords = (0.0, 0.0)
-            self.update_state_value_by_dim_name(
-                p_dim_name=[self.C_DIM_AVAILABLE[0], self.C_DIM_TRIP_STATE[0], "loc x", "loc y", self.C_DIM_AT_NODE[0]],
-                p_value=[1, self.C_TRIP_STATE_IDLE, self.current_location_coords[0], self.current_location_coords[1], True]
-            )
+            # self.update_state_value_by_dim_name(["loc x","loc y"],
+            #                                     [self.current_location_coords[0], self.current_location_coords[1]])
+            self.update_state_value_by_dim_name(p_dim_name=[self.C_DIM_AVAILABLE[0],
+                                                            self.C_DIM_TRIP_STATE[0],
+                                                            "loc x",
+                                                            "loc y"],
+                                                p_value = [1,
+                                                           self.C_TRIP_STATE_IDLE,
+                                                           self.current_location_coords[0],
+                                                           self.current_location_coords[1]])
 
-        self._log_trip_state()
+        if self.global_state is not None:
+            time = self.global_state.current_time
+            self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id],
+                            p_frame=self.C_DATA_FRAME_VEH_STATES)
+        else:
+            self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id],
+                            p_frame=self.C_DATA_FRAME_VEH_STATES)
+
+            # self.update_state_value_by_dim_name("loc x", self.current_location_coords[0])
+            # self.update_state_value_by_dim_name("loc y", self.current_location_coords[1])
+
+        # self._update_state()
 
     def _process_action(self, p_action: LogisticsAction, p_t_step: timedelta = None) -> bool:
         """
-        Processes actions.
+        Processes a "go to node" action. Calculates and sets the vehicle's route.
         """
         action_id = int(p_action.get_sorted_values()[0])
         action_type = ActionType.get_by_id(action_id)
@@ -242,102 +210,98 @@ class Vehicle(LogisticEntity, ABC):
             order_id = action_kwargs["order_id"]
             truck = self.global_state.get_entity("truck", truck_id)
             order: Order = self.global_state.get_entity("order", order_id)
-
             if order not in truck.pickup_orders:
-                raise ValueError(
-                    f"The order {order_id} is not assigned to the vehicle {truck_id}. "
-                    f"The order is not in the pick up orders."
-                )
-
-            truck.pickup_orders.remove(order)
-            truck.delivery_orders.append(order)
-            truck.pickup_node_ids.remove(order.get_pickup_node_id())
-            truck.delivery_node_ids.append(order.get_delivery_node_id())
-            truck.add_cargo(order)
-            order.set_enroute()
-
-            if self.custom_log:
-                print(f"{order_id} is loaded in the truck {truck_id}.")
-
-            self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
-            self.save_data(str(order), self.global_state.current_time, p_frame=self.C_DATA_FRAME_VEH_TIMELINE)
-            return True
+                raise ValueError(f"The order {order_id} is not assigned to the vehicle {truck_id}. The order is not in the pick up orders.")
+            else:
+                truck.pickup_orders.remove(order)
+                truck.delivery_orders.append(order)
+                truck.pickup_node_ids.remove(order.get_pickup_node_id())
+                truck.delivery_node_ids.append(order.get_delivery_node_id())
+                truck.add_cargo(order)
+                order.set_enroute()
+                if self.custom_log:
+                    print(f"{order_id} is loaded in the truck {truck_id}.")
+                self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
+                self.save_data(str(order), self.global_state.current_time, p_frame=self.C_DATA_FRAME_VEH_TIMELINE)
+                # input("Press enter")
+                return True
 
         if action_type == SimulationActions.UNLOAD_TRUCK_ACTION:
             truck_id = action_kwargs["truck_id"]
             order_id = action_kwargs["order_id"]
             truck = self.global_state.get_entity("truck", truck_id)
             order = self.global_state.get_entity("order", order_id)
-
             if order not in truck.delivery_orders:
-                raise ValueError("The order is not in the cargo of the vehicle. The order is not in the delivery orders.")
-
-            truck.delivery_orders.remove(order)
-            truck.remove_cargo(order)
-            order.set_delivered()
-            truck.delivery_node_ids.remove(order.get_delivery_node_id())
-
-            if self.custom_log:
-                print(f"Order {order_id} is unloaded from the truck {truck_id}.")
-
-            self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
-            self.save_data(str(order), self.global_state.current_time, p_frame=self.C_DATA_FRAME_VEH_TIMELINE)
-            return True
+                raise ValueError(
+                    "The order is not in the cargo of the vehicle. The order is not in the delivery orders.")
+            else:
+                truck.delivery_orders.remove(order)
+                truck.remove_cargo(order)
+                order.set_delivered()
+                truck.delivery_node_ids.remove(order.get_delivery_node_id())
+                # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is unloaded from the truck {truck_id}.")
+                if self.custom_log:
+                    print(f"Order {order_id} is unloaded from the truck {truck_id}.")
+                self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
+                # input("Press Enter")
+                self.save_data(str(order), self.global_state.current_time, p_frame=self.C_DATA_FRAME_VEH_TIMELINE)
+                # input("Press Enter")
+                return True
 
         if action_type == SimulationActions.LOAD_DRONE_ACTION:
             drone_id = action_kwargs["drone_id"]
             order_id = action_kwargs["order_id"]
             drone = self.global_state.get_entity("drone", drone_id)
             order = self.global_state.get_entity("order", order_id)
-
             if order not in drone.pickup_orders:
                 raise ValueError("The order is not assigned to the vehicle. The order is not in the pick up orders.")
-
-            drone.pickup_orders.remove(order)
-            drone.delivery_orders.append(order)
-            drone.pickup_node_ids.remove(order.get_pickup_node_id())
-            drone.delivery_node_ids.append(order.get_delivery_node_id())
-            drone.add_cargo(order)
-            order.set_enroute()
-
-            if self.custom_log:
-                print(f"Order {order_id} is loaded in the Drone {drone_id}.")
-
-            self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
-            self.save_data(str(order), self.global_state.current_time, p_frame=self.C_DATA_FRAME_VEH_TIMELINE)
-            return True
+            else:
+                drone.pickup_orders.remove(order)
+                drone.delivery_orders.append(order)
+                drone.pickup_node_ids.remove(order.get_pickup_node_id())
+                drone.delivery_node_ids.append(order.get_delivery_node_id())
+                drone.add_cargo(order)
+                order.set_enroute()
+                if self.custom_log:
+                    print(f"Order {order_id} is loaded in the Drone {drone_id}.")
+                # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is loaded in the Drone {drone_id}.")
+                # input("Press enter")
+                self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
+                self.save_data(str(order), self.global_state.current_time, p_frame=self.C_DATA_FRAME_VEH_TIMELINE)
+                return True
 
         if action_type == SimulationActions.UNLOAD_DRONE_ACTION:
             drone_id = action_kwargs["drone_id"]
             order_id = action_kwargs["order_id"]
             drone = self.global_state.get_entity("drone", drone_id)
             order = self.global_state.get_entity("order", order_id)
-
             if order not in drone.delivery_orders:
-                raise ValueError("The order is not in the cargo of the vehicle. The order is not in the delivery orders.")
-
-            drone.delivery_orders.remove(order)
-            drone.remove_cargo(order)
-            order.set_delivered()
-            drone.delivery_node_ids.remove(order.get_delivery_node_id())
-
-            if self.custom_log:
-                print(f"Order {order_id} is unloaded from the drone {drone_id}.")
-
-            self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
-            self.save_data(str(order), self.global_state.current_time, p_frame=self.C_DATA_FRAME_VEH_TIMELINE)
-            return True
+                raise ValueError(
+                    "The order is not in the cargo of the vehicle. The order is not in the delivery orders.")
+            else:
+                drone.delivery_orders.remove(order)
+                drone.remove_cargo(order)
+                order.set_delivered()
+                drone.delivery_node_ids.remove(order.get_delivery_node_id())
+                if self.custom_log:
+                    print(f"Order {order_id} is unloaded from the drone {drone_id}.")
+                # self.log(self.C_LOG_TYPE_I, f"Order {order_id} is unloaded from the drone {drone_id}.")
+                self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
+                self.save_data(str(order), self.global_state.current_time, p_frame=self.C_DATA_FRAME_VEH_TIMELINE)
+                # input("Press Enter")
+                return True
 
         if action_type == SimulationActions.TRUCK_TO_NODE:
             pass
+
         if action_type == SimulationActions.DRONE_TO_NODE:
             pass
+
         if action_type == SimulationActions.DRONE_LAUNCH:
             pass
+
         if action_type == SimulationActions.DRONE_LAND:
             pass
-
-        return False
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
@@ -346,108 +310,122 @@ class Vehicle(LogisticEntity, ABC):
         if p_action is not None:
             self._process_action(p_action, p_t_step)
 
-        if p_t_step is None:
-            return self._state
-
         if self.movement_mode == 'matrix':
-            # IMPORTANT: let HALT process even if route is short/empty
-            if self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) in [self.C_TRIP_STATE_EN_ROUTE, self.C_TRIP_STATE_HALT]:
+            if (self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) in [self.C_TRIP_STATE_EN_ROUTE,
+                                                                               self.C_TRIP_STATE_HALT]
+                    and self.current_route and len(self.current_route) >= 2):
                 self._update_matrix_movement(p_t_step.total_seconds())
-        else:
+        else:  # network mode
             if (self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) == self.C_TRIP_STATE_EN_ROUTE
                     and self.current_route and len(self.current_route) >= 2):
                 self._move_along_route(p_t_step.total_seconds())
 
         return self._state
 
-    # --------------------------
-    # FIXED: matrix movement with condition-based HALT
-    # --------------------------
     def _update_matrix_movement(self, delta_time: float):
-        """Handles movement for the 'matrix' mode (fixed; HALT waits until node work is done)."""
-        dt_left = float(delta_time)
-
-        while dt_left > 0:
-            trip_state = self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0])
-
-            # HALT: stay until no pickup/delivery work remains at this node
-            if trip_state == self.C_TRIP_STATE_HALT:
-                self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
-
-                if self._has_work_at_node(self.current_node_id):
-                    return  # still work to do here
-
-                # Work cleared -> depart if possible
-                self._start_next_leg_matrix()
-                return
-
-            # EN_ROUTE: progress along edge
-            if trip_state == self.C_TRIP_STATE_EN_ROUTE:
-                if not self.current_route or len(self.current_route) < 2:
-                    # Invalid route while EN_ROUTE -> recover safely
-                    self.status = "idle"
-                    self.current_edge = None
-                    self.en_route_timer = 0.0
-                    self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
-                    self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-                    self._log_trip_state()
-                    return
-
-                if self.en_route_timer is None:
-                    self.en_route_timer = 0.0
-
-                start_node_id, end_node_id = self.current_route[0], self.current_route[1]
-
-                # Consume travel time
-                step = min(dt_left, max(self.en_route_timer, 0.0))
-                self.en_route_timer -= step
-                dt_left -= step
-
-                if self.en_route_timer > 0:
-                    # Still traveling
-                    self.current_node_id = None
-                    self.current_edge = (start_node_id, end_node_id)
-                    self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], False)
-                    return
-
-                # ARRIVAL
+        """Handles movement for the 'matrix' mode."""
+        if self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) == self.C_TRIP_STATE_EN_ROUTE:
+            # if self.en_route_timer:
+            #     self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
+            self.en_route_timer -= delta_time
+            start_node_id, end_node_id = self.current_route[0], self.current_route[1]
+            if self.en_route_timer <= 0:
                 self.current_node_id = end_node_id
                 self.current_edge = None
-                self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
+                if (end_node_id in self.pickup_node_ids) or (end_node_id in self.delivery_node_ids):
+                    # Combined to a single update state call
+                    # self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
+                    if self.global_state is not None:
+                        time = self.global_state.current_time
+                        self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                    else:
+                        self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                    self.update_state_value_by_dim_name(p_dim_name=[self.C_DIM_AT_NODE[0],
+                                                                    self.C_DIM_TRIP_STATE[0]],
+                                                        p_value=[True,
+                                                                 self.C_TRIP_STATE_HALT])
 
-                # CRITICAL FIX: ALWAYS advance route head on arrival (even at pickup/delivery)
-                self.current_route.pop(0)
-
-                # If work exists here -> HALT
-                if self._has_work_at_node(end_node_id):
-                    self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
-                    self._log_trip_state()
-
-                    if self.custom_log:
-                        kind = "pickup" if end_node_id in self.pickup_node_ids else "delivery"
-                        print(f"\nVehicle {self._id} reached {kind} node {end_node_id} (HALT until cleared)\n")
-
+                    if end_node_id in self.pickup_node_ids:
+                        if self.custom_log:
+                            print(f"\n\n\n\n\nVehicle {self._id} reached pickup node {end_node_id}.\n\n\n\n")
+                        # self.raise_state_change_event()
+                    elif end_node_id in self.delivery_node_ids:
+                        if self.custom_log:
+                            print(f"\n\n\n\n\nVehicle {self._id} reached delivery node {end_node_id}.\n\n\n\n")
+                        # self.raise_state_change_event()
+                        # input("Press Enter to continue")
                     return
-
-                # No work here -> continue or finish
-                if not self.current_route or len(self.current_route) < 2:
+                else:
+                    self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
+                self.current_route.pop(0)
+                if not self.current_route or len(self.current_route)<2:
+                    self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+                    if self.global_state is not None:
+                        time = self.global_state.current_time
+                        self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                    else:
+                        self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
                     self.status = "idle"
                     self.route_nodes = []
-                    self.en_route_timer = 0.0
-                    self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-                    self._log_trip_state()
-                    return
+                    # self.raise_state_change_event()
+                else:
+                    start_node_id, end_node_id = self.current_route[0], self.current_route[1]
+                    if self.C_NAME == "Drone":
+                        network_type = self.global_state.network.C_NETWORK_AIR
+                    elif self.C_NAME == "Truck":
+                        network_type = self.global_state.network.C_NETWORK_GROUND
+                    else:
+                        raise ValueError("Please provide a valid vehicle type.")
+                    self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id, network_type=network_type)
+                    # self.current_node_id = None
+                    self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
+                    if self.global_state is not None:
+                        time = self.global_state.current_time
+                        self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                    else:
+                        self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                    # self.raise_state_change_event()
+            else:
+                self.current_node_id = None
 
-                # Start next leg and keep consuming dt_left if any remains
-                self._start_next_leg_matrix()
-                continue
+        elif self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) in [self.C_TRIP_STATE_HALT]:
 
-            # IDLE or other states: nothing to do
-            return
+            if not self.current_route or len(self.current_route) < 2:
+                self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+                if self.global_state is not None:
+                    time = self.global_state.current_time
+                    self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                else:
+                    self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                self.status = "idle"
+                self.route_nodes = []
+                # self.raise_state_change_event()
+            else:
+                start_node_id, end_node_id = self.current_route[0], self.current_route[1]
+                if self.C_NAME == "Drone":
+                    network_type = self.global_state.network.C_NETWORK_AIR
+                elif self.C_NAME == "Truck":
+                    network_type = self.global_state.network.C_NETWORK_GROUND
+                else:
+                    raise ValueError("Please provide a valid vehicle type.")
+                self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id, network_type=network_type)
+                # self.current_node_id = None
+                self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
+                if self.global_state is not None:
+                    time = self.global_state.current_time
+                    self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                else:
+                    self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                # self.raise_state_change_event()
 
-    # --------------------------
-    # Existing network-mode movement (unchanged)
-    # --------------------------
+            # if self.en_route_timer <= 0:
+            #     self.current_node_id = self.current_route[1]
+            #     self.current_route = []
+            #     self.status = "idle"
+            #     self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+            #     # Update coordinates to be exactly at the new node
+            #     self._update_location_coords(self.current_node_id, self.current_node_id, 1.0)
+
     def _move_along_route(self, delta_time: float):
         """
         Internal logic to advance the vehicle along its route.
@@ -458,7 +436,11 @@ class Vehicle(LogisticEntity, ABC):
         if not edge:
             self.status = "idle"
             self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-            self._log_trip_state()
+            if self.global_state is not None:
+                time = self.global_state.current_time
+                self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+            else:
+                self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
             return
 
         travel_time = edge.get_current_travel_time() if self.C_NAME == 'Truck' else edge.get_drone_flight_time()
@@ -466,7 +448,11 @@ class Vehicle(LogisticEntity, ABC):
         if travel_time <= 0 or travel_time == float('inf'):
             self.status = "idle"
             self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-            self._log_trip_state()
+            if self.global_state is not None:
+                time = self.global_state.current_time
+                self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+            else:
+                self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
             return
 
         time_needed = (1.0 - self.route_progress) * travel_time
@@ -474,7 +460,7 @@ class Vehicle(LogisticEntity, ABC):
 
         self.route_progress += time_to_move / travel_time
 
-        # Update coordinates based on progress
+        # New: Update coordinates based on progress
         self._update_location_coords(start_node_id, end_node_id, self.route_progress)
 
         self.update_energy(-time_to_move)
@@ -482,30 +468,54 @@ class Vehicle(LogisticEntity, ABC):
         if self.route_progress >= 1.0:
             self.current_node_id = end_node_id
             self.current_edge = None
-
             if (end_node_id in self.pickup_node_ids) or (end_node_id in self.delivery_node_ids):
                 self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
-                self._log_trip_state()
+
+                if self.global_state is not None:
+                    time = self.global_state.current_time
+                    self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id],
+                                   p_frame=self.C_DATA_FRAME_VEH_STATES)
+                else:
+                    self.save_data(self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), 0,
+                                   p_frame=self.C_DATA_FRAME_VEH_STATES)
+
+                if end_node_id in self.pickup_node_ids:
+                    if self.custom_log:
+                        print(f"\n\n\n\n\nVehicle {self._id} reached pickup node {end_node_id}.\n\n\n\n")
+                    self.raise_state_change_event()
+                elif end_node_id in self.delivery_node_ids:
+                    if self.custom_log:
+                        print(f"\n\n\n\n\nVehicle {self._id} reached delivery node {end_node_id}.\n\n\n\n")
+                    self.raise_state_change_event()
+                    # input("Press Enter to continue")
             else:
                 self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
 
             self.current_route.pop(0)
             self.route_progress = 0.0
-
             if not self.current_route or len(self.current_route) < 2:
                 self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+                if self.global_state is not None:
+                    time = self.global_state.current_time
+                    self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                else:
+                    self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
                 self.status = "idle"
                 self.route_nodes = []
-                self._log_trip_state()
                 self.raise_state_change_event()
             else:
                 self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
-                self._log_trip_state()
+                if self.global_state is not None:
+                    time = self.global_state.current_time
+                    self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+                else:
+                    self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
                 self.raise_state_change_event()
-
+            # New: Update coordinates to be exactly at the new node
             self._update_location_coords(self.current_node_id, self.current_node_id, self.route_progress)
         else:
             self.current_node_id = None
+            
 
     def _update_location_coords(self, start_node_id, end_node_id, progress):
         """
@@ -541,12 +551,14 @@ class Vehicle(LogisticEntity, ABC):
         if order not in self.cargo_manifest:
             self.cargo_manifest.append(order)
             self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
+            # self.raise_state_change_event()
 
     def remove_cargo(self, order: int):
         """Removes a package from the vehicle's cargo manifest."""
         if order in self.cargo_manifest:
             self.cargo_manifest.remove(order)
             self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
+            # self.raise_state_change_event()
 
     def set_route(self, route: List[int]):
         """
@@ -559,30 +571,45 @@ class Vehicle(LogisticEntity, ABC):
             self.route_nodes = []
             self.status = "idle"
             self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-
-            # Restore a node if needed
-            if self.current_node_id is None:
+            if self.global_state is not None:
+                time = self.global_state.current_time
+                self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+            else:
+                self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+            if self.current_node_id is None and self.route_nodes:
+                self.current_node_id = self.route_nodes[0]
+            elif self.current_node_id is None:
                 self.current_node_id = self.start_node_id
-
-            self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], True)
-            self._log_trip_state()
+            # self.raise_state_change_event()
             return
 
         self.current_route = route
         self.route_nodes = route
+        self.status = "en_route"
 
         if self.movement_mode == 'matrix':
-            # Start first leg using the unified helper (sets AT_NODE False, trip state, timer, logging)
-            self._start_next_leg_matrix()
-            return
+            start_node_id, end_node_id = self.current_route[0], self.current_route[1]
+            if self.C_NAME == "Drone":
+                network_type = self.global_state.network.C_NETWORK_AIR
+            elif self.C_NAME == "Truck":
+                network_type = self.global_state.network.C_NETWORK_GROUND
+            else:
+                raise ValueError("Please provide a valid vehicle type.")
+            self.en_route_timer = self.network_manager.network.get_travel_time(start_node_id, end_node_id, network_type=network_type)
+            self.current_node_id = None
+            # else:
+            #     self.status = "idle"  # Or handle error appropriately
+        else:  # network mode
+            self.route_progress = 0.0
+            self.current_node_id = None
 
-        # network mode
-        self.status = "en_route"
-        self.route_progress = 0.0
-        self.current_node_id = None
-        self.update_state_value_by_dim_name(self.C_DIM_AT_NODE[0], False)
         self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
-        self._log_trip_state()
+        if self.global_state is not None:
+            time = self.global_state.current_time
+            self.save_data(time, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+        else:
+            self.save_data(0, [self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]), self.current_node_id], p_frame=self.C_DATA_FRAME_VEH_STATES)
+        # self.raise_state_change_event()
 
     def get_current_location(self):
         return self.get_state_value_by_dim_name("loc x"), self.get_state_value_by_dim_name("loc y")
@@ -595,9 +622,8 @@ class Vehicle(LogisticEntity, ABC):
             for ord in p_orders:
                 self.pickup_orders.append(ord)
                 self.pickup_node_ids.append(ord.get_pickup_node_id())
-                self.raise_state_change_event()
+                self.raise_state_change_event()  # <-- Added event trigger
             return True
-        return False
 
     def unload_order(self, p_order):
         if p_order:
@@ -624,7 +650,10 @@ class Vehicle(LogisticEntity, ABC):
 
     def check_assignability(self) -> bool:
         status = self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0])
-        return status in [self.C_TRIP_STATE_IDLE]
+        if status in [self.C_TRIP_STATE_IDLE]:
+            return True
+        else:
+            return False
 
 
 # -------------------------------------------------------------------------
@@ -633,18 +662,15 @@ class Vehicle(LogisticEntity, ABC):
 if __name__ == '__main__':
     # 1. Create a Mock Vehicle class for the test
     class MockVehicle(Vehicle):
-        C_NAME = "Truck"  # needed for network type selection in matrix mode
-
         def update_energy(self, p_time_passed: float):
+            # Dummy implementation for the abstract method
             pass
 
 
     print("--- Validating Vehicle Base Class ---")
 
-    # NOTE: This validation block won't fully run without a real global_state and network_manager.
-    # It's kept here as in your original file, but movement requires those dependencies.
-
-    vehicle = MockVehicle(p_id=101, start_node_id=0, p_movement_mode="matrix", network_manager=None)
+    # 2. Instantiate the Mock Vehicle
+    vehicle = MockVehicle(p_id=101, start_node_id=0)
     print(f"\n[A] Initial State:")
     print(f"  - Status: {vehicle.status}")
     print(f"  - Current Node: {vehicle.current_node_id}")
@@ -654,7 +680,8 @@ if __name__ == '__main__':
     assert vehicle.status == 'idle'
     assert vehicle.route_nodes == []
 
-    new_route = [0, 5, 12, 5]
+    # 3. Test the set_route method with a valid route
+    new_route = [0, 5, 12, 5]  # A route that revisits a node
     print(f"\n[B] Setting a new route: {new_route}")
     vehicle.set_route(new_route)
 
@@ -664,9 +691,12 @@ if __name__ == '__main__':
     print(f"  - Route: {vehicle.current_route}")
     print(f"  - Route Nodes: {vehicle.route_nodes}")
 
-    # In matrix mode, set_route will attempt to start travel time using network_manager+global_state.
-    # If those aren't set, it'll raise at runtime when starting the next leg.
+    assert vehicle.status == 'en_route'
+    assert vehicle.current_node_id is None
+    assert vehicle.route_nodes == [0, 5, 12, 5]
+    print("\n  - PASSED: State updated correctly for a valid route.")
 
+    # 4. Test with an invalid route
     invalid_route = [15]
     print(f"\n[D] Setting an invalid route: {invalid_route}")
     vehicle.set_route(invalid_route)
@@ -679,7 +709,8 @@ if __name__ == '__main__':
 
     assert vehicle.status == 'idle'
     assert vehicle.route_nodes == []
+    # FIX: Add assertion to check that the current_node_id is restored
     assert vehicle.current_node_id == 0
+    print("\n  - PASSED: State correctly reverted to idle for an invalid route.")
 
     print("\n--- Validation Complete ---")
- 

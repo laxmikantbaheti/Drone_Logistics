@@ -13,7 +13,6 @@ from stable_baselines3.common.monitor import Monitor
 # [OPTIONAL] Use this if your environment runs forever
 from gymnasium.wrappers import TimeLimit
 from torch.cuda.amp import custom_bwd
-import torch.nn as nn
 
 # Ensure the project root is in the python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -109,8 +108,8 @@ def run_ppo_simulation():
     # 1. Define Configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
     config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
-    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
-    # config_file_path = os.path.normpath(config_file_path)
+    # config_file_path = os.path.join(script_path, '..', 'config', 'large_instance.json')
+    config_file_path = os.path.normpath(config_file_path)
 
     sim_config = {
         "movement_mode": "matrix",
@@ -137,30 +136,28 @@ def run_ppo_simulation():
 
     # [CRITICAL MODIFICATION] - Episodic Update Configuration
     # We want to collect a FULL episode before updating.
-    EPISODE_BUFFER_SIZE = 3000  # Must be > MAX_STEPS (5000)
+    EPISODE_BUFFER_SIZE = 150  # Must be > MAX_STEPS (5000)
 
-    # policy_kwargs = dict(activation_fn=nn.ReLU,
-    #                      net_arch=[dict(pi=[256, 256, 256], vf=[256, 256, 256])])
     # 3. Define Model
     model = MaskablePPO(
         "MlpPolicy",
         env,
         verbose=1,
-        # policy_kwargs=policy_kwargs,
+
         # --- Episodic Update Settings ---
-        learning_rate=2e-3,
+        learning_rate=1e-3,
         n_steps=EPISODE_BUFFER_SIZE,  # Wait for ~5120 steps before training
-        batch_size=50,  # Standard mini-batch size (or set to 5120 for full-batch)
-        n_epochs=10,  # Train on this episode data 10 times
-        gamma=1,
-        gae_lambda=0.99,  # 1.0 = Monte Carlo (No bootstrapping)
-        ent_coef=0.00,
+        batch_size=64,  # Standard mini-batch size (or set to 5120 for full-batch)
+        n_epochs=25,  # Train on this episode data 10 times
+        gamma=0.99,
+        gae_lambda=1.0,  # 1.0 = Monte Carlo (No bootstrapping)
+        ent_coef=0.01,
         device="cuda"# Encourages exploration (helpful for sparse rewards)
     )
 
     # 4. Training Configuration
     # Increase this for real training (e.g., 500)
-    NUM_EPISODES = 1500
+    NUM_EPISODES = 3000
 
 
     # Total timesteps must be enough to cover NUM_EPISODES * MAX_STEPS
