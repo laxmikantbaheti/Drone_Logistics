@@ -1,0 +1,314 @@
+from typing import Optional, List, Any, Dict
+from datetime import timedelta
+
+# MLPro Imports
+from mlpro.bf.systems import System, State, Action
+from mlpro.bf.math import MSpace, Dimension
+from ddls_src.entities.base import LogisticEntity
+from mlpro.bf.events import Event
+
+class Order(LogisticEntity):
+    """
+    Represents a customer order as an MLPro System.
+    Tracks the lifecycle and assignment of a package for delivery.
+    """
+
+    C_TYPE = 'Order'
+    C_NAME = 'Order'
+    C_STATUS_PLACED = "Placed"
+    C_STATUS_ACCEPTED = "Accepted"
+    C_STATUS_ASSIGNED = "Assigned"
+    C_STATUS_EN_ROUTE = "En Route"
+    C_STATUS_DELIVERED = "Delivered"
+    C_STATUS_FAILED = "Failed"
+    C_STATUS_IN_RELAY = "Order in relay"
+    C_VALID_DELIVERY_STATES = [C_STATUS_PLACED,
+                               C_STATUS_ACCEPTED,
+                               C_STATUS_ASSIGNED,
+                               C_STATUS_EN_ROUTE,
+                               C_STATUS_DELIVERED,
+                               C_STATUS_FAILED,
+                               C_STATUS_IN_RELAY]
+    C_DIM_DELIVERY_STATUS = ["delivery", "Delivery Status", C_VALID_DELIVERY_STATES]
+    C_DIM_PRIORITY = ["pri", "Priority", []]
+    C_DIM_PICKUP_NODE = ["p_node", "Pickup Node", []]
+    C_DIM_DELIVERY_NODE = ["d_node", "Delivery Node", []]
+    C_DIM_ASSIGNED_VEHICLE = ["veh", "Assigned Vehicle", []]
+    C_DIS_DIMS = [C_DIM_DELIVERY_STATUS,
+                  C_DIM_PRIORITY,
+                  C_DIM_PICKUP_NODE,
+                  C_DIM_DELIVERY_NODE,
+                  C_DIM_ASSIGNED_VEHICLE]
+
+
+
+
+    def __init__(self,
+                 p_pickup_node_id,
+                 p_delivery_node_id,
+                 p_id,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=False,
+                 **p_kwargs):
+        """
+        Initializes an Order system.
+
+        Parameters:
+            p_id: Unique identifier for the order.
+            p_name (str): Name of the order.
+            p_visualize (bool): Visualization flag.
+            p_logging: Logging level.
+            p_kwargs: Additional keyword arguments. Expected keys:
+                'customer_node_id': int
+                'time_received': float
+                'SLA_deadline': float
+                'priority': int
+        """
+        super().__init__(p_id=p_id,
+                         p_name=p_name,
+                         p_visualize=p_visualize,
+                         p_logging=p_logging,
+                         p_mode=System.C_MODE_SIM,
+                         p_latency=timedelta(0, 0, 0))
+
+        self.custom_log = False
+        # Order-specific attributes
+        self.customer_node_id: int = p_kwargs.get('customer_node_id')
+        self.time_received: float = p_kwargs.get('time_received', 0.0)
+        self.SLA_deadline: float = p_kwargs.get('SLA_deadline', 0.0)
+        self.priority: int = p_kwargs.get('priority', 1)
+        self.pickup_node_id = p_pickup_node_id
+        self.delivery_node_id = p_delivery_node_id
+        # Internal dynamic attributes
+        self.status: str = "pending"
+        self.assigned_vehicle_id: Optional[int] = None
+        self.assigned_micro_hub_id: Optional[int] = None
+        self.delivery_time: Optional[float] = None
+        # FIX: Make global_state optional during initialization, defaulting to None
+        self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
+        self._state = State(self._state_space)
+        self.pseudo_orders:[Order] = []
+        self.predecessor_orders = []
+        self.mh_assignment_history = []
+        self.reset()
+
+    @staticmethod
+    def setup_spaces():
+        """
+        Defines the state and action spaces for an Order system.
+        """
+        state_space = MSpace()
+        # Status: 0=pending, 1=accepted, 2=assigned, 3=in_transit, 4=at_micro_hub, 5=delivered, 6=cancelled, 7=flagged
+        state_space.add_dim(
+            Dimension('w',
+                      'R',
+                      "Weight"))
+        state_space.add_dim(
+            Dimension("del_time",
+                      "R",
+                      "Delivery Window"))
+
+        action_space = MSpace()  # Orders are passive, no actions
+
+        return state_space, action_space
+
+    def _reset(self, p_seed=None):
+        """
+        Resets the order to its initial 'pending' state.
+        """
+        self.status = "pending"
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_PLACED)
+        self.assigned_vehicle_id = None
+        self.assigned_micro_hub_id = None
+        self.delivery_time = None
+        self.pseudo_orders = []
+        self._update_state()
+
+    def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+        """
+        Synchronizes the formal MLPro state with the order's internal attributes.
+        """
+        # FIX: Only process an action if one is actually passed to the method
+        if p_action is not None:
+            self._process_action(p_action, p_t_step)
+
+        self._update_state()
+        return self._state
+
+    def _update_state(self):
+        """
+        Helper method to synchronize internal attributes with the formal MLPro state object.
+        """
+        # status_map = {
+        #     "pending": 0, "accepted": 1, "assigned": 2, "in_transit": 3,
+        #     "at_micro_hub": 4, "delivered": 5, "cancelled": 6, "flagged_re_delivery": 7
+        # }
+        # self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_DELIVERY_STATUS[0]).get_id(),
+        #                       status_map.get(self.status, 0))
+        # self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_PRIORITY[0]).get_id(),
+        #                       self.priority)
+        pass
+
+    # Public methods for managers to call
+    def update_status(self, new_status: str):
+        self.status = new_status
+        if new_status == "delivered":
+            # This should be set with the simulation's current time by the manager
+            pass
+        self._update_state()
+
+    def assign_vehicle(self, vehicle_id: int):
+        self.assigned_vehicle_id = vehicle_id
+        self.status = "assigned"
+        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
+                                            [vehicle_id, self.C_STATUS_ASSIGNED])
+
+        # self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
+        # self.raise_state_change_event()
+        return True
+
+    def assign_micro_hub(self, micro_hub_id: int):
+        self.assigned_micro_hub_id = micro_hub_id
+        self.status = "at_micro_hub"
+        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
+                                            [micro_hub_id, self.C_STATUS_ASSIGNED])
+        # self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
+        self._update_state()
+        return True
+
+    def unassign_vehicle(self):
+        self.assigned_vehicle_id = None
+        if self.status in ["assigned", "in_transit"]:
+            self.status = "flagged_re_delivery"
+        self._update_state()
+
+    def get_assigned_vehicle_id(self):
+        if self.assigned_vehicle_id:
+            return self.assigned_vehicle_id
+
+    def set_enroute(self):
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)
+        # self.raise_state_change_event()
+
+    def get_SLA_remaining(self, current_time: float) -> float:
+        return self.SLA_deadline - current_time
+
+    def get_pickup_node_id(self):
+        return self.pickup_node_id
+
+    def get_delivery_node_id(self):
+        return self.delivery_node_id
+
+    def get_global_state(self):
+        return self.global_state
+
+    def __repr__(self):
+        return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])} - {self.assigned_vehicle_id} - {self.assigned_micro_hub_id}"
+
+    def __str__(self):
+        return f"Order {self.get_id()} - {self.pickup_node_id, self.delivery_node_id}"
+
+    def change_delivery_status(self, status):
+        if status not in self.C_VALID_DELIVERY_STATES:
+            raise ValueError("Invalid delivery status provided for Order entity.")
+
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], status)
+        # self.raise_state_change_event()
+
+    def set_delivered(self):
+        self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_DELIVERED)
+        self.status = "Delivered"
+        # self.raise_state_change_event()
+        if isinstance(self, PseudoOrder):
+            self._raise_event(PseudoOrder.C_EVENT_ORDER_DELIVERED, Event(p_raising_object=self))
+
+    def handle_pseudo_delivery(self, p_event_id, p_event_object):
+        delivered = True
+        for ordr in self.pseudo_orders:
+            if ordr.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0]) == self.C_STATUS_DELIVERED:
+                delivered = True and delivered
+            else:
+                delivered = False
+        if delivered:
+            if self.custom_log:
+                    print(f"Collaborative order {self.get_id()} is delivered.")
+            self.set_delivered()
+
+    def create_pseudo_orders(self, hub_id):
+        pseudo_order_1 = PseudoOrder(
+            p_id=str(self.get_id()) + "_1",
+            p_pickup_node_id=self.get_pickup_node_id(),
+            p_delivery_node_id=hub_id,
+            global_state=self.global_state,
+            p_parent_order=self
+        )
+        self.pseudo_orders.extend([pseudo_order_1])
+        pseudo_order_2 = PseudoOrder(
+            p_id=str(self.get_id()) + "_2",
+            p_pickup_node_id=hub_id,
+            p_delivery_node_id=self.get_delivery_node_id(),
+            global_state=self.global_state,
+            p_parent_order=self
+        )
+        # pseudo_order_2.predecessor_orders.append(pseudo_order_1)
+        self.pseudo_orders.extend([pseudo_order_2])
+
+        return [pseudo_order_1, pseudo_order_2]
+
+    def check_order_precedence(self):
+        predecessor_orders: [Order] = self.predecessor_orders
+        if not len(predecessor_orders):
+            return True
+
+        else:
+            precedence_satisfied = True
+            for ordr in predecessor_orders:
+                if isinstance(ordr, Order):
+                    if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_DELIVERED:
+                        precedence_satisfied = True and precedence_satisfied
+                    else:
+                        precedence_satisfied = False
+            return precedence_satisfied
+
+    # def check_assignability(self):
+
+class PseudoOrder(Order):
+
+    C_TYPE = "Pseudo Order"
+    C_EVENT_ORDER_DELIVERED = "Pseudo Order Delivered"
+
+    def __init__(self,
+                 p_pickup_node_id,
+                 p_delivery_node_id,
+                 p_parent_order,
+                 p_id,
+                 p_name: str = '',
+                 p_visualize: bool = False,
+                 p_logging=False,
+                 **p_kwargs):
+
+        Order.__init__(self,
+                       p_pickup_node_id=p_pickup_node_id,
+                       p_delivery_node_id=p_delivery_node_id,
+                       p_id=p_id,
+                       p_name=p_name,
+                       p_visualize=p_visualize,
+                       p_logging=p_logging,
+                       **p_kwargs)
+        self.parent_order = p_parent_order
+        self.predecessor_orders.extend(self.parent_order.predecessor_orders)
+        self.predecessor_orders.extend(self.parent_order.pseudo_orders)
+        self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
+                                    self.parent_order.handle_pseudo_delivery)
+        self.mh_assignment_history.extend([self.parent_order.assigned_micro_hub_id]+self.parent_order.mh_assignment_history)
+        self.mh_assignment_history.extend([ordr.assigned_micro_hub_id for ordr in self.predecessor_orders if ordr.assigned_micro_hub_id is not None])
+        if self.custom_log:
+                    print(self, self.mh_assignment_history)
+
+
+    def reset(self, p_seed=None) -> None:
+        Order.reset(self, p_seed)
+
+
+
