@@ -147,7 +147,7 @@ def run_ppo_simulation():
     # ----------------------------------------------------------------------
     # 2) Initialize Environment
     # ----------------------------------------------------------------------
-    env = LogisticRLScenario(sim_config, visualize=False, custom_log=0)
+    env = LogisticRLScenario(sim_config, visualize=False, custom_log=1)
 
     MAX_STEPS = 5_000_000
     env = TimeLimit(env, max_episode_steps=MAX_STEPS)
