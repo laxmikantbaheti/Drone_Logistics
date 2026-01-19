@@ -7,7 +7,7 @@ from mlpro.bf.exceptions import ParamError
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
 
-from ddls_src.actions.action_enums import SimulationAction
+# from ddls_src.actions.action_enums import SimulationAction
 from ddls_src.actions.base import SimulationActions, ActionType
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.entities.base import LogisticEntity
@@ -43,9 +43,9 @@ class Vehicle(LogisticEntity, ABC):
     C_DIS_DIMS = [C_DIM_TRIP_STATE, C_DIM_AVAILABLE, C_DIM_AT_NODE, C_DIM_CURRENT_CARGO]
 
     C_ACTION_LOAD = [SimulationActions.LOAD_DRONE_ACTION, SimulationActions.LOAD_TRUCK_ACTION]
-    C_ACTION_ROUTE = [SimulationAction.TRUCK_TO_NODE, SimulationActions.DRONE_TO_NODE]
-    C_ACTION_UNLOAD = [SimulationAction.UNLOAD_TRUCK_ACTION, SimulationActions.UNLOAD_DRONE_ACTION]
-    C_ACTION_ASSIGN_ORDER = [SimulationAction.ASSIGN_ORDER_TO_TRUCK, SimulationActions.ASSIGN_ORDER_TO_DRONE]
+    C_ACTION_ROUTE = [SimulationActions.TRUCK_TO_NODE, SimulationActions.DRONE_TO_NODE]
+    C_ACTION_UNLOAD = [SimulationActions.UNLOAD_TRUCK_ACTION, SimulationActions.UNLOAD_DRONE_ACTION]
+    C_ACTION_ASSIGN_ORDER = [SimulationActions.ASSIGN_ORDER_TO_TRUCK, SimulationActions.ASSIGN_ORDER_TO_DRONE]
     C_ACTION_REROUTE = [SimulationActions.RE_ROUTE_TRUCK_TO_NODE, SimulationActions.RE_ROUTE_DRONE_TO_NODE]
     C_ACTION_CONSOLIDATION = [SimulationActions.CONSOLIDATE_FOR_TRUCK, SimulationActions.CONSOLIDATE_FOR_DRONE]
 
@@ -682,4 +682,3 @@ if __name__ == '__main__':
     assert vehicle.current_node_id == 0
 
     print("\n--- Validation Complete ---")
- 

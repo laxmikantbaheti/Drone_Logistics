@@ -7,7 +7,8 @@ from .base import Vehicle
 # MLPro Imports
 from mlpro.bf.systems import State, Action
 from mlpro.bf.math import MSpace, Dimension
-from ddls_src.actions.action_enums import SimulationAction
+# from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.actions.base import SimulationActions
 
 
 # Forward declarations
@@ -96,7 +97,7 @@ class Truck(Vehicle):
             return
 
         # Check for auto-unloading (delivery)
-        if self.automatic_logic_config.get(SimulationAction.UNLOAD_TRUCK_ACTION, False):
+        if self.automatic_logic_config.get(SimulationActions.UNLOAD_TRUCK_ACTION, False):
             for order_id in self.cargo_manifest:
                 order = self.global_state.get_entity("order", order_id)
                 if order.customer_node_id == self.current_node_id:
@@ -106,7 +107,7 @@ class Truck(Vehicle):
                     return  # Only do one action per cycle
 
         # Check for auto-loading (pickup)
-        if self.automatic_logic_config.get(SimulationAction.LOAD_TRUCK_ACTION, False):
+        if self.automatic_logic_config.get(SimulationActions.LOAD_TRUCK_ACTION, False):
             current_node = self.global_state.get_entity("node", self.current_node_id)
             for order_id in current_node.packages_held:
                 order = self.global_state.get_entity("order", order_id)
