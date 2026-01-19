@@ -38,7 +38,7 @@ from ddls_src.scenarios.generators.order_generator import OrderGenerator
 # Import mapping and constraint management classes.
 from ddls_src.core.state_action_mapper import StateActionMapper, ConstraintManager
 # Import simulation time management and action representation.
-from ddls_src.core.time_manager import TimeManager
+from ddls_src.core.logistics_simulation import TimeManager
 from ddls_src.core.basics import LogisticsAction
 # Import all entity classes (e.g., Truck, Drone, Hub).
 from ddls_src.entities import *
