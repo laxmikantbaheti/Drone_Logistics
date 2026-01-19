@@ -1,0 +1,59 @@
+Of course. Let's take a step back and look at the complete, end-to-end idea. This is a great time to solidify our strategy before we write more code.
+
+Here is a complete report on the architecture we have designed, explaining how it works from beginning to end and confirming that our "howto" scripts are still perfectly compatible.
+
+### The Grand Strategy: A Flexible, Hierarchical Simulation Framework
+
+Our goal is to create a framework that is both a powerful logistics simulation and a flexible tool for research. The core idea is to separate the **agent's decision-making** from the **environment's internal logic**.
+
+---
+
+### The Core Components & Their Roles
+
+1.  **The `LogisticsSystem` (The Environment):** This is the main, top-level MLPro `System`. It contains everything: all the entities, all the managers, and the simulation clock. Its job is to expose a state space and an action space to the outside world and to simulate one step of the environment when asked.
+
+2.  **The `AUTOMATIC_LOGIC_CONFIG` (The "Rulebook"):** This is our static Python dictionary. It is the "rulebook" for a specific experiment. It defines which actions the environment should perform automatically as a logical consequence of a state change.
+
+3.  **The `ActionMasker` (The "Possibility Engine"):** This is our powerful, efficient constraint checker. At any moment, it can look at the current state of the world and produce a `system_mask`—a complete boolean list of every single low-level action that is currently *possible*.
+
+4.  **The Agent's Action Space & `ActionManager` (The "Research Design"):** These components are specific to an experiment.
+    * The **Agent's Action Space** is the simplified set of decisions the agent is allowed to make (e.g., "assignment-only").
+    * The **`ActionManager`** is the translator that converts the agent's simple action into a formal, low-level action that the system's managers can understand.
+
+---
+
+### The Simulation Cycle: From Beginning to End
+
+Here is a step-by-step walkthrough of a single simulation cycle, showing how all the pieces work together.
+
+**Phase 1: The Agent's Turn**
+
+1.  **Get Valid Actions:** The `Scenario` (the runner) asks the `LogisticsSystem` for the agent's current valid actions.
+2.  **Generate Masks:** Inside the `LogisticsSystem`, the `ActionMasker` generates the full `system_mask` (what's possible). It then uses this to derive the simplified `agent_mask` for the current research design.
+3.  **Agent Decides:** The `Scenario` gives the `agent_mask` to the agent. The agent chooses one valid action (e.g., "Assign Order 2 to Truck 103").
+
+**Phase 2: The System's Reaction**
+
+4.  **Execute Agent's Action:** The `Scenario` calls the `LogisticsSystem`'s `simulate_reaction` method, passing in the agent's chosen action.
+5.  **Translate & Dispatch:** The `LogisticsSystem` uses its `ActionManager` to translate the agent's action into a formal command for the `SupplyChainManager`. The `SupplyChainManager` executes it, and the state of the world changes: `Order 2` is now assigned to `Truck 103`.
+
+**Phase 3: The Automatic Logic Loop**
+
+6.  **Start the Loop:** The `LogisticsSystem` now enters its "automatic action loop."
+7.  **Find Possible Actions:** It generates a fresh `system_mask` based on the new state of the world.
+8.  **Find Automated Actions:** It finds the **intersection** of this mask with our `AUTOMATIC_LOGIC_CONFIG` rulebook. This gives it a list of actions that are both *possible* and *automated*. In this case, it will find that `(TRUCK_TO_NODE, 103, ...)` is now a valid and automated action.
+9.  **Execute Automatic Action:** The `LogisticsSystem` processes this `TRUCK_TO_NODE` action, dispatching it to the `NetworkManager`. The state changes again: `Truck 103` is now `'en_route'`.
+10. **Repeat:** The loop runs again. It generates a new mask. This time, it finds no new automatic actions to take, so the loop finishes.
+
+**Phase 4: Advance Time**
+
+11. **Simulate Continuous Processes:** With all discrete actions for this step complete, the `LogisticsSystem` advances the simulation clock. It calls the `_simulate_reaction` method on all the entities (trucks move, drones consume battery, etc.).
+12. **Return New State:** The `LogisticsSystem` returns the final, new state to the `Scenario`, and the cycle is complete.
+
+---
+
+### Compatibility with Our "Howto" Scripts
+
+The "howto" scripts we have developed are **still perfectly compatible and essential**. They serve as unit tests for the most complex part of this whole system: **the masking**. The `howto_action_masking.py` script proves that our `ActionMasker` and `StateActionMapper` can correctly generate the "ground truth" `system_mask` from any given state.
+
+Our next step is to build the "automatic action loop" (Phase 3) into the `LogisticsSystem`'s `simulate_reaction` method. Once we do that, we can write a new "howto" script that runs the full `LogisticsSystem` to demonstrate this complete, end-to-end cycle.
