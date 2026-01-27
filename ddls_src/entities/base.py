@@ -4,6 +4,9 @@ from mlpro.bf.math import Set, Dimension, MSpace, ESpace
 from datetime import timedelta
 from mlpro.bf.events import EventManager, Event
 
+from ddls_src.actions.base import ActionIndex
+
+
 class LogisticEntity(System):
 
     C_NAME = "Entities"
@@ -98,3 +101,8 @@ class LogisticEntity(System):
             else:
                 self.data_storage[p_frame] = {}
                 self.data_storage[p_frame][p_key] = [p_value]
+
+    def update_associated_actions(self, p_action_index: ActionIndex):
+
+        # self.associated_actions = p_action_index.actions_involving_entity[(self.C_NAME, self.get_id())]
+        pass

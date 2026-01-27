@@ -380,6 +380,7 @@ class SimulationActions:
 
             for combo in param_combinations:
                 action_tuple = (action_type,) + combo
+
                 if action_tuple not in action_map:
                     action_map[action_tuple] = current_index
                     current_index += 1

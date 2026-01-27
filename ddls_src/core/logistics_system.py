@@ -200,7 +200,7 @@ class LogisticsSystem(System, EventManager):
             # Link the network to the global state.
             self.global_state.network = self.network
             # Initialize the mapper that determines valid actions based on the state.
-            self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
+            self.state_action_mapper = StateActionMapper(self.global_state, self.action_map, self._reverse_action_map)
 
             # # Ensure all entities have a reference to the global state.
             all_entity_dicts = self.global_state.get_all_entities()
@@ -281,7 +281,7 @@ class LogisticsSystem(System, EventManager):
             self.constraint_manager.action_index = self.action_index
             # Update the state-action mapper with the new action space.
             self.state_action_mapper.update_action_space(self.action_map, None)
-
+            self.state_action_mapper.reverse_action_map = self._reverse_action_map
             self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
 
         # Perform an initial update of the MLPro state object.
