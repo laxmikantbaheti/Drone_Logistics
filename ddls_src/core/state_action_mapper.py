@@ -40,6 +40,7 @@ class Constraint(ABC, EventManager):
         self.action_index = p_action_index
         self.associated_action_index = None
         self.find_associated_actions()
+        self.initiated = False
 
     def find_associated_actions(self):
         if self.C_ACTIONS_AFFECTED:
@@ -53,8 +54,19 @@ class Constraint(ABC, EventManager):
                           p_event_object=Event(p_raising_object=self,
                                                p_event_data=p_event_data))
 
+    # def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    #     if not self.initiated:
+    #         self.initiated = self.initiate_masks()
+    #     return self._get_restricted_actions(p_entity, p_action_index, **p_kwargs)
+
+    # @abstractmethod
+    # def initiate_masks(self):
+    #     """Initiate the first default masks of the system"""
+    #
+    #     raise NotImplementedError
+
     @abstractmethod
-    def get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         """
         Pure logic method: Determines which actions should be RESTRICTED (masked) based on CURRENT state.
         Returns: (List of indices to MASK, List of indices to UNMASK)
@@ -66,7 +78,7 @@ class Constraint(ABC, EventManager):
         Calculates the Delta (Impact) of this constraint.
         """
         # 1. Get current "Desired Blocks"
-        current_actions_to_block, _ = self.get_restricted_actions(p_entity, p_action_index)
+        current_actions_to_block, _ = self._get_restricted_actions(p_entity, p_action_index)
         current_block_set = set(current_actions_to_block) if current_actions_to_block else set()
 
         # 2. Get "Previous Blocks"
@@ -105,11 +117,11 @@ class VehicleAvailableConstraint(Constraint):
                           SimulationActions.TRUCK_TO_NODE,
                           SimulationActions.DRONE_TO_NODE]
 
-    def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"The {self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} types for associated entities")
 
-        related_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        related_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         if p_entity.get_state_value_by_dim_name(Vehicle.C_DIM_AVAILABLE[0]):
             return [], list(related_actions)
         return list(related_actions), []
@@ -147,11 +159,11 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
                           SimulationActions.DRONE_LAND,
                           SimulationActions.DRONE_LAUNCH]
 
-    def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         if p_entity.current_node_id is not None:
             relevant_orders = [o for o in p_entity.get_current_cargo() if
                                o.get_delivery_node_id() == p_entity.current_node_id]
@@ -159,7 +171,7 @@ class VehicleAtDeliveryNodeConstraint(Constraint):
                 actions_related_to_valid_orders = set()
                 for o in relevant_orders:
                     actions_related_to_valid_orders.update(
-                        o.associated_actions.intersection(p_entity.associated_actions).intersection(
+                        o.associated_actions.intersection(p_entity.associated_action_indexes).intersection(
                             self.associated_action_index)
                     )
                 actions_to_block = relevant_actions.difference(actions_related_to_valid_orders)
@@ -234,11 +246,11 @@ class VehicleAtPickUpNodeConstraint(Constraint):
                           SimulationActions.DRONE_LAUNCH,
                           SimulationActions.DRONE_LAND]
 
-    def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         if p_entity.current_node_id is not None:
             relevant_orders = [o for o in p_entity.get_pickup_orders() if
                                o.get_pickup_node_id() == p_entity.current_node_id]
@@ -246,7 +258,7 @@ class VehicleAtPickUpNodeConstraint(Constraint):
                 actions_related_to_valid_orders = set()
                 for o in relevant_orders:
                     actions_related_to_valid_orders.update(
-                        o.associated_actions.intersection(p_entity.associated_actions).intersection(
+                        o.associated_actions.intersection(p_entity.associated_action_indexes).intersection(
                             self.associated_action_index)
                     )
                 actions_to_block = relevant_actions.difference(actions_related_to_valid_orders)
@@ -326,11 +338,11 @@ class OrderRequestAssignabilityConstraint(Constraint):
                           SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
-    def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Order):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entity.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         current_status = p_entity.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
 
         if current_status == Order.C_STATUS_PLACED:
@@ -378,11 +390,11 @@ class VehicleAssignabilityConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
-    def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         state = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0])
         is_en_route = (state == p_entity.C_TRIP_STATE_EN_ROUTE)
         is_available = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_AVAILABLE[0])
@@ -404,11 +416,11 @@ class VehicleCapacityConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
-    def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         capacity = p_entity.get_cargo_capacity()
         committed_load = len(p_entity.get_pickup_orders()) + len(p_entity.get_delivery_orders())
 
@@ -451,11 +463,11 @@ class TripWithinRangeConstraint(Constraint):
     C_ASSOCIATED_ENTITIES = ["Drone"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
-    def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Drone):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         available_range = p_entity.get_remaining_range()
         orders = p_entity.global_state.orders
         orders_out_of_range = []
@@ -537,13 +549,13 @@ class VehicleRoutingConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.TRUCK_TO_NODE,
                           SimulationActions.DRONE_TO_NODE]
 
-    def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
         pickup_nodes = [o.get_pickup_node_id() for o in p_entity.get_pickup_orders()]
         delivery_nodes = [o.get_delivery_node_id() for o in p_entity.get_delivery_orders()]
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
 
         idx_to_unmask = set()
         for node_id in pickup_nodes + delivery_nodes:
@@ -596,11 +608,11 @@ class ConsolidationConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.CONSOLIDATE_FOR_TRUCK,
                           SimulationActions.CONSOLIDATE_FOR_DRONE]
 
-    def get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        consolidation_action_ids = self.associated_action_index.intersection(p_entity.associated_actions)
+        consolidation_action_ids = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         current_node_id = p_entity.get_current_node()
 
         has_pending_loads = False
@@ -681,11 +693,11 @@ class MicroHubAssignabilityConstraint(Constraint):
     C_ASSOCIATED_ENTITIES = ["Order"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB]
 
-    def get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
         if not isinstance(p_entity, Order):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         forbidden_hub_ids = set()
 
         if isinstance(p_entity, PseudoOrder):
@@ -758,14 +770,14 @@ class CoordinatedDeliveryAssignmentConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
-    def get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
         if not isinstance(p_entity, Order):
             return [], []
 
         if not isinstance(p_entity, PseudoOrder):
             return [], []
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         is_predecessor_unassigned = False
         if p_entity.predecessor_orders:
             for pre_order in p_entity.predecessor_orders:
@@ -831,11 +843,11 @@ class OrderLoadConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION,
                           SimulationActions.LOAD_DRONE_ACTION]
 
-    def get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
         if not isinstance(p_entity, Order):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entity.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         assigned_veh_id = p_entity.assigned_vehicle_id
 
         if assigned_veh_id is None:
@@ -949,11 +961,11 @@ class VehicleLoadConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION,
                           SimulationActions.LOAD_DRONE_ACTION]
 
-    def get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         current_node = p_entity.get_current_node()
         valid_orders = []
 
@@ -978,11 +990,11 @@ class OrderUnloadConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.UNLOAD_TRUCK_ACTION,
                           SimulationActions.UNLOAD_DRONE_ACTION]
 
-    def get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
         if not isinstance(p_entity, Order):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         assigned_veh_id = p_entity.assigned_vehicle_id
         if assigned_veh_id is None:
             return list(relevant_actions), []
@@ -1094,11 +1106,11 @@ class VehicleUnloadConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.UNLOAD_TRUCK_ACTION,
                           SimulationActions.UNLOAD_DRONE_ACTION]
 
-    def get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_actions)
+        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         current_node = p_entity.get_current_node()
         current_cargo = p_entity.get_current_cargo()
 
@@ -1158,10 +1170,9 @@ class ConstraintManager(EventManager):
         return []
 
     def handle_entity_state_change(self, p_event_id, p_event_object):
-        """
-        Triggered when an entity state changes.
-        Polls relevant constraints for their calculated impact (deltas).
-        """
+        # DEBUG 1: Did we even get called?
+        print(f"[ConstraintManager] Event received: {p_event_id} from {p_event_object.get_raising_object().get_id()}")
+
         self._update_counter += 1
         entity = p_event_object.get_raising_object()
 
@@ -1170,26 +1181,37 @@ class ConstraintManager(EventManager):
 
         constraints_to_check = self.get_constraints_by_entity(entity)
 
+        # DEBUG 2: Did we find constraints?
+        print(f"[ConstraintManager] Found {len(constraints_to_check)} constraints for entity {entity.C_NAME}")
+
         for constraint in constraints_to_check:
-            # [MODIFIED] Ask the constraint to evaluate its own impact (Delta)
             to_block, to_unblock = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index)
+
+            # DEBUG 3: specific constraint output
+            if to_block or to_unblock:
+                print(f"   -> {constraint.C_NAME}: Block={len(to_block)}, Unblock={len(to_unblock)}")
+
             total_to_block.extend(to_block)
             total_to_unblock.extend(to_unblock)
 
         if len(total_to_block) > 0 or len(total_to_unblock) > 0:
-            # [FIXED] Pass dictionary to p_event_data
             event_data = {
                 "to_block": total_to_block,
                 "to_unblock": total_to_unblock
             }
-            self._raise_event(p_event_id=ConstraintManager.C_EVENT_MASK_UPDATED,
-                              p_event_object=Event(p_raising_object=self,
-                                                   p_event_data=event_data))
+            print(f"[ConstraintManager] Raising update event! (+{len(total_to_block)} / -{len(total_to_unblock)})")
+            self._raise_event(p_event_id = ConstraintManager.C_EVENT_MASK_UPDATED,
+                              p_event_object = Event(p_raising_object=self,
+                                                     to_block = total_to_block,
+                                                     to_unblock = total_to_unblock))
+        else:
+            print("[ConstraintManager] No net change in masks. Event skipped.")
 
     def update_constraints(self, global_state, reverse_action_map):
         """
         Full initialization/Reset.
         """
+        print("Update constraints method is called")
         self.reverse_action_map = reverse_action_map
 
         for constraint in self.constraints:
@@ -1236,6 +1258,7 @@ class StateActionMapper:
         Updates counters and flips boolean masks on 0 <-> 1 transitions.
         """
         # --- BLOCK LOGIC ---
+        print("Masks updated")
         for idx in indices_to_block:
             if idx not in self.permanent_valid_actions:
                 self.mask_counters[idx] += 1

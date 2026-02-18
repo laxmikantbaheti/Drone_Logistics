@@ -34,6 +34,7 @@ class LogisticEntity(System):
 
         # [NEW] Set to store actions involved with this entity
         self.associated_actions = set()
+        self.associated_action_indexes = set()
 
         # [NEW] Dictionary to store operability flags for each associated action
         # Key: ActionType, Value: bool (True = Operable/Valid)
