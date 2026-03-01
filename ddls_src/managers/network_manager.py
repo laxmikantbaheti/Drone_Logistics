@@ -79,7 +79,7 @@ class NetworkManager(System):
         action_space.add_dim(Dimension(p_name_short='nm_action_id',
                                        p_base_set='Z',
                                        p_name_long='Network Manager Action ID',
-                                       p_boundaries=[min(action_ids), max(action_ids)]))
+                                       p_boundaries=[-999, 999]))
 
         return state_space, action_space
 
@@ -247,6 +247,77 @@ class NetworkManager(System):
 
         self._update_state()
         return self._state
+    #
+    # def route_for_assigned_orders(self, vehicle_id: int):
+    #     """
+    #     Calculates a multi-stop tour for a vehicle based on all assigned orders.
+    #     The route includes pickups for new orders and deliveries for all orders
+    #     (newly picked up and already in cargo).
+    #     """
+    #     try:
+    #         if vehicle_id in self.global_state.trucks:
+    #             vehicle = self.global_state.get_entity("truck", vehicle_id)
+    #         elif vehicle_id in self.global_state.drones:
+    #             vehicle = self.global_state.get_entity("drone", vehicle_id)
+    #         else:
+    #             raise KeyError
+    #
+    #         vehicle_type_str = vehicle.C_NAME.lower()
+    #
+    #         current_node = vehicle.current_node_id
+    #         full_path = [current_node]
+    #         visited_nodes = {current_node}
+    #
+    #         # Gather all necessary pickup and delivery locations
+    #         all_stops = []
+    #
+    #         # 1. Process orders that need to be picked up AND delivered
+    #         for order in vehicle.pickup_orders:
+    #             if order:
+    #                 # Add pickup location if not already planned
+    #                 if order.get_pickup_node_id() not in visited_nodes:
+    #                     all_stops.append(order.get_pickup_node_id())
+    #                     visited_nodes.add(order.get_pickup_node_id())
+    #                 # Add delivery location if not already planned
+    #                 if order.get_delivery_node_id() not in visited_nodes:
+    #                     all_stops.append(order.get_delivery_node_id())
+    #                     visited_nodes.add(order.get_delivery_node_id())
+    #
+    #         # 2. Process orders already in cargo that only need delivery (NEW LOGIC)
+    #         for order in vehicle.delivery_orders:
+    #             if order:
+    #                 # Add delivery location if not already planned
+    #                 if order.get_delivery_node_id() not in visited_nodes:
+    #                     all_stops.append(order.get_delivery_node_id())
+    #                     visited_nodes.add(order.get_delivery_node_id())
+    #
+    #         # For simplicity, we'll visit the stops in the order they were gathered.
+    #         # A more complex algorithm (e.g., TSP) could be used here.
+    #         for next_stop in all_stops:
+    #             if vehicle.C_NAME == "Drone":
+    #                 network_type = self.global_state.network.C_NETWORK_AIR
+    #             elif vehicle.C_NAME == "Truck":
+    #                 network_type = self.global_state.network.C_NETWORK_GROUND
+    #             else:
+    #                 raise ValueError("Please provide a valid vehicle type.")
+    #             path_to_next_stop = self.network.calculate_shortest_path(current_node, next_stop, vehicle_type_str, network_type = network_type)
+    #             if path_to_next_stop and len(path_to_next_stop) > 1:
+    #                 full_path.extend(path_to_next_stop[1:])
+    #                 current_node = next_stop
+    #             else:
+    #                 self.log(self.C_LOG_TYPE_W,
+    #                          f"Could not find a path from {current_node} to {next_stop} for vehicle {vehicle_id}.")
+    #
+    #         if len(full_path) > 1:
+    #             self.log(self.C_LOG_TYPE_I, f"Routing consolidated Vehicle {vehicle_id} on path: {full_path}.")
+    #             vehicle.set_route(full_path)
+    #         else:
+    #             self.log(self.C_LOG_TYPE_W, f"Could not create a valid route for consolidated Vehicle {vehicle_id}.")
+    #             vehicle.set_route([])
+    #
+    #     except KeyError:
+    #         self.log(self.C_LOG_TYPE_E, f"Entity not found for consolidated routing: {vehicle_id}")
+    #     return True
 
     def route_for_assigned_orders(self, vehicle_id: int):
         """
@@ -263,44 +334,46 @@ class NetworkManager(System):
                 raise KeyError
 
             vehicle_type_str = vehicle.C_NAME.lower()
-
             current_node = vehicle.current_node_id
             full_path = [current_node]
-            visited_nodes = {current_node}
 
-            # Gather all necessary pickup and delivery locations
+            # Gather all necessary pickup and delivery locations in strict sequence
             all_stops = []
 
             # 1. Process orders that need to be picked up AND delivered
             for order in vehicle.pickup_orders:
                 if order:
-                    # Add pickup location if not already planned
-                    if order.get_pickup_node_id() not in visited_nodes:
-                        all_stops.append(order.get_pickup_node_id())
-                        visited_nodes.add(order.get_pickup_node_id())
-                    # Add delivery location if not already planned
-                    if order.get_delivery_node_id() not in visited_nodes:
-                        all_stops.append(order.get_delivery_node_id())
-                        visited_nodes.add(order.get_delivery_node_id())
+                    p_node = order.get_pickup_node_id()
+                    d_node = order.get_delivery_node_id()
 
-            # 2. Process orders already in cargo that only need delivery (NEW LOGIC)
+                    # Add pickup location if it isn't the exact same as the previous stop
+                    if not all_stops or all_stops[-1] != p_node:
+                        all_stops.append(p_node)
+
+                    # Add delivery location if it isn't the exact same as the previous stop
+                    if not all_stops or all_stops[-1] != d_node:
+                        all_stops.append(d_node)
+
+            # 2. Process orders already in cargo that only need delivery
             for order in vehicle.delivery_orders:
                 if order:
-                    # Add delivery location if not already planned
-                    if order.get_delivery_node_id() not in visited_nodes:
-                        all_stops.append(order.get_delivery_node_id())
-                        visited_nodes.add(order.get_delivery_node_id())
+                    d_node = order.get_delivery_node_id()
+                    # Add delivery location if it isn't the exact same as the previous stop
+                    if not all_stops or all_stops[-1] != d_node:
+                        all_stops.append(d_node)
 
-            # For simplicity, we'll visit the stops in the order they were gathered.
-            # A more complex algorithm (e.g., TSP) could be used here.
+            # Visit the stops strictly in the order they were gathered
             for next_stop in all_stops:
-                if vehicle.C_NAME == "Drone":
-                    network_type = self.global_state.network.C_NETWORK_AIR
-                elif vehicle.C_NAME == "Truck":
-                    network_type = self.global_state.network.C_NETWORK_GROUND
-                else:
-                    raise ValueError("Please provide a valid vehicle type.")
-                path_to_next_stop = self.network.calculate_shortest_path(current_node, next_stop, vehicle_type_str, network_type = network_type)
+                # Dynamically set the network type based on the vehicle
+                network_type_val = self.network.C_NETWORK_AIR if vehicle_type_str == 'drone' else self.network.C_NETWORK_GROUND
+
+                path_to_next_stop = self.network.calculate_shortest_path(
+                    current_node,
+                    next_stop,
+                    vehicle_type_str,
+                    network_type=network_type_val
+                )
+
                 if path_to_next_stop and len(path_to_next_stop) > 1:
                     full_path.extend(path_to_next_stop[1:])
                     current_node = next_stop
@@ -318,7 +391,6 @@ class NetworkManager(System):
         except KeyError:
             self.log(self.C_LOG_TYPE_E, f"Entity not found for consolidated routing: {vehicle_id}")
         return True
-
 
 # -------------------------------------------------------------------------
 # -- Validation Block

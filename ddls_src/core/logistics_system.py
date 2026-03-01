@@ -206,10 +206,9 @@ class LogisticsSystem(System, EventManager):
             all_entity_dicts = self.global_state.get_all_entities()
             for entity_dict in all_entity_dicts:
                 for entity in entity_dict.values():
-                    entity.global_state = self.global_state
+                    entity.add_global_state(self.global_state)
                     entity.custom_log = self.custom_log
                     # entity.reset()
-
             # Initialize the ConstraintManager which is responsible for tracking action constraints.
             self.constraint_manager = ConstraintManager(action_index=self.action_index,
                                                         reverse_action_map=self._reverse_action_map)
@@ -221,8 +220,15 @@ class LogisticsSystem(System, EventManager):
             # Initialize the NetworkManager.
             self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
                                                   p_automatic_logic_config=self.automatic_logic_config)
-            # Set up the event handling system.
-            self.setup_events()
+
+            self.global_state.reset(self.entities)
+
+            # Ensure all entities have a reference to the global state.
+            all_entity_dicts = self.global_state.get_all_entities()
+            for entity_dict in all_entity_dicts:
+                for entity in entity_dict.values():
+                    entity.global_state = self.global_state
+                    entity.reset()
 
             # Create a dictionary of managers for easy access.
             managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
@@ -242,6 +248,9 @@ class LogisticsSystem(System, EventManager):
 
             # Initialize the OrderGenerator to create new orders over time.
             self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
+
+            # Set up the event handling system.
+            self.setup_events()
             # Register an event handler for when new orders are created.
             self.register_event_handler(self.C_EVENT_NEW_ORDER, self._handle_new_order_request)
 
@@ -252,15 +261,6 @@ class LogisticsSystem(System, EventManager):
 
             # # Perform an initial update of the MLPro state object.
             # self._update_state()
-
-        self.global_state.reset(self.entities)
-
-        # Ensure all entities have a reference to the global state.
-        all_entity_dicts = self.global_state.get_all_entities()
-        for entity_dict in all_entity_dicts:
-            for entity in entity_dict.values():
-                entity.global_state = self.global_state
-                entity.reset()
 
         # Initialize the OrderGenerator to create new orders over time.
         self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
@@ -488,7 +488,7 @@ class LogisticsSystem(System, EventManager):
         if self.state_action_mapper:
             return self.state_action_mapper.generate_masks()
         # As a fallback, return a mask of all ones (all actions considered possible).
-        return np.ones(len(self.action_map), dtype=np.float64)
+        # return np.ones(len(self.action_map), dtype=np.float64)
 
     # --------------------------------------------------------------------------------------------------
 
@@ -557,12 +557,14 @@ class LogisticsSystem(System, EventManager):
         old_action_map = self.action_map.copy()
         self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
         # Update the reverse action map.
+        reverse_action_map_old = self._reverse_action_map.copy()
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
         # Agent maps
         self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
         # Update the action index with the new action map.
         self.action_index.update_indexes(global_state=self.global_state, action_map=self.action_map, old_action_map = old_action_map, state_action_mapper = self.state_action_mapper)
         # Link the updated action index to the constraint manager.
+        self.constraint_manager.update_action_index(self.action_map, old_action_map, reverse_action_map_old)
         self.constraint_manager.action_index = self.action_index
         # Update the state-action mapper with the new action space.
         self.state_action_mapper.update_action_space(self.action_map, old_action_map)
@@ -571,6 +573,7 @@ class LogisticsSystem(System, EventManager):
         # self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
         for order in orders:
             # This event is handled by the ConstraintManager to update relevant action constraints.
+            order.add_global_state(self.global_state)
             order.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
                                                       self.constraint_manager.handle_entity_state_change)
             # order.raise_state_change_event()

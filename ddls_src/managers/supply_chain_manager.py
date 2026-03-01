@@ -136,7 +136,7 @@ class SupplyChainManager(System):
                 truck_id = action_kwargs['truck_id']
                 truck: 'Truck' = self.global_state.get_entity('truck', truck_id)
                 if (truck and truck.get_state_value_by_dim_name(truck.C_DIM_TRIP_STATE[0])
-                        in [truck.C_TRIP_STATE_IDLE, truck.C_TRIP_STATE_HALT] and (len(truck.pickup_orders) > 0 or truck.get_current_cargo_size()>0)):
+                        in [truck.C_TRIP_STATE_IDLE, truck.C_TRIP_STATE_HALT, truck.C_TRIP_STATE_IDLE] and (len(truck.pickup_orders) > 0 or truck.get_current_cargo_size()>0)):
                     truck.consolidation_confirmed = True
                     if self.custom_log:
                         print(f"Consolidation confirmed for Truck {truck_id}. Starting route.")
@@ -149,7 +149,7 @@ class SupplyChainManager(System):
                 drone_id = action_kwargs['drone_id']
                 drone: 'Drone' = self.global_state.get_entity('drone', drone_id)
                 if (drone and drone.get_state_value_by_dim_name(drone.C_DIM_TRIP_STATE[0])
-                        in [drone.C_TRIP_STATE_IDLE, drone.C_TRIP_STATE_HALT] and (
+                        in [drone.C_TRIP_STATE_IDLE, drone.C_TRIP_STATE_HALT, drone.C_TRIP_STATE_IDLE] and (
                                 len(drone.pickup_orders) > 0 or drone.get_current_cargo_size() > 0)):
                     drone.consolidation_confirmed = True
                     # self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Drone {drone_id}. Starting route.")
@@ -244,7 +244,7 @@ class SupplyChainManager(System):
             assigned = p_order.assign_micro_hub(p_entity.id) and assigned
             assigned = p_entity.assign_order(p_order) and assigned
         elif isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
-            assigned = p_order.assign_vehicle(p_entity._id)
+            assigned = p_order.assign_vehicle(p_entity._id, p_entity)
             assigned = p_entity.assign_orders([p_order]) and assigned
         # self.global_state.get_order_requests()[
         #         (p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)

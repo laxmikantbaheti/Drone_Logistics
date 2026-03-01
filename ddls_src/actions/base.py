@@ -33,9 +33,13 @@ class ActionIndex:
                 entity_type = param_def['type']
                 # if entity_type == "Order":
                 entity_id = action_tuple[i + 1]
+                # Add the action id to associated entities
+                global_state.entity_dicts[entity_type][entity_id].associated_action_indexes.add(action_index)
                 self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
                 if entity_type == "Truck" or entity_type == "Drone":
                     self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
+        print("indexes updated")
+
 
         # for entity in self.global_state.get_all_entities():
         #     type = entity.C_NAME
@@ -58,6 +62,8 @@ class ActionIndex:
                 entity_type = param_def['type']
                 # if entity_type == "Order":
                 entity_id = action_tuple[i + 1]
+                # Add the action id to associated entities
+                global_state.entity_dicts[entity_type][entity_id].associated_action_indexes.add(action_index)
                 self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
                 if entity_type == "Truck" or entity_type == "Drone":
                     self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
@@ -195,11 +201,13 @@ class SimulationActions:
                               params=[{'name': 'drone_id', 'type': 'Drone'},
                                       {'name': 'order_id', 'type': 'Order'}],
                               is_automatic=True,
+                              active = False,
                               handler="NetworkManager")
 
     DRONE_LAND = ActionType(name="LAND_DRONE",
                             params=[{'name': 'drone_id', 'type': 'Drone'}],
                             is_automatic=True,
+                            active = False,
                             handler="NetworkManager")
 
     CONSOLIDATE_FOR_TRUCK = ActionType(name="CONSOLIDATE_FOR_TRUCK",

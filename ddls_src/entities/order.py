@@ -6,6 +6,7 @@ from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
 from ddls_src.entities.base import LogisticEntity
 from mlpro.bf.events import Event
+from mlpro.bf.events import EventManager
 
 class Order(LogisticEntity):
     """
@@ -34,11 +35,13 @@ class Order(LogisticEntity):
     C_DIM_PICKUP_NODE = ["p_node", "Pickup Node", []]
     C_DIM_DELIVERY_NODE = ["d_node", "Delivery Node", []]
     C_DIM_ASSIGNED_VEHICLE = ["veh", "Assigned Vehicle", []]
+    C_DIM_CURRENT_NODE = ["curn", "Current Node", []]
     C_DIS_DIMS = [C_DIM_DELIVERY_STATUS,
                   C_DIM_PRIORITY,
                   C_DIM_PICKUP_NODE,
                   C_DIM_DELIVERY_NODE,
-                  C_DIM_ASSIGNED_VEHICLE]
+                  C_DIM_ASSIGNED_VEHICLE,
+                  C_DIM_CURRENT_NODE]
 
 
 
@@ -84,13 +87,25 @@ class Order(LogisticEntity):
         self.status: str = "pending"
         self.assigned_vehicle_id: Optional[int] = None
         self.assigned_micro_hub_id: Optional[int] = None
+        self.assigned_micro_hub = None
         self.delivery_time: Optional[float] = None
         # FIX: Make global_state optional during initialization, defaulting to None
-        self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
+        global_state: 'GlobalState' = p_kwargs.get('global_state', None)
+        if global_state is not None:
+            self.add_global_state(global_state)
         self._state = State(self._state_space)
         self.pseudo_orders:[Order] = []
         self.predecessor_orders = []
+        self.mh_assignment_history_ids = []
         self.mh_assignment_history = []
+        self.assigned_vehicle = None
+        self.carrying_vehicle = None
+        if self.global_state is not None:
+            self.node_pair = self.global_state.node_pairs[(self.pickup_node_id, self.delivery_node_id)]
+        else:
+            self.node_pair = None
+        self.current_node_id = self.pickup_node_id
+        self.location_history = [self.current_node_id]
         self.reset()
 
     @staticmethod
@@ -121,9 +136,12 @@ class Order(LogisticEntity):
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_PLACED)
         self.assigned_vehicle_id = None
         self.assigned_micro_hub_id = None
+        self.assigned_micro_hub = None
         self.delivery_time = None
         self.pseudo_orders = []
         self._update_state()
+        self.current_node_id = self.pickup_node_id
+        self.location_history = [self.pickup_node_id]
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
@@ -158,8 +176,9 @@ class Order(LogisticEntity):
             pass
         self._update_state()
 
-    def assign_vehicle(self, vehicle_id: int):
+    def assign_vehicle(self, vehicle_id: int, vehicle):
         self.assigned_vehicle_id = vehicle_id
+        self.assigned_vehicle = vehicle
         self.status = "assigned"
         self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
                                             [vehicle_id, self.C_STATUS_ASSIGNED])
@@ -170,6 +189,7 @@ class Order(LogisticEntity):
 
     def assign_micro_hub(self, micro_hub_id: int):
         self.assigned_micro_hub_id = micro_hub_id
+        self.assigned_micro_hub = self.global_state.micro_hubs[micro_hub_id]
         self.status = "at_micro_hub"
         self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
                                             [micro_hub_id, self.C_STATUS_ASSIGNED])
@@ -188,6 +208,9 @@ class Order(LogisticEntity):
             return self.assigned_vehicle_id
 
     def set_enroute(self):
+        self.carrying_vehicle = self.assigned_vehicle
+        self.assigned_vehicle_id = None
+        self.assigned_vehicle = None
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)
         # self.raise_state_change_event()
 
@@ -217,6 +240,9 @@ class Order(LogisticEntity):
         # self.raise_state_change_event()
 
     def set_delivered(self):
+        self.assigned_vehicle_id = None
+        self.assigned_vehicle = None
+        self.carrying_vehicle = None
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_DELIVERED)
         self.status = "Delivered"
         # self.raise_state_change_event()
@@ -271,6 +297,20 @@ class Order(LogisticEntity):
                         precedence_satisfied = False
             return precedence_satisfied
 
+    def register_event_handler_for_constraints(self, p_event_id:str, p_event_handler):
+        super().register_event_handler_for_constraints(p_event_id, p_event_handler)
+        self.node_pair.register_event_handler_for_constraints(p_event_id, p_event_handler)
+
+    def raise_state_change_event(self):
+        super().raise_state_change_event()
+        if self.node_pair is None:
+            return
+        self.node_pair.raise_state_change_event()
+
+    def add_global_state(self, global_state):
+        self.global_state = global_state
+        self.node_pair = global_state.node_pairs[(self.pickup_node_id, self.delivery_node_id)]
+        print("Check here")
     # def check_assignability(self):
 
 class PseudoOrder(Order):
@@ -301,14 +341,30 @@ class PseudoOrder(Order):
         self.predecessor_orders.extend(self.parent_order.pseudo_orders)
         self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
                                     self.parent_order.handle_pseudo_delivery)
-        self.mh_assignment_history.extend([self.parent_order.assigned_micro_hub_id]+self.parent_order.mh_assignment_history)
-        self.mh_assignment_history.extend([ordr.assigned_micro_hub_id for ordr in self.predecessor_orders if ordr.assigned_micro_hub_id is not None])
+        self.mh_assignment_history_ids.extend([self.parent_order.assigned_micro_hub_id] + self.parent_order.mh_assignment_history_ids)
+        self.mh_assignment_history.extend([self.parent_order.assigned_micro_hub] + self.parent_order.mh_assignment_history)
+        self.mh_assignment_history_ids.extend([ordr.assigned_micro_hub_id for ordr in self.predecessor_orders if ordr.assigned_micro_hub_id is not None])
+        self.mh_assignment_history_ids.extend([ordr.assigned_micro_hub for ordr in self.predecessor_orders if ordr.assigned_micro_hub is not None])
         if self.custom_log:
-                    print(self, self.mh_assignment_history)
+                    print(self, self.mh_assignment_history_ids)
+        self.reset()
 
 
     def reset(self, p_seed=None) -> None:
         Order.reset(self, p_seed)
 
 
+class NodePair(LogisticEntity):
+    C_TYPE = "Node Pair"
+    C_NAME = "Node Pair"
+    C_EVENT_ASSIGNABILITY = "Event Order Request Updated"
 
+    def __init__(self, p_pickup_node_id, p_delivery_node_id, p_parent_order = None, p_custom_log = False, **p_kwargs):
+
+        self.p_pickup_node_id = p_pickup_node_id
+        self.p_delivery_node_id = p_delivery_node_id
+        LogisticEntity.__init__(self, p_id = (self.p_pickup_node_id, self.p_delivery_node_id), p_custom_log=p_custom_log, **p_kwargs)
+        self.get_id()
+
+    def __repr__(self):
+        return f"({self.p_pickup_node_id}, {self.p_delivery_node_id})"

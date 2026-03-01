@@ -516,7 +516,7 @@ class MicroHubAssignabilityConstraint(Constraint):
             mh_node_id = []
 
         ps_order = p_entity
-        mh_node_ids = mh_node_id + ps_order.mh_assignment_history
+        mh_node_ids = mh_node_id + ps_order.mh_assignment_history_ids
 
         delivery_node_id = ps_order.get_delivery_node_id()
         pickup_node_id = ps_order.get_pickup_node_id()
@@ -540,7 +540,7 @@ class MicroHubAssignabilityConstraint(Constraint):
             if p_entity.parent_order.assigned_micro_hub_id is not None:
                 forbidden_ids.add(p_entity.parent_order.assigned_micro_hub_id)
             if hasattr(p_entity, 'mh_assignment_history'):
-                forbidden_ids.update(p_entity.mh_assignment_history)
+                forbidden_ids.update(p_entity.mh_assignment_history_ids)
         all_hub_ids = set(p_entity.global_state.micro_hubs.keys())
         allowed_ids = all_hub_ids.difference(forbidden_ids)
         is_operable = allowed_ids if allowed_ids else False

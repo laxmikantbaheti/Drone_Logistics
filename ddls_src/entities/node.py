@@ -128,3 +128,6 @@ class Node(LogisticEntity):
         Returns a copy of the list of order IDs currently held at this node.
         """
         return list(self.packages_held)
+
+    def __repr__(self):
+        return f"{self.C_NAME} - {self.get_id()}"

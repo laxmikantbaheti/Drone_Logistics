@@ -55,16 +55,26 @@ class GlobalState:
                                                               ...
                                                           }
         """
+        self.entity_dicts = {}
         self.nodes: Dict[int, Node] = initial_entities.get('nodes', {})
+        self.entity_dicts["Node"] = self.nodes
         self.edges: Dict[int, Edge] = initial_entities.get('edges', {})
+        self.entity_dicts["Edge"] = self.edges
         self.orders: Dict[int, Order] = initial_entities.get('orders', {})
+        self.entity_dicts["Order"] = self.orders
         self.pseudo_orders: Dict[int, PseudoOrder] = initial_entities.get('pseudo_orders', {})
+        self.entity_dicts["Pseudo Order"] = self.pseudo_orders
         self.trucks: Dict[int, Truck] = initial_entities.get('trucks', {})
+        self.entity_dicts["Truck"] = self.trucks
         self.drones: Dict[int, Drone] = initial_entities.get('drones', {})
+        self.entity_dicts["Drone"] = self.drones
         self.micro_hubs: Dict[int, MicroHub] = initial_entities.get('micro_hubs', {})
+        self.entity_dicts["MicroHub"] = self.micro_hubs
         self.current_time: float = initial_entities.get('initial_time', 0.0)  # Can be passed from builder config
         self.network: Network = None  # Reference to the Network graph structure, populated after entities
-        self.node_pairs = self.setup_node_pairs()
+        self.node_pairs = initial_entities.get('node_pairs', {})
+        self.entity_dicts["Node Pair"] = self.node_pairs
+        self.entities_by_type = {"Node", "Edge", "Order", "Pseudo Order", "Truck", "Drone", "Micro Hub", "Node Pair"}
         self.orders_by_nodes = self.setup_order_by_node_pairs()
         self.movement_mode = movement_mode  #
         print(f"GlobalState initialized with provided entities. Movement mode set to: '{self.movement_mode}'.")
@@ -303,6 +313,9 @@ class GlobalState:
                     order_requests[(node_pick_up, node_delivery)].append(order)
         return order_requests
 
+    # def setup_type_dicts(self):
+    #     self.entity_dicts = {"Node":self.nodes, "Edge", "Micro Hub", "Truck", "Drone", "Order", "Pseudo Order", "Node Pair"}
+
     def get_orders(self):
         return self.orders
 
@@ -314,7 +327,7 @@ class GlobalState:
 
 
     def get_all_entities(self):
-        return [self.orders, self.trucks, self.drones, self.micro_hubs, self.nodes]
+        return [self.node_pairs, self.orders, self.trucks, self.drones, self.micro_hubs, self.nodes]
 
     def reset(self, entities):
         self.current_time = 0
@@ -324,5 +337,8 @@ class GlobalState:
         # self.orders = entities["orders"]
         self.pseudo_orders = {}
 
+    # def add_global_state(self, entities):
+    #     for entity in entities:
+    #         entity.global_state = self
 
 

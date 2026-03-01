@@ -32,6 +32,9 @@ class LogisticEntity(System):
         self.setup_event_string()
         self.data_storage = {}
 
+        # [NEW] Added an attribute for global state reference
+        self.global_state = None
+
         # [NEW] Set to store actions involved with this entity
         self.associated_actions = set()
         self.associated_action_indexes = set()
@@ -107,3 +110,6 @@ class LogisticEntity(System):
 
         # self.associated_actions = p_action_index.actions_involving_entity[(self.C_NAME, self.get_id())]
         pass
+
+    def add_global_state(self, global_state):
+        self.global_state = global_state
