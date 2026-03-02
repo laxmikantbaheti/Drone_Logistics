@@ -1,6 +1,7 @@
 from typing import Optional, List, Any, Dict
 from datetime import timedelta
 
+from mlpro.bf import ParamError
 # MLPro Imports
 from mlpro.bf.systems import System, State, Action
 from mlpro.bf.math import MSpace, Dimension
@@ -75,6 +76,7 @@ class Order(LogisticEntity):
                          p_mode=System.C_MODE_SIM,
                          p_latency=timedelta(0, 0, 0))
 
+        self.successor_orders = []
         self.custom_log = False
         # Order-specific attributes
         self.customer_node_id: int = p_kwargs.get('customer_node_id')
@@ -261,24 +263,88 @@ class Order(LogisticEntity):
                     print(f"Collaborative order {self.get_id()} is delivered.")
             self.set_delivered()
 
+    # def create_pseudo_orders(self, hub_id):
+    #     pseudo_order_1 = PseudoOrder(
+    #         p_id=str(self.get_id()) + "_1",
+    #         p_pickup_node_id=self.get_pickup_node_id(),
+    #         p_delivery_node_id=hub_id,
+    #         global_state=self.global_state,
+    #         p_parent_order=self,
+    #         p_leg = 1
+    #     )
+    #     self.pseudo_orders.extend([pseudo_order_1])
+    #     pseudo_order_2 = PseudoOrder(
+    #         p_id=str(self.get_id()) + "_2",
+    #         p_pickup_node_id=hub_id,
+    #         p_delivery_node_id=self.get_delivery_node_id(),
+    #         global_state=self.global_state,
+    #         p_parent_order=self,
+    #         p_leg = 2
+    #     )
+    #     # pseudo_order_2.predecessor_orders.append(pseudo_order_1)
+    #     self.pseudo_orders.extend([pseudo_order_2])
+    #
+    #     return [pseudo_order_1, pseudo_order_2]
+
     def create_pseudo_orders(self, hub_id):
         pseudo_order_1 = PseudoOrder(
             p_id=str(self.get_id()) + "_1",
             p_pickup_node_id=self.get_pickup_node_id(),
             p_delivery_node_id=hub_id,
             global_state=self.global_state,
-            p_parent_order=self
+            p_parent_order=self,
+            p_leg=1
         )
-        self.pseudo_orders.extend([pseudo_order_1])
         pseudo_order_2 = PseudoOrder(
             p_id=str(self.get_id()) + "_2",
             p_pickup_node_id=hub_id,
             p_delivery_node_id=self.get_delivery_node_id(),
             global_state=self.global_state,
-            p_parent_order=self
+            p_parent_order=self,
+            p_leg=2
         )
-        # pseudo_order_2.predecessor_orders.append(pseudo_order_1)
-        self.pseudo_orders.extend([pseudo_order_2])
+
+        self.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
+
+        # --- GRAPH SURGERY: Transitive Update ---
+
+        # 1. Inherit the entire lineage from the parent
+        pseudo_order_1.predecessor_orders.extend(self.predecessor_orders)
+        pseudo_order_1.successor_orders.extend(self.successor_orders)
+
+        pseudo_order_2.predecessor_orders.extend(self.predecessor_orders)
+        pseudo_order_2.successor_orders.extend(self.successor_orders)
+
+        # 2. Establish the internal sequential link between the two new legs
+        pseudo_order_1.successor_orders.append(pseudo_order_2)
+        pseudo_order_2.predecessor_orders.append(pseudo_order_1)
+
+        # 3. Tell the rest of the network about the new legs
+
+        # Tell all PAST orders to add Leg 1 and Leg 2 to their successor lists
+        for pred in self.predecessor_orders:
+            if pseudo_order_1 not in pred.successor_orders:
+                pred.successor_orders.append(pseudo_order_1)
+            if pseudo_order_2 not in pred.successor_orders:
+                pred.successor_orders.append(pseudo_order_2)
+
+        # Tell all FUTURE orders to add Leg 1 and Leg 2 to their predecessor lists
+        for succ in self.successor_orders:
+            if pseudo_order_1 not in succ.predecessor_orders:
+                succ.predecessor_orders.append(pseudo_order_1)
+            if pseudo_order_2 not in succ.predecessor_orders:
+                succ.predecessor_orders.append(pseudo_order_2)
+
+            # --- THE FIX: WAKE UP THE SUCCESSORS ---
+            # Force the constraint manager to immediately re-evaluate 1010_2
+            # against its newly born, unassigned predecessor (1010_1_1)!
+            if succ.node_pair is not None:
+                succ.node_pair.raise_state_change_event()
+        # ---------------------------------------
+
+        # 4. Ghost the Parent Shell
+        self.predecessor_orders = []
+        self.successor_orders = []
 
         return [pseudo_order_1, pseudo_order_2]
 
@@ -300,12 +366,49 @@ class Order(LogisticEntity):
     def register_event_handler_for_constraints(self, p_event_id:str, p_event_handler):
         super().register_event_handler_for_constraints(p_event_id, p_event_handler)
         self.node_pair.register_event_handler_for_constraints(p_event_id, p_event_handler)
+    #
+    # def raise_state_change_event(self):
+    #     super().raise_state_change_event()
+    #     if self.node_pair is None:
+    #         return
+    #     self.node_pair.raise_state_change_event()
+    #     if isinstance(self, PseudoOrder):
+    #         if len(self.predecessor_orders):
+    #             return
+    #         else:
+    #             if hasattr(self, "parent_order") and len(self.parent_order.pseudo_orders) > 1:
+    #                 pair = self.parent_order.pseudo_orders[1]
+    #                 pair.raise_state_change_event()
+    #                 pair.node_pair.raise_state_change_event()
+    #                 return
+    #             else:
+    #                 return
 
     def raise_state_change_event(self):
         super().raise_state_change_event()
-        if self.node_pair is None:
-            return
-        self.node_pair.raise_state_change_event()
+        if self.node_pair is not None:
+            self.node_pair.raise_state_change_event()
+
+        # O(1) Lightning-fast forward propagation!
+        for successor in self.successor_orders:
+
+            # 1. Wake the successor's NodePair (Unblocks Assignment constraints)
+            if successor.node_pair is not None:
+                successor.node_pair.raise_state_change_event()
+
+            # 2. Wake the successor's Order constraints (Unblocks Load constraints)
+            # Using super() fires the native MLPro event on the target WITHOUT an infinite recursive loop
+            super(Order, successor).raise_state_change_event()
+
+        for predecessor in self.predecessor_orders:
+
+            # 1. Wake the successor's NodePair (Unblocks Assignment constraints)
+            if predecessor.node_pair is not None:
+                predecessor.node_pair.raise_state_change_event()
+
+            # 2. Wake the successor's Order constraints (Unblocks Load constraints)
+            # Using super() fires the native MLPro event on the target WITHOUT an infinite recursive loop
+            super(Order, predecessor).raise_state_change_event()
 
     def add_global_state(self, global_state):
         self.global_state = global_state
@@ -326,6 +429,7 @@ class PseudoOrder(Order):
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,
+                 p_leg=None,
                  **p_kwargs):
 
         Order.__init__(self,
@@ -336,17 +440,32 @@ class PseudoOrder(Order):
                        p_visualize=p_visualize,
                        p_logging=p_logging,
                        **p_kwargs)
+        if p_leg is None:
+            raise ParamError("Please provide the number of leg this pseudo order represents.")
+        self.p_leg = p_leg
         self.parent_order = p_parent_order
-        self.predecessor_orders.extend(self.parent_order.predecessor_orders)
-        self.predecessor_orders.extend(self.parent_order.pseudo_orders)
+
+        # REMOVED: Auto-linking logic to prevent graph duplication
+
         self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
                                     self.parent_order.handle_pseudo_delivery)
-        self.mh_assignment_history_ids.extend([self.parent_order.assigned_micro_hub_id] + self.parent_order.mh_assignment_history_ids)
-        self.mh_assignment_history.extend([self.parent_order.assigned_micro_hub] + self.parent_order.mh_assignment_history)
-        self.mh_assignment_history_ids.extend([ordr.assigned_micro_hub_id for ordr in self.predecessor_orders if ordr.assigned_micro_hub_id is not None])
-        self.mh_assignment_history_ids.extend([ordr.assigned_micro_hub for ordr in self.predecessor_orders if ordr.assigned_micro_hub is not None])
+
+        self.mh_assignment_history_ids.extend(
+            [self.parent_order.assigned_micro_hub_id] + self.parent_order.mh_assignment_history_ids)
+        self.mh_assignment_history.extend(
+            [self.parent_order.assigned_micro_hub] + self.parent_order.mh_assignment_history)
+
+        # Update history tracking to pull directly from the parent's predecessors
+        self.mh_assignment_history_ids.extend(
+            [ordr.assigned_micro_hub_id for ordr in self.parent_order.predecessor_orders if
+             ordr.assigned_micro_hub_id is not None])
+        self.mh_assignment_history_ids.extend(
+            [ordr.assigned_micro_hub for ordr in self.parent_order.predecessor_orders if
+             ordr.assigned_micro_hub is not None])
+
         if self.custom_log:
-                    print(self, self.mh_assignment_history_ids)
+            print(self, self.mh_assignment_history_ids)
+
         self.reset()
 
 

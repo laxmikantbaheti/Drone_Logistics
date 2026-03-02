@@ -823,79 +823,125 @@ class MicroHubAssignabilityConstraint(Constraint):
             if action_type in p_entity.action_operability:
                 p_entity.action_operability[action_type] = is_operable
 
+#
+# class CoordinatedDeliveryAssignmentConstraint(Constraint):
+#     C_NAME = "Co-ordinated Delivery Assignment Constraint"
+#     C_ASSOCIATED_ENTITIES = ["Order"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+#                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
+#
+#     def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
+#         if not isinstance(p_entity, Order):
+#             return [], []
+#
+#         if not isinstance(p_entity, PseudoOrder):
+#             return [], []
+#
+#         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+#         is_predecessor_unassigned = False
+#         if p_entity.predecessor_orders:
+#             for pre_order in p_entity.predecessor_orders:
+#                 status = pre_order.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
+#                 if status == Order.C_STATUS_PLACED:
+#                     is_predecessor_unassigned = True
+#                     break
+#
+#         if is_predecessor_unassigned:
+#             return list(relevant_actions), []
+#         else:
+#             return [], list(relevant_actions)
+#
+#     # --- [LEGACY METHODS] ---
+#     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+#         def check_ass_precedence(p_order):
+#             ass_precedence_satisfied = True
+#             for pre_order in p_order.predecessor_orders:
+#                 if pre_order.get_state_value_by_dim_name(pre_order.C_DIM_DELIVERY_STATUS[0]) not in [
+#                     pre_order.C_STATUS_PLACED,
+#                     pre_order.C_STATUS_ACCEPTED,
+#                     pre_order.C_STATUS_FAILED]:
+#                     ass_precedence_satisfied = True and ass_precedence_satisfied
+#                 else:
+#                     ass_precedence_satisfied = False
+#             return ass_precedence_satisfied
+#
+#         invalidation_idx = []
+#         validation_idx = []
+#         if not (isinstance(p_entity, Order) or isinstance(p_entity, (Truck, Drone))):
+#             raise TypeError("Wrong entity type for the constraint")
+#
+#         actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+#         pseudo_orders = [order for order in p_entity.global_state.get_all_entities_by_type("order").values()
+#                          if (isinstance(order, PseudoOrder) and len(
+#                 order.predecessor_orders) and not check_ass_precedence(order))]
+#
+#         for ps_ordr in pseudo_orders:
+#             actions_by_entity = p_action_index.actions_involving_entity[
+#                 "Node Pair", (ps_ordr.get_pickup_node_id(), ps_ordr.get_delivery_node_id())]
+#             invalidation_idx.extend(actions_by_entity.intersection(actions_by_type))
+#
+#         return invalidation_idx, validation_idx
+#
+#     def update_operability(self, p_entity, **p_kwargs):
+#         if not isinstance(p_entity, Order):
+#             return
+#         is_ready = True
+#         if isinstance(p_entity, PseudoOrder) and p_entity.predecessor_orders:
+#             for pre_order in p_entity.predecessor_orders:
+#                 status = pre_order.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
+#                 if status in [Order.C_STATUS_PLACED, Order.C_STATUS_ACCEPTED, Order.C_STATUS_FAILED]:
+#                     is_ready = False
+#                     break
+#         for action_type in self.C_ACTIONS_AFFECTED:
+#             if action_type in p_entity.action_operability:
+#                 p_entity.action_operability[action_type] = is_ready
 
 class CoordinatedDeliveryAssignmentConstraint(Constraint):
+    """
+    Enforces sequential assignment of coordinated orders.
+    Strictly localized to Node Pair. Relies on the Environment to raise an event
+    for this Node Pair when its predecessor order changes state.
+    """
     C_NAME = "Co-ordinated Delivery Assignment Constraint"
-    C_ASSOCIATED_ENTITIES = ["Order"]
+    C_ASSOCIATED_ENTITIES = ["Node Pair"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
-    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
-        if not isinstance(p_entity, Order):
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+        # 1. Strict Entity Check
+        if not isinstance(p_entity, NodePair):
+            raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
+
+        relevant_actions = p_entity.associated_action_indexes.intersection(self.associated_action_index)
+        if not relevant_actions:
             return [], []
 
-        if not isinstance(p_entity, PseudoOrder):
-            return [], []
-
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
-        is_predecessor_unassigned = False
-        if p_entity.predecessor_orders:
-            for pre_order in p_entity.predecessor_orders:
-                status = pre_order.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
-                if status == Order.C_STATUS_PLACED:
-                    is_predecessor_unassigned = True
-                    break
-
-        if is_predecessor_unassigned:
-            return list(relevant_actions), []
-        else:
+        global_state = p_entity.global_state
+        if global_state is None:
             return [], list(relevant_actions)
 
-    # --- [LEGACY METHODS] ---
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
-        def check_ass_precedence(p_order):
-            ass_precedence_satisfied = True
-            for pre_order in p_order.predecessor_orders:
-                if pre_order.get_state_value_by_dim_name(pre_order.C_DIM_DELIVERY_STATUS[0]) not in [
-                    pre_order.C_STATUS_PLACED,
-                    pre_order.C_STATUS_ACCEPTED,
-                    pre_order.C_STATUS_FAILED]:
-                    ass_precedence_satisfied = True and ass_precedence_satisfied
-                else:
-                    ass_precedence_satisfied = False
-            return ass_precedence_satisfied
+        # 2. O(1) Lookup: What order is sitting at this Node Pair?
+        order_requests = global_state.get_order_requests()
+        node_pair_id = p_entity.get_id()
 
-        invalidation_idx = []
-        validation_idx = []
-        if not (isinstance(p_entity, Order) or isinstance(p_entity, (Truck, Drone))):
-            raise TypeError("Wrong entity type for the constraint")
+        if node_pair_id not in order_requests:
+            return [], list(relevant_actions)
 
-        actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
-        pseudo_orders = [order for order in p_entity.global_state.get_all_entities_by_type("order").values()
-                         if (isinstance(order, PseudoOrder) and len(
-                order.predecessor_orders) and not check_ass_precedence(order))]
+        target_order = order_requests[node_pair_id][0]
 
-        for ps_ordr in pseudo_orders:
-            actions_by_entity = p_action_index.actions_involving_entity[
-                "Node Pair", (ps_ordr.get_pickup_node_id(), ps_ordr.get_delivery_node_id())]
-            invalidation_idx.extend(actions_by_entity.intersection(actions_by_type))
+        # 3. Fast bypass: If it has no predecessor, it's not Leg 2, so it's safe.
+        if not isinstance(target_order, PseudoOrder) or not target_order.predecessor_orders:
+            return [], list(relevant_actions)
 
-        return invalidation_idx, validation_idx
+        # 4. The Sequence Check
+        for pre_order in target_order.predecessor_orders:
+            status = pre_order.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
+            # If Leg 1 is NOT actively moving or delivered, block Leg 2!
+            if status in [Order.C_STATUS_PLACED, Order.C_STATUS_ACCEPTED, Order.C_STATUS_FAILED]:
+                return list(relevant_actions), []
 
-    def update_operability(self, p_entity, **p_kwargs):
-        if not isinstance(p_entity, Order):
-            return
-        is_ready = True
-        if isinstance(p_entity, PseudoOrder) and p_entity.predecessor_orders:
-            for pre_order in p_entity.predecessor_orders:
-                status = pre_order.get_state_value_by_dim_name(Order.C_DIM_DELIVERY_STATUS[0])
-                if status in [Order.C_STATUS_PLACED, Order.C_STATUS_ACCEPTED, Order.C_STATUS_FAILED]:
-                    is_ready = False
-                    break
-        for action_type in self.C_ACTIONS_AFFECTED:
-            if action_type in p_entity.action_operability:
-                p_entity.action_operability[action_type] = is_ready
-
+        # If we passed the check, Leg 1 is assigned/moving. Unblock Leg 2!
+        return [], list(relevant_actions)
 
 class OrderLoadConstraint(Constraint):
     C_NAME = "OrderLoadConstraint"
@@ -1024,7 +1070,7 @@ class CoordinatedOrderLoadConstraint(Constraint):
             else:
                 loadable = loadable and False
         if loadable:
-            return [], [relevant_actions]
+            return [], list(relevant_actions)
         else:
             return list(relevant_actions), []
 
@@ -1040,6 +1086,10 @@ class VehicleLoadConstraint(Constraint):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+
+        if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) in [p_entity.C_TRIP_STATE_EN_ROUTE]:
+            return list(relevant_actions), []
+
         current_node = p_entity.get_current_node()
         valid_orders = []
 
@@ -1181,6 +1231,10 @@ class VehicleUnloadConstraint(Constraint):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+
+        if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) in [p_entity.C_TRIP_STATE_EN_ROUTE]:
+            return list(relevant_actions), []
+
         current_node = p_entity.get_current_node()
         current_cargo = p_entity.get_current_cargo()
 
@@ -1208,6 +1262,250 @@ class OrderAtDeliveryNode(Constraint):
     def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         return [],[]
 
+#
+# class DeadlockPreventionConstraint(Constraint):
+#     """
+#     Prevents distributed circular waits by analyzing the dependency graph.
+#     Strictly associated with the Node Pair entity, it evaluates if assigning
+#     the active order request of this node pair to a specific vehicle creates a cycle.
+#     """
+#     C_NAME = "DeadlockPreventionConstraint"
+#     C_ACTIVE = True
+#     C_ASSOCIATED_ENTITIES = ["Node Pair"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+#                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
+#
+#     def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+#         # 1. Strict Entity Check
+#         if not isinstance(p_entity, NodePair):
+#             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
+#
+#         # Fast-fail: Get assignment actions strictly related to this specific Node Pair
+#         relevant_actions = p_entity.associated_action_indexes.intersection(self.associated_action_index)
+#         if not relevant_actions:
+#             return [], []
+#
+#         global_state = p_entity.global_state
+#         if global_state is None:
+#             return [], list(relevant_actions)
+#
+#         # 2. Resolve the Node Pair to its active Order Request
+#         order_requests = global_state.get_order_requests()
+#         node_pair_id = p_entity.get_id()
+#
+#         # If there's no active request, we don't block anything here
+#         # (OrderRequestAssignabilityConstraint handles masking empty requests)
+#         if node_pair_id not in order_requests:
+#             return [], list(relevant_actions)
+#
+#         target_order = order_requests[node_pair_id][0]
+#
+#         # If the order doesn't have predecessors, it physically cannot cause a wait loop
+#         if not hasattr(target_order, 'predecessor_orders') or not target_order.predecessor_orders:
+#             return [], list(relevant_actions)
+#
+#         # 3. Build the Dependency Graph of the Network
+#         dependencies = defaultdict(set)
+#         all_vehicles = list(global_state.trucks.values()) + list(global_state.drones.values())
+#
+#         for v in all_vehicles:
+#             for order in v.get_pickup_orders() + v.get_current_cargo():
+#                 if hasattr(order, 'predecessor_orders') and order.predecessor_orders:
+#                     for pred in order.predecessor_orders:
+#                         if pred.get_state_value_by_dim_name(pred.C_DIM_DELIVERY_STATUS[0]) != pred.C_STATUS_DELIVERED:
+#                             assigned_veh_id = getattr(pred, 'assigned_vehicle_id', None)
+#                             if assigned_veh_id is not None and assigned_veh_id != v.get_id():
+#                                 dependencies[v.get_id()].add(assigned_veh_id)
+#
+#         # Helper: Cycle Detection
+#         def has_path(start_veh_id, target_veh_id, visited):
+#             if start_veh_id == target_veh_id:
+#                 return True
+#             visited.add(start_veh_id)
+#             for neighbor in dependencies.get(start_veh_id, set()):
+#                 if neighbor not in visited:
+#                     if has_path(neighbor, target_veh_id, visited):
+#                         return True
+#             return False
+#
+#         actions_to_block = set()
+#
+#         # 4. Evaluate each specific vehicle assignment for this Node Pair
+#         for action_idx in relevant_actions:
+#             action_tuple = self.reverse_action_map.get(action_idx)
+#             if not action_tuple:
+#                 continue
+#
+#             # Action Tuple Format: (ActionType, NodePair_ID, Vehicle_ID)
+#             vehicle_id = action_tuple[2]
+#
+#             # Check if assigning this order to THIS vehicle creates a cycle
+#             for pred in target_order.predecessor_orders:
+#                 if pred.get_state_value_by_dim_name(pred.C_DIM_DELIVERY_STATUS[0]) != pred.C_STATUS_DELIVERED:
+#                     pred_veh_id = getattr(pred, 'assigned_vehicle_id', None)
+#
+#                     if pred_veh_id is not None and pred_veh_id != vehicle_id:
+#                         # CYCLE CHECK: Does the vehicle carrying the predecessor depend on the current vehicle?
+#                         if has_path(pred_veh_id, vehicle_id, set()):
+#                             actions_to_block.add(action_idx)
+#                             break
+#
+#         actions_to_unblock = relevant_actions.difference(actions_to_block)
+#         return list(actions_to_block), list(actions_to_unblock)
+
+class DeadlockPreventionConstraint(Constraint):
+    """
+    Prevents distributed circular waits by building a hypothetical global
+    dependency graph for every proposed assignment.
+    """
+    C_NAME = "DeadlockPreventionConstraint"
+    C_ACTIVE = True
+    C_ASSOCIATED_ENTITIES = ["Node Pair"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
+
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+        if not isinstance(p_entity, NodePair):
+            raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
+
+        relevant_actions = p_entity.associated_action_indexes.intersection(self.associated_action_index)
+        if not relevant_actions:
+            return [], []
+
+        global_state = p_entity.global_state
+        if global_state is None:
+            return [], list(relevant_actions)
+
+        order_requests = global_state.get_order_requests()
+        node_pair_id = p_entity.get_id()
+
+        if node_pair_id not in order_requests:
+            return [], list(relevant_actions)
+
+        target_order = order_requests[node_pair_id][0]
+
+        # --- THE FIX: Recursive Drill-Down across ALL 3 Phases ---
+        def get_responsible_vehicles(order, proposed_order_id=None, proposed_veh_id=None):
+            veh_ids = set()
+
+            # Phase 1: Hypothetical (The order we are testing right now)
+            if str(order.get_id()) == str(proposed_order_id):
+                veh_ids.add(proposed_veh_id)
+            # Phase 2: Waiting at Node (Assigned but not loaded)
+            elif getattr(order, 'assigned_vehicle_id', None) is not None:
+                veh_ids.add(order.assigned_vehicle_id)
+            # Phase 3: THE MISSING LINK -> Actively inside Cargo
+            elif getattr(order, 'carrying_vehicle', None) is not None:
+                veh_ids.add(order.carrying_vehicle.get_id())
+
+            # Nested Assignment
+            if hasattr(order, 'pseudo_orders') and order.pseudo_orders:
+                for sub_order in order.pseudo_orders:
+                    if sub_order.get_state_value_by_dim_name(
+                            sub_order.C_DIM_DELIVERY_STATUS[0]) != sub_order.C_STATUS_DELIVERED:
+                        veh_ids.update(get_responsible_vehicles(sub_order, proposed_order_id, proposed_veh_id))
+            return veh_ids
+
+        # ---------------------------------------------------------------
+
+        all_vehicles = list(global_state.trucks.values()) + list(global_state.drones.values())
+        actions_to_block = set()
+
+        for action_idx in relevant_actions:
+            action_tuple = self.reverse_action_map.get(action_idx)
+            if not action_tuple:
+                continue
+
+            vehicle_id = action_tuple[2]
+            dependencies = defaultdict(set)
+
+            # Build the Dependency Graph
+            for v in all_vehicles:
+                # Add our hypothetical target order to the vehicle we are testing
+                manifest = v.get_pickup_orders() + v.get_current_cargo()
+                if v.get_id() == vehicle_id:
+                    manifest = manifest + [target_order]
+
+                for order in manifest:
+                    if hasattr(order, 'predecessor_orders') and order.predecessor_orders:
+                        for pred in order.predecessor_orders:
+                            if pred.get_state_value_by_dim_name(
+                                    pred.C_DIM_DELIVERY_STATUS[0]) != pred.C_STATUS_DELIVERED:
+                                pred_veh_ids = get_responsible_vehicles(pred, target_order.get_id(), vehicle_id)
+                                dependencies[v.get_id()].update(pred_veh_ids)
+
+            # ---------------------------------------------------------------
+            # Cycle Detection (Depth First Search)
+            def has_cycle(current_veh, visited, rec_stack):
+                visited.add(current_veh)
+                rec_stack.add(current_veh)
+                for neighbor in dependencies.get(current_veh, set()):
+                    if neighbor not in visited:
+                        if has_cycle(neighbor, visited, rec_stack):
+                            return True
+                    elif neighbor in rec_stack:
+                        return True
+                rec_stack.remove(current_veh)
+                return False
+
+            visited = set()
+            rec_stack = set()
+
+            # If giving this order to this vehicle puts the vehicle in a loop, block it.
+            if has_cycle(vehicle_id, visited, rec_stack):
+                actions_to_block.add(action_idx)
+
+        actions_to_unblock = relevant_actions.difference(actions_to_block)
+        return list(actions_to_block), list(actions_to_unblock)
+
+        # ---------------------------------------------------------------
+
+        # Build the Dependency Graph
+        dependencies = defaultdict(set)
+        all_vehicles = list(global_state.trucks.values()) + list(global_state.drones.values())
+
+        for v in all_vehicles:
+            for order in v.get_pickup_orders() + v.get_current_cargo():
+                if hasattr(order, 'predecessor_orders') and order.predecessor_orders:
+                    for pred in order.predecessor_orders:
+                        if pred.get_state_value_by_dim_name(pred.C_DIM_DELIVERY_STATUS[0]) != pred.C_STATUS_DELIVERED:
+                            # Use the helper to extract ALL nested vehicles
+                            pred_veh_ids = get_responsible_vehicles(pred)
+                            dependencies[v.get_id()].update(pred_veh_ids)
+
+        def has_path(start_veh_id, target_veh_id, visited):
+            if start_veh_id == target_veh_id:
+                return True
+            visited.add(start_veh_id)
+            for neighbor in dependencies.get(start_veh_id, set()):
+                if neighbor not in visited:
+                    if has_path(neighbor, target_veh_id, visited):
+                        return True
+            return False
+
+        actions_to_block = set()
+
+        for action_idx in relevant_actions:
+            action_tuple = self.reverse_action_map.get(action_idx)
+            if not action_tuple:
+                continue
+
+            vehicle_id = action_tuple[2]
+
+            for pred in target_order.predecessor_orders:
+                if pred.get_state_value_by_dim_name(pred.C_DIM_DELIVERY_STATUS[0]) != pred.C_STATUS_DELIVERED:
+
+                    # Extract ALL vehicles carrying the predecessor or its sub-legs
+                    pred_veh_ids = get_responsible_vehicles(pred)
+
+                    # Cycle Check against every nested vehicle
+                    for p_veh_id in pred_veh_ids:
+                        if has_path(p_veh_id, vehicle_id, set()):
+                            actions_to_block.add(action_idx)
+                            break
+
+        actions_to_unblock = relevant_actions.difference(actions_to_block)
+        return list(actions_to_block), list(actions_to_unblock)
 
 # -------------------------------------------------------------------------------------------------
 # -- Part 3: Managers
