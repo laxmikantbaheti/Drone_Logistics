@@ -69,7 +69,7 @@ class LogisticEntity(System):
                 dim = self.get_state_space().get_dim_by_name(dims)
                 self.log(self.C_LOG_TYPE_S, f"{dim.get_name_long()} updated.")
                 if self.custom_log:
-                    print(f"{self.C_NAME}{self.get_id()} - {dim.get_name_long()} updated to {p_value[i]}.")
+                    print(f"{self.global_state.current_time} - {self.C_NAME}{self.get_id()} - {dim.get_name_long()} updated to {p_value[i]}.")
                 self._state.set_value(dim.get_id(), p_value[i])
             self.raise_state_change_event()
         else:
