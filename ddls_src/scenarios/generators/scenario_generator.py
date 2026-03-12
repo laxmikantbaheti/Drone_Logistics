@@ -43,7 +43,7 @@ class ScenarioGenerator:
     def add_node(self, p_logging = Log.C_LOG_NOTHING, **p_kwargs) -> Node:
         node = Node(p_logging=p_logging, **p_kwargs)
         self.nodes[node.id] = node
-        if p_kwargs["type"] == "depot":
+        if p_kwargs["type"] == "depot" or p_kwargs["type"] == "supplier":
             self.supplier_nodes[node.id] = node
         elif p_kwargs["type"] == "customer":
             self.customer_nodes[node.id] = node

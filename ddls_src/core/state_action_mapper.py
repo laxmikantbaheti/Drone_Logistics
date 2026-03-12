@@ -31,7 +31,7 @@ class Constraint(ABC, EventManager):
     C_NAME = None
     C_EVENT_CONSTRAINT_UPDATE = "ConstraintUpdate"
 
-    def __init__(self, p_reverse_action_map, p_action_index, custom_log = True):
+    def __init__(self, p_reverse_action_map, p_action_index, custom_log = False):
         EventManager.__init__(self, p_logging=False)
         self.reverse_action_map = p_reverse_action_map
 
@@ -1518,7 +1518,7 @@ class ConstraintManager(EventManager):
     C_NAME = "Constraint Manager"
     C_EVENT_MASK_UPDATED = "New Masks Necessary"
 
-    def __init__(self, action_index: ActionIndex, reverse_action_map, custom_log = True):
+    def __init__(self, action_index: ActionIndex, reverse_action_map, custom_log = False):
         EventManager.__init__(self, p_logging=False)
         self._update_counter = 0
         self.constraints = set()
@@ -1652,7 +1652,7 @@ class StateActionMapper:
     Maps the system state to a valid action mask using reference counting.
     """
 
-    def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int], reverse_action_map, custom_log = True):
+    def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int], reverse_action_map, custom_log = False):
         self.old_counters = None
         self.global_state = global_state
         self.action_map = action_map
