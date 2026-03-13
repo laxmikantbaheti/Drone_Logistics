@@ -263,7 +263,7 @@ class LogisticsSystem(System, EventManager):
             # self._update_state()
 
         # Initialize the OrderGenerator to create new orders over time.
-        self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
+        # self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
 
         # Set the initial simulation time.
         initial_sim_time = self.entities.get('initial_time', 0.0)

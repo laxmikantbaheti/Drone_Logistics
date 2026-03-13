@@ -26,7 +26,7 @@ from ddls_src.rl_interface.rl_scenario import LogisticRLScenario
 import torch
 from sb3_contrib.common.maskable import distributions
 
-torch.set_default_device("cuda")
+# torch.set_default_device("cuda")
 
 
 def safe_init(self, probs=None, logits=None, validate_args=None):
@@ -172,7 +172,6 @@ def run_ppo_simulation():
         gamma=1,
         gae_lambda=0.99,
         ent_coef=0.00,
-        device="cuda",
     )
 
     # ----------------------------------------------------------------------

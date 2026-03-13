@@ -165,11 +165,18 @@ class LogisticsScenario(Scenario):
 
         # if self._system.get_success() and self._visualize:
         if self._system.get_success():
-            plot_vehicle_gantt_chart(self._system.global_state)
-            plot_vehicle_states(self._system.global_state)
-            plot_vehicle_cargo_history(self._system.global_state)
-            plot_invalid_delivery_gantt_chart(self._system.global_state)
-            pass
+            # plot_vehicle_gantt_chart(self._system.global_state)
+            # plot_vehicle_states(self._system.global_state)
+            # plot_vehicle_cargo_history(self._system.global_state)
+            # plot_invalid_delivery_gantt_chart(self._system.global_state)
+
+            # --- MODIFICATION: Added Export Call ---
+            from ddls_src.functions.reports import export_simulation_reports
+
+            print("\nGenerating final simulation reports...")
+            # Set to 'csv' to generate two files (scenario_report_nodes.csv & scenario_report_orders.csv)
+            # Set to 'json' to generate one file (scenario_report.json)
+            export_simulation_reports(self._system.global_state, output_format='csv', base_filepath='scenario_report')# ---------------------------------------
 
         new_state = self._system.get_state()
         return self._system.get_success(), self._system.get_broken(), adapted, eof_data

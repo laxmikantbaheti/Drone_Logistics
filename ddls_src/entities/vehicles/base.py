@@ -215,6 +215,12 @@ class Vehicle(LogisticEntity, ABC):
             if order not in truck.pickup_orders:
                 raise ValueError(
                     f"The order {order_id} is not assigned to the vehicle {truck_id}. The order is not in the pick up orders.")
+
+            # --- MODIFICATION: Enforce Physical Location ---
+            elif str(truck.current_node_id) != str(order.get_pickup_node_id()):
+                raise ValueError(
+                    f"Location mismatch! Truck {truck_id} cannot load order {order_id} at node {truck.current_node_id}. Order is at {order.get_pickup_node_id()}.")
+            # -----------------------------------------------
             else:
                 truck.pickup_orders.remove(order)
                 truck.delivery_orders.append(order)
@@ -240,6 +246,11 @@ class Vehicle(LogisticEntity, ABC):
 
                 raise ValueError(
                     "The order is not in the cargo of the vehicle. The order is not in the delivery orders.")
+                # --- MODIFICATION: Enforce Physical Location ---
+            elif str(self.current_node_id) != str(order.get_delivery_node_id()):
+                raise ValueError(
+                    f"Location mismatch! Truck {truck_id} cannot unload order {order_id} at node {self.current_node_id}. Destination is {order.get_delivery_node_id()}.")
+            # -----------------------------------------------
             else:
                 self.delivery_orders.remove(order)
                 self.remove_cargo(order.get_id())
@@ -264,6 +275,11 @@ class Vehicle(LogisticEntity, ABC):
             order = self.global_state.get_entity("order", order_id)
             if order not in drone.pickup_orders:
                 raise ValueError("The order is not assigned to the vehicle. The order is not in the pick up orders.")
+            # --- MODIFICATION: Enforce Physical Location ---
+            elif str(drone.current_node_id) != str(order.get_pickup_node_id()):
+                raise ValueError(
+                    f"Location mismatch! Drone {drone_id} cannot load order {order_id} at node {drone.current_node_id}. Order is at {order.get_pickup_node_id()}.")
+            # -----------------------------------------------
             else:
                 drone.pickup_orders.remove(order)
                 drone.delivery_orders.append(order)
@@ -289,6 +305,11 @@ class Vehicle(LogisticEntity, ABC):
             if order not in self.delivery_orders:
                 raise ValueError(
                     "The order is not in the cargo of the vehicle. The order is not in the delivery orders.")
+                # --- MODIFICATION: Enforce Physical Location ---
+            elif str(self.current_node_id) != str(order.get_delivery_node_id()):
+                raise ValueError(
+                    f"Location mismatch! Drone {drone_id} cannot unload order {order_id} at node {self.current_node_id}. Destination is {order.get_delivery_node_id()}.")
+            # -----------------------------------------------
             else:
                 self.delivery_orders.remove(order)
                 self.remove_cargo(order.get_id())
