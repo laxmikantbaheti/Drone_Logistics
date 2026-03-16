@@ -1,14 +1,12 @@
 import itertools
 from typing import Dict, Any, List, Tuple
 
-# from torchgen.packaged.autograd.gen_variable_type import emit_body
-
-# from ddls_src.actions.action_mapping import order_id
 from ddls_src.entities.order import PseudoOrder
+# Import the DataManager from the functions directory
+from ddls_src.functions.data_manager import DataManager
 
 
 # Forward declarations for entities to avoid circular imports.
-# These will be replaced by actual imports once the entity classes are defined.
 class Node: pass
 
 
@@ -27,12 +25,10 @@ class Drone: pass
 class MicroHub: pass
 
 
-class Network:  # Forward declaration for Network class
-    pass
+class Network: pass
 
 
-class OrderRequests:
-    pass
+class OrderRequests: pass
 
 
 class GlobalState:
@@ -41,20 +37,7 @@ class GlobalState:
     All managers and entities will interact with the simulation state through this class.
     """
 
-    def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode):  # UPDATED: Takes instantiated entities
-        """
-        Initializes all entities based on pre-instantiated entity objects.
-
-        Args:
-            initial_entities (Dict[str, Dict[int, Any]]): A dictionary containing
-                                                          dictionaries of instantiated
-                                                          entity objects, e.g.:
-                                                          {
-                                                              'nodes': {id: Node_obj, ...},
-                                                              'edges': {id: Edge_obj, ...},
-                                                              ...
-                                                          }
-        """
+    def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode):
         self.entity_dicts = {}
         self.nodes: Dict[int, Node] = initial_entities.get('nodes', {})
         self.entity_dicts["Node"] = self.nodes
@@ -70,13 +53,17 @@ class GlobalState:
         self.entity_dicts["Drone"] = self.drones
         self.micro_hubs: Dict[int, MicroHub] = initial_entities.get('micro_hubs', {})
         self.entity_dicts["MicroHub"] = self.micro_hubs
-        self.current_time: float = initial_entities.get('initial_time', 0.0)  # Can be passed from builder config
-        self.network: Network = None  # Reference to the Network graph structure, populated after entities
+        self.current_time: float = initial_entities.get('initial_time', 0.0)
+        self.network: Network = None
         self.node_pairs = initial_entities.get('node_pairs', {})
         self.entity_dicts["Node Pair"] = self.node_pairs
         self.entities_by_type = {"Node", "Edge", "Order", "Pseudo Order", "Truck", "Drone", "Micro Hub", "Node Pair"}
         self.orders_by_nodes = self.setup_order_by_node_pairs()
-        self.movement_mode = movement_mode  #
+        self.movement_mode = movement_mode
+
+        # Initialize the centralized DataManager
+        self.data_manager = DataManager()
+
         print(f"GlobalState initialized with provided entities. Movement mode set to: '{self.movement_mode}'.")
 
     def setup_node_pairs(self):
@@ -336,6 +323,9 @@ class GlobalState:
             # entities["orders"].pop(ps_order)
         # self.orders = entities["orders"]
         self.pseudo_orders = {}
+
+        # Clear logs at the start of a new run
+        self.data_manager.reset()
 
     # def add_global_state(self, entities):
     #     for entity in entities:

@@ -9,6 +9,7 @@ from ddls_src.entities.base import LogisticEntity
 from mlpro.bf.events import Event
 from mlpro.bf.events import EventManager
 
+
 class Order(LogisticEntity):
     """
     Represents a customer order as an MLPro System.
@@ -44,9 +45,6 @@ class Order(LogisticEntity):
                   C_DIM_ASSIGNED_VEHICLE,
                   C_DIM_CURRENT_NODE]
 
-
-
-
     def __init__(self,
                  p_pickup_node_id,
                  p_delivery_node_id,
@@ -57,17 +55,6 @@ class Order(LogisticEntity):
                  **p_kwargs):
         """
         Initializes an Order system.
-
-        Parameters:
-            p_id: Unique identifier for the order.
-            p_name (str): Name of the order.
-            p_visualize (bool): Visualization flag.
-            p_logging: Logging level.
-            p_kwargs: Additional keyword arguments. Expected keys:
-                'customer_node_id': int
-                'time_received': float
-                'SLA_deadline': float
-                'priority': int
         """
         super().__init__(p_id=p_id,
                          p_name=p_name,
@@ -96,7 +83,7 @@ class Order(LogisticEntity):
         if global_state is not None:
             self.add_global_state(global_state)
         self._state = State(self._state_space)
-        self.pseudo_orders:[Order] = []
+        self.pseudo_orders: [Order] = []
         self.predecessor_orders = []
         self.mh_assignment_history_ids = []
         self.mh_assignment_history = []
@@ -108,6 +95,9 @@ class Order(LogisticEntity):
             self.node_pair = None
         self.current_node_id = self.pickup_node_id
         self.location_history = [self.current_node_id]
+
+        # Will be instantiated properly in reset()
+        self.state_history = []
         self.reset()
 
     @staticmethod
@@ -116,7 +106,6 @@ class Order(LogisticEntity):
         Defines the state and action spaces for an Order system.
         """
         state_space = MSpace()
-        # Status: 0=pending, 1=accepted, 2=assigned, 3=in_transit, 4=at_micro_hub, 5=delivered, 6=cancelled, 7=flagged
         state_space.add_dim(
             Dimension('w',
                       'R',
@@ -129,6 +118,19 @@ class Order(LogisticEntity):
         action_space = MSpace()  # Orders are passive, no actions
 
         return state_space, action_space
+
+    def log_current_state(self):
+        """Captures the current node and time for the history log."""
+        current_time = getattr(self.global_state, 'current_time', 0.0) if hasattr(self,
+                                                                                  'global_state') and self.global_state else 0.0
+
+        self.state_history.append({
+            'time': current_time,
+            'status': self.status,
+            'actual_node': self.current_node_id,  # This tracks where the order is RIGHT NOW
+            'assigned_veh': self.assigned_vehicle_id,
+            'carrying_veh': self.carrying_vehicle.get_id() if self.carrying_vehicle else None
+        })
 
     def _reset(self, p_seed=None):
         """
@@ -145,11 +147,14 @@ class Order(LogisticEntity):
         self.current_node_id = self.pickup_node_id
         self.location_history = [self.pickup_node_id]
 
+        # --- NEW: Initialize local history for this specific order ---
+        self.state_history = []
+        self.log_current_state()
+
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
         Synchronizes the formal MLPro state with the order's internal attributes.
         """
-        # FIX: Only process an action if one is actually passed to the method
         if p_action is not None:
             self._process_action(p_action, p_t_step)
 
@@ -160,23 +165,15 @@ class Order(LogisticEntity):
         """
         Helper method to synchronize internal attributes with the formal MLPro state object.
         """
-        # status_map = {
-        #     "pending": 0, "accepted": 1, "assigned": 2, "in_transit": 3,
-        #     "at_micro_hub": 4, "delivered": 5, "cancelled": 6, "flagged_re_delivery": 7
-        # }
-        # self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_DELIVERY_STATUS[0]).get_id(),
-        #                       status_map.get(self.status, 0))
-        # self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_PRIORITY[0]).get_id(),
-        #                       self.priority)
         pass
 
     # Public methods for managers to call
     def update_status(self, new_status: str):
         self.status = new_status
         if new_status == "delivered":
-            # This should be set with the simulation's current time by the manager
             pass
         self._update_state()
+        self.log_current_state()
 
     def assign_vehicle(self, vehicle_id: int, vehicle):
         self.assigned_vehicle_id = vehicle_id
@@ -185,8 +182,7 @@ class Order(LogisticEntity):
         self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
                                             [vehicle_id, self.C_STATUS_ASSIGNED])
 
-        # self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
-        # self.raise_state_change_event()
+        self.log_current_state()
         return True
 
     def assign_micro_hub(self, micro_hub_id: int):
@@ -195,26 +191,49 @@ class Order(LogisticEntity):
         self.status = "at_micro_hub"
         self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
                                             [micro_hub_id, self.C_STATUS_ASSIGNED])
-        # self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_ASSIGNED)
+
         self._update_state()
+        self.log_current_state()
         return True
+
+    def update_state_value_by_dim_name(self, p_dim_name, p_value):
+        """Overrides the base method to catch framework-level state/node changes."""
+        super().update_state_value_by_dim_name(p_dim_name, p_value)
+
+        dim_names = p_dim_name if isinstance(p_dim_name, list) else [p_dim_name]
+
+        if hasattr(self, 'C_DIM_DELIVERY_STATUS') and self.C_DIM_DELIVERY_STATUS[0] in dim_names:
+            if isinstance(p_dim_name, list) and isinstance(p_value, list):
+                idx = p_dim_name.index(self.C_DIM_DELIVERY_STATUS[0])
+                self.status = str(p_value[idx])
+            else:
+                self.status = str(p_value)
+
+        # Trigger the smart logger. It will automatically filter out duplicates!
+        self.log_current_state()
 
     def unassign_vehicle(self):
         self.assigned_vehicle_id = None
         if self.status in ["assigned", "in_transit"]:
             self.status = "flagged_re_delivery"
+
         self._update_state()
+        self.log_current_state()
 
     def get_assigned_vehicle_id(self):
         if self.assigned_vehicle_id:
             return self.assigned_vehicle_id
 
     def set_enroute(self):
+        """Triggered when the order is picked up."""
         self.carrying_vehicle = self.assigned_vehicle
         self.assigned_vehicle_id = None
         self.assigned_vehicle = None
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)
-        # self.raise_state_change_event()
+        self.status = "En Route"
+
+        # Capture the actual node at the moment of pickup
+        self.log_current_state()
 
     def get_SLA_remaining(self, current_time: float) -> float:
         return self.SLA_deadline - current_time
@@ -239,7 +258,7 @@ class Order(LogisticEntity):
             raise ValueError("Invalid delivery status provided for Order entity.")
 
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], status)
-        # self.raise_state_change_event()
+        self.log_current_state()
 
     def set_delivered(self):
         self.assigned_vehicle_id = None
@@ -247,7 +266,9 @@ class Order(LogisticEntity):
         self.carrying_vehicle = None
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_DELIVERED)
         self.status = "Delivered"
-        # self.raise_state_change_event()
+
+        self.log_current_state()
+
         if isinstance(self, PseudoOrder):
             self._raise_event(PseudoOrder.C_EVENT_ORDER_DELIVERED, Event(p_raising_object=self))
 
@@ -260,31 +281,8 @@ class Order(LogisticEntity):
                 delivered = False
         if delivered:
             if self.custom_log:
-                    print(f"Collaborative order {self.get_id()} is delivered.")
+                print(f"Collaborative order {self.get_id()} is delivered.")
             self.set_delivered()
-
-    # def create_pseudo_orders(self, hub_id):
-    #     pseudo_order_1 = PseudoOrder(
-    #         p_id=str(self.get_id()) + "_1",
-    #         p_pickup_node_id=self.get_pickup_node_id(),
-    #         p_delivery_node_id=hub_id,
-    #         global_state=self.global_state,
-    #         p_parent_order=self,
-    #         p_leg = 1
-    #     )
-    #     self.pseudo_orders.extend([pseudo_order_1])
-    #     pseudo_order_2 = PseudoOrder(
-    #         p_id=str(self.get_id()) + "_2",
-    #         p_pickup_node_id=hub_id,
-    #         p_delivery_node_id=self.get_delivery_node_id(),
-    #         global_state=self.global_state,
-    #         p_parent_order=self,
-    #         p_leg = 2
-    #     )
-    #     # pseudo_order_2.predecessor_orders.append(pseudo_order_1)
-    #     self.pseudo_orders.extend([pseudo_order_2])
-    #
-    #     return [pseudo_order_1, pseudo_order_2]
 
     def create_pseudo_orders(self, hub_id):
         pseudo_order_1 = PseudoOrder(
@@ -307,42 +305,30 @@ class Order(LogisticEntity):
         self.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
 
         # --- GRAPH SURGERY: Transitive Update ---
-
-        # 1. Inherit the entire lineage from the parent
         pseudo_order_1.predecessor_orders.extend(self.predecessor_orders)
         pseudo_order_1.successor_orders.extend(self.successor_orders)
 
         pseudo_order_2.predecessor_orders.extend(self.predecessor_orders)
         pseudo_order_2.successor_orders.extend(self.successor_orders)
 
-        # 2. Establish the internal sequential link between the two new legs
         pseudo_order_1.successor_orders.append(pseudo_order_2)
         pseudo_order_2.predecessor_orders.append(pseudo_order_1)
 
-        # 3. Tell the rest of the network about the new legs
-
-        # Tell all PAST orders to add Leg 1 and Leg 2 to their successor lists
         for pred in self.predecessor_orders:
             if pseudo_order_1 not in pred.successor_orders:
                 pred.successor_orders.append(pseudo_order_1)
             if pseudo_order_2 not in pred.successor_orders:
                 pred.successor_orders.append(pseudo_order_2)
 
-        # Tell all FUTURE orders to add Leg 1 and Leg 2 to their predecessor lists
         for succ in self.successor_orders:
             if pseudo_order_1 not in succ.predecessor_orders:
                 succ.predecessor_orders.append(pseudo_order_1)
             if pseudo_order_2 not in succ.predecessor_orders:
                 succ.predecessor_orders.append(pseudo_order_2)
 
-            # --- THE FIX: WAKE UP THE SUCCESSORS ---
-            # Force the constraint manager to immediately re-evaluate 1010_2
-            # against its newly born, unassigned predecessor (1010_1_1)!
             if succ.node_pair is not None:
                 succ.node_pair.raise_state_change_event()
-        # ---------------------------------------
 
-        # 4. Ghost the Parent Shell
         self.predecessor_orders = []
         self.successor_orders = []
 
@@ -363,61 +349,32 @@ class Order(LogisticEntity):
                         precedence_satisfied = False
             return precedence_satisfied
 
-    def register_event_handler_for_constraints(self, p_event_id:str, p_event_handler):
+    def register_event_handler_for_constraints(self, p_event_id: str, p_event_handler):
         super().register_event_handler_for_constraints(p_event_id, p_event_handler)
         self.node_pair.register_event_handler_for_constraints(p_event_id, p_event_handler)
-    #
-    # def raise_state_change_event(self):
-    #     super().raise_state_change_event()
-    #     if self.node_pair is None:
-    #         return
-    #     self.node_pair.raise_state_change_event()
-    #     if isinstance(self, PseudoOrder):
-    #         if len(self.predecessor_orders):
-    #             return
-    #         else:
-    #             if hasattr(self, "parent_order") and len(self.parent_order.pseudo_orders) > 1:
-    #                 pair = self.parent_order.pseudo_orders[1]
-    #                 pair.raise_state_change_event()
-    #                 pair.node_pair.raise_state_change_event()
-    #                 return
-    #             else:
-    #                 return
 
     def raise_state_change_event(self):
         super().raise_state_change_event()
         if self.node_pair is not None:
             self.node_pair.raise_state_change_event()
 
-        # O(1) Lightning-fast forward propagation!
         for successor in self.successor_orders:
-
-            # 1. Wake the successor's NodePair (Unblocks Assignment constraints)
             if successor.node_pair is not None:
                 successor.node_pair.raise_state_change_event()
-
-            # 2. Wake the successor's Order constraints (Unblocks Load constraints)
-            # Using super() fires the native MLPro event on the target WITHOUT an infinite recursive loop
             super(Order, successor).raise_state_change_event()
 
         for predecessor in self.predecessor_orders:
-
-            # 1. Wake the successor's NodePair (Unblocks Assignment constraints)
             if predecessor.node_pair is not None:
                 predecessor.node_pair.raise_state_change_event()
-
-            # 2. Wake the successor's Order constraints (Unblocks Load constraints)
-            # Using super() fires the native MLPro event on the target WITHOUT an infinite recursive loop
             super(Order, predecessor).raise_state_change_event()
 
     def add_global_state(self, global_state):
         self.global_state = global_state
         self.node_pair = global_state.node_pairs[(self.pickup_node_id, self.delivery_node_id)]
         print("Check here")
-    # def check_assignability(self):
+
 
 class PseudoOrder(Order):
-
     C_TYPE = "Pseudo Order"
     C_EVENT_ORDER_DELIVERED = "Pseudo Order Delivered"
 
@@ -445,8 +402,6 @@ class PseudoOrder(Order):
         self.p_leg = p_leg
         self.parent_order = p_parent_order
 
-        # REMOVED: Auto-linking logic to prevent graph duplication
-
         self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
                                     self.parent_order.handle_pseudo_delivery)
 
@@ -455,7 +410,6 @@ class PseudoOrder(Order):
         self.mh_assignment_history.extend(
             [self.parent_order.assigned_micro_hub] + self.parent_order.mh_assignment_history)
 
-        # Update history tracking to pull directly from the parent's predecessors
         self.mh_assignment_history_ids.extend(
             [ordr.assigned_micro_hub_id for ordr in self.parent_order.predecessor_orders if
              ordr.assigned_micro_hub_id is not None])
@@ -468,7 +422,6 @@ class PseudoOrder(Order):
 
         self.reset()
 
-
     def reset(self, p_seed=None) -> None:
         Order.reset(self, p_seed)
 
@@ -478,11 +431,11 @@ class NodePair(LogisticEntity):
     C_NAME = "Node Pair"
     C_EVENT_ASSIGNABILITY = "Event Order Request Updated"
 
-    def __init__(self, p_pickup_node_id, p_delivery_node_id, p_parent_order = None, p_custom_log = False, **p_kwargs):
-
+    def __init__(self, p_pickup_node_id, p_delivery_node_id, p_parent_order=None, p_custom_log=False, **p_kwargs):
         self.p_pickup_node_id = p_pickup_node_id
         self.p_delivery_node_id = p_delivery_node_id
-        LogisticEntity.__init__(self, p_id = (self.p_pickup_node_id, self.p_delivery_node_id), p_custom_log=p_custom_log, **p_kwargs)
+        LogisticEntity.__init__(self, p_id=(self.p_pickup_node_id, self.p_delivery_node_id), p_custom_log=p_custom_log,
+                                **p_kwargs)
         self.get_id()
 
     def __repr__(self):
