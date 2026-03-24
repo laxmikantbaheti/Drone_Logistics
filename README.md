@@ -41,7 +41,7 @@ The easiest way to get started is to run one of the provided "howto" scripts, wh
 To see the matrix-based movement in action, run the `howto_distance_matrix.py` script:
 
 ```bash
-python -m ddls_src.howto_v02.howto_distance_matrix
+python -m ddls_src.demonstrations.howto_distance_matrix
 ```
 
 This will load a specific scenario configuration that defines a `distance_matrix` and sets the `movement_mode` to `"matrix"`. You can observe from the console output how vehicles become idle after their travel timer expires, rather than traversing a graph path.
