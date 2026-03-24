@@ -1,19 +1,16 @@
+import matplotlib.pyplot as plt
+import numpy as np
 import os
 import sys
-import numpy as np
 import time
-import matplotlib.pyplot as plt
-
+# [OPTIONAL] Use this if your environment runs forever
+from gymnasium.wrappers import TimeLimit
 # SB3 Imports
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList, StopTrainingOnMaxEpisodes
 from stable_baselines3.common.monitor import Monitor
-
-# [OPTIONAL] Use this if your environment runs forever
-from gymnasium.wrappers import TimeLimit
 from torch.cuda.amp import custom_bwd
-import torch.nn as nn
 
 # Ensure the project root is in the python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

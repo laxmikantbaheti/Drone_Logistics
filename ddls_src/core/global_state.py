@@ -1,9 +1,8 @@
 import itertools
-from typing import Dict, Any, List, Tuple
-
 from ddls_src.entities.order import PseudoOrder
 # Import the DataManager from the functions directory
 from ddls_src.functions.data_manager import DataManager
+from typing import Dict, Any, List, Tuple
 
 
 # Forward declarations for entities to avoid circular imports.

@@ -1,17 +1,16 @@
 import numpy as np
-from typing import Dict, Any, Tuple, Set, List
-from pprint import pprint
-import random
 import os
-
-# --- Mock Objects and Imports ---
-from mlpro.bf.systems import System
-from mlpro.bf.events import Event
+import random
 from ddls_src.entities.order import Order
 from ddls_src.entities.vehicles.base import Vehicle
-from ddls_src.entities.vehicles.truck import Truck
 from ddls_src.entities.vehicles.drone import Drone
+from ddls_src.entities.vehicles.truck import Truck
 from ddls_src.scenarios.generators.order_generator import OrderGenerator
+from mlpro.bf.events import Event
+# --- Mock Objects and Imports ---
+from mlpro.bf.systems import System
+from pprint import pprint
+from typing import Dict, Any, Tuple, Set, List
 
 
 # Create mock classes that inherit from the real classes

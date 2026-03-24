@@ -1,9 +1,9 @@
 import os
-
+from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
 # Local Imports
 from ddls_src.scenarios.assignment_scenario import AssignmentScenario
-from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
-from ddls_src.actions.action_enums import SimulationAction
+
 
 def run_assignment_demo():
     """

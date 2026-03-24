@@ -1,8 +1,7 @@
-from typing import List, Dict, Any, Optional
 import random
-
 # MLPro Imports
 from mlpro.bf.events import Event
+from typing import List, Dict, Any, Optional
 
 
 # Forward Declarations

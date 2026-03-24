@@ -1,13 +1,12 @@
 # In file: ddls_src/main.py
 
 import json
+import numpy as np
 import os
 import random
-import numpy as np
-
+from ddls_src.actions.action_enums import SimulationAction
 # Import the main simulation class and the SimulationAction enum
 from ddls_src.core.logistics_simulation import LogisticsSimulation
-from ddls_src.actions.action_enums import SimulationAction
 
 
 def run_simulation_with_visualization():

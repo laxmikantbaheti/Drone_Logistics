@@ -1,7 +1,7 @@
 import json
-import random
 import math
 import numpy as np
+import random
 from rasterio.rio.helpers import coords
 
 

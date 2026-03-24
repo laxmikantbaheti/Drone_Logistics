@@ -1,12 +1,12 @@
-from tkinter.constants import ACTIVE
-from typing import List, Dict, Any, Callable, Tuple, Type, Set
+import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from pprint import pprint
-import itertools
+from mlpro.bf.events import Event, EventManager
 # MLPro Imports (for validation block)
 from mlpro.bf.systems import System
-from mlpro.bf.events import Event, EventManager
+from pprint import pprint
+from tkinter.constants import ACTIVE
+from typing import List, Dict, Any, Callable, Tuple, Type, Set
 
 
 class GlobalState: pass

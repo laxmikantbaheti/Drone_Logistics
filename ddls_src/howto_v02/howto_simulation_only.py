@@ -1,11 +1,10 @@
-import os
 import numpy as np
-
+import os
+from ddls_src.actions.base import SimulationAction
+from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
+from ddls_src.core.basics import LogisticsAction
 # Local Imports
 from ddls_src.core.logistics_system import LogisticsSystem
-from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
-from ddls_src.actions.base import SimulationAction
-from ddls_src.core.basics import LogisticsAction
 
 
 def run_system_directly_demo():

@@ -1,16 +1,13 @@
-import numpy as np
-from typing import Dict, Any, List, Tuple, Callable
-
-# Import core components
-from .global_state import GlobalState
-from .network import Network
-
-
 # Assuming TimeManager is from the base framework, we won't explicitly import it here
 # but will assume it's available or managed externally. For the purpose of this code,
 # we'll keep the placeholder for TimeManager for consistency with the plan's attributes.
 import heapq  # For implementing the scheduled_events as a priority queue
+import numpy as np
+from typing import Dict, Any, List, Tuple, Callable
 from typing import List, Dict, Any, Tuple
+
+
+# Import core components
 
 
 class TimeManager:

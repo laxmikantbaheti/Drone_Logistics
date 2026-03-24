@@ -1,12 +1,12 @@
-from typing import Dict, Any, List, Type
 import os  # Import os for path manipulation
+from ddls_src.scenarios.vrp_d_instances.vrpd_instance_generator import VRPDBenchmarkDataGenerator
+from typing import Dict, Any, List, Type
 
 # Import the base data generator and its concrete implementations
 from ..generators.data_generator import BaseDataGenerator
-from ..generators.random_generator import RandomDataGenerator
 from ..generators.json_file_data_generator import JsonFileDataGenerator
 from ..generators.random_distance_matrix_generator import DistanceMatrixDataGenerator
-from ddls_src.scenarios.vrp_d_instances.vrpd_instance_generator import VRPDBenchmarkDataGenerator
+from ..generators.random_generator import RandomDataGenerator
 
 
 class DataLoader:

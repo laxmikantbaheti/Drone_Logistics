@@ -1,12 +1,10 @@
-import os
-import re
 import math
-import random
-from typing import Dict, Any, List, Tuple, Optional
-
 import numpy as np
-
+import os
+import random
+import re
 from ddls_src.scenarios.generators.data_generator import BaseDataGenerator
+from typing import Dict, Any, List, Tuple, Optional
 
 
 class VRPDBenchmarkDataGenerator(BaseDataGenerator):
