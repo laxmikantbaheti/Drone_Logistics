@@ -36,20 +36,6 @@ This project is a flexible, hierarchical simulation framework for modeling compl
 
 The easiest way to get started is to run one of the provided "howto" scripts, which demonstrate different functionalities of the framework.
 
-### Running a Full Simulation
-
-To run a complete simulation with a simple dummy agent that chooses from all available actions, execute the `howto_run_framework.py` script:
-
-```bash
-python -m ddls_src.howto_v02.howto_run_framework
-```
-
-This script will:
-
-1.  Load a scenario configuration from a JSON file.
-2.  Instantiate the `LogisticsScenario`.
-3.  Run the simulation for a predefined number of cycles.
-
 ### Running a Distance Matrix-Based Scenario
 
 To see the matrix-based movement in action, run the `howto_distance_matrix.py` script:
