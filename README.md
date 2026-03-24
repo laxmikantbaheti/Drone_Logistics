@@ -38,10 +38,16 @@ The easiest way to get started is to run one of the provided "howto" scripts, wh
 
 ### Running a Distance Matrix-Based Scenario
 
-To see the matrix-based movement in action, run the `howto_distance_matrix.py` script:
+To demonstrate the simulation, run the `howto_log_simulation.py` script:
 
 ```bash
-python -m ddls_src.demonstrations.howto_distance_matrix
+python -m ddls_src.demonstrations.howto_log_simulation
+```
+
+To demonstrate the RL extensibility and RL training demonstration, run the `rl_training.py` script:
+
+```bash
+python -m ddls_src.demonstrations.rl_training
 ```
 
 This will load a specific scenario configuration that defines a `distance_matrix` and sets the `movement_mode` to `"matrix"`. You can observe from the console output how vehicles become idle after their travel timer expires, rather than traversing a graph path.
@@ -62,16 +68,6 @@ The simulation operates in a two-phase cycle: a **Decision Phase** and a **Progr
       * The system then enters an "automatic action loop," where it repeatedly checks for any actions that are both possible (based on the new mask) and marked as `True` in the `AUTOMATIC_LOGIC_CONFIG`. It executes these until no more automatic actions are available.
       * Finally, the simulation clock is advanced, and all entities with time-based dynamics (like moving vehicles) update their state.
 
-## "How-To" Examples
-
-This project includes a rich set of `howto_*.py` scripts in the `ddls_src/howtos` and `ddls_src/entities/howtos` directories. These standalone scripts demonstrate the functionality of individual components and core concepts:
-
-  * **`howto_run_framework.py`**: Runs the entire simulation from end-to-end.
-  * **`howto_distance_matrix.py`**: Demonstrates timer-based movement using a distance matrix.
-  * **`howto_action_masking.py`**: Shows how the action masker filters valid and invalid actions based on system state.
-  * **`howto_assignment_only.py`**: An example of a specific research design where the agent only assigns orders.
-  * **Entity `howtos`**: Scripts like `howto_truck.py`, `howto_drone.py`, and `howto_order.py` demonstrate the methods and properties of each simulation entity.
-  * **Manager `howtos`**: Scripts like `howto_fleet_manager.py` and `howto_network_manager.py` show how to interact with the simulation's managers.
 
 ## License
 
