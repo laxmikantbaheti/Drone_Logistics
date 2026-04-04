@@ -1,47 +1,45 @@
 # In file: ddls_src/core/logistics_system.py
-from datetime import datetime
-# Import the 'random' module for generating random numbers, used in the validation block.
-import random
-# Import typing hints for better code readability and static analysis.
-from typing import Dict, Any, List, Tuple
-# Import 'timedelta' for representing differences in time.
-from datetime import timedelta
 # Import NumPy for numerical operations, especially for handling arrays like action masks.
 import numpy as np
 # Import the 'os' module for interacting with the operating system, used for path manipulation.
 import os
-
-# MLPro Imports
-# Import base classes from MLPro for creating systems and states.
-from mlpro.bf.systems import System, State
-# Import mathematical space and dimension classes from MLPro for defining state and action spaces.
-from mlpro.bf.math import MSpace, Dimension
-# Import event management classes from MLPro for handling events within the system.
-from mlpro.bf.events import EventManager, Event
-
+# Import the 'random' module for generating random numbers, used in the validation block.
+import random
+from datetime import datetime
+# Import 'timedelta' for representing differences in time.
+from datetime import timedelta
+# Import action-related classes.
+from ddls_src.actions.base import SimulationActions, ActionType, ActionIndex
+from ddls_src.core.basics import LogisticsAction
 # from ddls_src.actions.action_map_generator import generate_action_map
 # Local Imports
 # Import core components of the logistics simulation.
 from ddls_src.core.global_state import GlobalState
-from ddls_src.core.network import Network
-# Import manager classes that handle different aspects of the simulation logic.
-from ddls_src.managers.action_manager import ActionManager
-from ddls_src.managers.supply_chain_manager import SupplyChainManager
-from ddls_src.managers.resource_manager.base import ResourceManager
-from ddls_src.managers.network_manager import NetworkManager
-# Import action-related classes.
-from ddls_src.actions.base import SimulationActions, ActionType, ActionIndex
-# Import scenario and data generation utilities.
-from ddls_src.scenarios.generators.data_loader import DataLoader
-from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
-from ddls_src.scenarios.generators.order_generator import OrderGenerator
-# Import mapping and constraint management classes.
-from ddls_src.core.state_action_mapper import StateActionMapper, ConstraintManager
 # Import simulation time management and action representation.
 from ddls_src.core.logistics_simulation import TimeManager
-from ddls_src.core.basics import LogisticsAction
+from ddls_src.core.network import Network
+# Import mapping and constraint management classes.
+from ddls_src.core.state_action_mapper import StateActionMapper, ConstraintManager
 # Import all entity classes (e.g., Truck, Drone, Hub).
 from ddls_src.entities import *
+# Import manager classes that handle different aspects of the simulation logic.
+from ddls_src.managers.action_manager import ActionManager
+from ddls_src.managers.network_manager import NetworkManager
+from ddls_src.managers.resource_manager.base import ResourceManager
+from ddls_src.managers.supply_chain_manager import SupplyChainManager
+# Import scenario and data generation utilities.
+from ddls_src.scenarios.generators.data_loader import DataLoader
+from ddls_src.scenarios.generators.order_generator import OrderGenerator
+from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
+# Import event management classes from MLPro for handling events within the system.
+from mlpro.bf.events import EventManager, Event
+# Import mathematical space and dimension classes from MLPro for defining state and action spaces.
+from mlpro.bf.math import MSpace, Dimension
+# MLPro Imports
+# Import base classes from MLPro for creating systems and states.
+from mlpro.bf.systems import System, State
+# Import typing hints for better code readability and static analysis.
+from typing import Dict, Any, List, Tuple
 
 
 class LogisticsSystem(System, EventManager):
@@ -200,16 +198,15 @@ class LogisticsSystem(System, EventManager):
             # Link the network to the global state.
             self.global_state.network = self.network
             # Initialize the mapper that determines valid actions based on the state.
-            self.state_action_mapper = StateActionMapper(self.global_state, self.action_map)
+            self.state_action_mapper = StateActionMapper(self.global_state, self.action_map, self._reverse_action_map)
 
             # # Ensure all entities have a reference to the global state.
             all_entity_dicts = self.global_state.get_all_entities()
             for entity_dict in all_entity_dicts:
                 for entity in entity_dict.values():
-                    entity.global_state = self.global_state
+                    entity.add_global_state(self.global_state)
                     entity.custom_log = self.custom_log
                     # entity.reset()
-
             # Initialize the ConstraintManager which is responsible for tracking action constraints.
             self.constraint_manager = ConstraintManager(action_index=self.action_index,
                                                         reverse_action_map=self._reverse_action_map)
@@ -221,8 +218,15 @@ class LogisticsSystem(System, EventManager):
             # Initialize the NetworkManager.
             self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
                                                   p_automatic_logic_config=self.automatic_logic_config)
-            # Set up the event handling system.
-            self.setup_events()
+
+            self.global_state.reset(self.entities)
+
+            # Ensure all entities have a reference to the global state.
+            all_entity_dicts = self.global_state.get_all_entities()
+            for entity_dict in all_entity_dicts:
+                for entity in entity_dict.values():
+                    entity.global_state = self.global_state
+                    entity.reset()
 
             # Create a dictionary of managers for easy access.
             managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
@@ -242,6 +246,9 @@ class LogisticsSystem(System, EventManager):
 
             # Initialize the OrderGenerator to create new orders over time.
             self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
+
+            # Set up the event handling system.
+            self.setup_events()
             # Register an event handler for when new orders are created.
             self.register_event_handler(self.C_EVENT_NEW_ORDER, self._handle_new_order_request)
 
@@ -253,17 +260,8 @@ class LogisticsSystem(System, EventManager):
             # # Perform an initial update of the MLPro state object.
             # self._update_state()
 
-        self.global_state.reset(self.entities)
-
-        # Ensure all entities have a reference to the global state.
-        all_entity_dicts = self.global_state.get_all_entities()
-        for entity_dict in all_entity_dicts:
-            for entity in entity_dict.values():
-                entity.global_state = self.global_state
-                entity.reset()
-
         # Initialize the OrderGenerator to create new orders over time.
-        self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
+        # self.order_generator = OrderGenerator(self.global_state, self, self._config.get('new_order_config', {}))
 
         # Set the initial simulation time.
         initial_sim_time = self.entities.get('initial_time', 0.0)
@@ -281,7 +279,7 @@ class LogisticsSystem(System, EventManager):
             self.constraint_manager.action_index = self.action_index
             # Update the state-action mapper with the new action space.
             self.state_action_mapper.update_action_space(self.action_map, None)
-
+            self.state_action_mapper.reverse_action_map = self._reverse_action_map
             self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
 
         # Perform an initial update of the MLPro state object.
@@ -488,7 +486,7 @@ class LogisticsSystem(System, EventManager):
         if self.state_action_mapper:
             return self.state_action_mapper.generate_masks()
         # As a fallback, return a mask of all ones (all actions considered possible).
-        return np.ones(len(self.action_map), dtype=np.float64)
+        # return np.ones(len(self.action_map), dtype=np.float64)
 
     # --------------------------------------------------------------------------------------------------
 
@@ -557,12 +555,14 @@ class LogisticsSystem(System, EventManager):
         old_action_map = self.action_map.copy()
         self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
         # Update the reverse action map.
+        reverse_action_map_old = self._reverse_action_map.copy()
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
         # Agent maps
         self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
         # Update the action index with the new action map.
         self.action_index.update_indexes(global_state=self.global_state, action_map=self.action_map, old_action_map = old_action_map, state_action_mapper = self.state_action_mapper)
         # Link the updated action index to the constraint manager.
+        self.constraint_manager.update_action_index(self.action_map, old_action_map, reverse_action_map_old)
         self.constraint_manager.action_index = self.action_index
         # Update the state-action mapper with the new action space.
         self.state_action_mapper.update_action_space(self.action_map, old_action_map)
@@ -571,6 +571,7 @@ class LogisticsSystem(System, EventManager):
         # self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
         for order in orders:
             # This event is handled by the ConstraintManager to update relevant action constraints.
+            order.add_global_state(self.global_state)
             order.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
                                                       self.constraint_manager.handle_entity_state_change)
             # order.raise_state_change_event()

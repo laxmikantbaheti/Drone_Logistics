@@ -1,15 +1,16 @@
-from tkinter.constants import ACTIVE
-from typing import List, Dict, Any, Callable, Tuple, Type, Set
+import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from pprint import pprint
-import itertools
+from mlpro.bf.events import Event, EventManager
 # MLPro Imports (for validation block)
 from mlpro.bf.systems import System
-from mlpro.bf.events import Event, EventManager
+from pprint import pprint
+from tkinter.constants import ACTIVE
+from typing import List, Dict, Any, Callable, Tuple, Type, Set
 
 
 class GlobalState: pass
+# from ddls_src.core.global_state import GlobalState
 
 # -------------------------------------------------------------------------------------------------
 # -- Part 2: ActionIndex (The "Database")
@@ -20,6 +21,7 @@ class ActionIndex:
     def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
         self.actions_by_type: Dict['ActionType', Set[int]] = defaultdict(set)
         self.actions_involving_entity: Dict[Tuple, Set[int]] = defaultdict(set)
+        self.global_state = global_state
         self.build_indexes(global_state, action_map)
 
     def build_indexes(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
@@ -31,9 +33,22 @@ class ActionIndex:
                 entity_type = param_def['type']
                 # if entity_type == "Order":
                 entity_id = action_tuple[i + 1]
+                # Add the action id to associated entities
+                global_state.entity_dicts[entity_type][entity_id].associated_action_indexes.add(action_index)
                 self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
                 if entity_type == "Truck" or entity_type == "Drone":
                     self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
+        print("indexes updated")
+
+
+        # for entity in self.global_state.get_all_entities():
+        #     type = entity.C_NAME
+        #     entity_id = entity.get_id()
+        #     entity.associated_action_indexes = list(self.actions_involving_entity[type, entity_id])
+        #     # if type == "Truck" or entity_type == "Drone":
+        #     #     self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
+
+        print("actions_indexes_updated")
 
     def update_indexes(self, global_state, action_map, old_action_map, state_action_mapper):
         self.actions_by_type = defaultdict(set)
@@ -47,6 +62,8 @@ class ActionIndex:
                 entity_type = param_def['type']
                 # if entity_type == "Order":
                 entity_id = action_tuple[i + 1]
+                # Add the action id to associated entities
+                global_state.entity_dicts[entity_type][entity_id].associated_action_indexes.add(action_index)
                 self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
                 if entity_type == "Truck" or entity_type == "Drone":
                     self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
@@ -184,11 +201,13 @@ class SimulationActions:
                               params=[{'name': 'drone_id', 'type': 'Drone'},
                                       {'name': 'order_id', 'type': 'Order'}],
                               is_automatic=True,
+                              active = False,
                               handler="NetworkManager")
 
     DRONE_LAND = ActionType(name="LAND_DRONE",
                             params=[{'name': 'drone_id', 'type': 'Drone'}],
                             is_automatic=True,
+                            active = False,
                             handler="NetworkManager")
 
     CONSOLIDATE_FOR_TRUCK = ActionType(name="CONSOLIDATE_FOR_TRUCK",
@@ -273,19 +292,23 @@ class SimulationActions:
     def generate_action_map(self, global_state: 'GlobalState') -> Tuple[Dict[Tuple, int], int]:
         """
         Programmatically generates the global flattened action map and action space size
-        at runtime based on the entities that actually exist in the global_state.
-        This version generates the COMPLETE map, ignoring the 'active' flag, to ensure
-        a static action space size for any given scenario configuration.
+        at runtime. Populates 'associated_action_indexes' on entities for O(1) constraint checking.
         """
         action_map = {}
         current_index = 0
 
-        # --- [START OF MODIFICATION 1] ---
-        # [NEW] 0. Clear existing associations and flags on all entities
-        for entity_dict in global_state.get_all_entities():
+        # --- [MODIFICATION 1] ---
+        # 0. Clear existing associations and flags on all entities
+        # [FIX] Added .values() to ensure we iterate over the entity dictionaries, not just keys
+        all_entities = global_state.get_all_entities()
+        iterator = all_entities.values() if isinstance(all_entities, dict) else all_entities
+
+        for entity_dict in iterator:
             for entity in entity_dict.values():
                 if hasattr(entity, 'associated_actions'):
                     entity.associated_actions.clear()
+                if hasattr(entity, 'associated_action_indexes'):
+                    entity.associated_action_indexes.clear()
                 if hasattr(entity, 'action_operability'):
                     entity.action_operability.clear()
         # --- [END OF MODIFICATION 1] ---
@@ -313,13 +336,11 @@ class SimulationActions:
         # 2. Iterate through each action defined in our blueprint
         for action_type in self.get_all_actions():
 
-            # --- [START OF MODIFICATION 2] ---
-            # [NEW] Populate properties on involved entities
+            # --- [MODIFICATION 2] ---
+            # [NEW] Populate GENERIC properties (associated_actions, operability)
             if action_type.params:
                 for param in action_type.params:
                     param_type = param['type']
-
-                    # Define a list of entity collections to process for this parameter type
                     target_collections = []
 
                     if param_type in entity_objects_map:
@@ -328,16 +349,12 @@ class SimulationActions:
                         target_collections.append(global_state.trucks.values())
                         target_collections.append(global_state.drones.values())
 
-                    # Apply updates to all found entities
                     for collection in target_collections:
                         for entity in collection:
-                            # 1. Add to associated actions set
                             entity.associated_actions.add(action_type)
-                            # 2. Initialize operability flag to True (Default: Operable)
                             entity.action_operability[action_type] = True
             # --- [END OF MODIFICATION 2] ---
 
-            # This loop now includes ALL actions to ensure a static action map size
             if not action_type.params:
                 action_tuple = (action_type,)
                 if action_tuple not in action_map:
@@ -345,7 +362,7 @@ class SimulationActions:
                     current_index += 1
                 continue
 
-            # 3. Get the ranges for each parameter for this action
+            # 3. Get ranges
             param_ranges = []
             possible = True
             for param in action_type.params:
@@ -362,26 +379,50 @@ class SimulationActions:
             if not possible:
                 continue
 
-            # 4. Generate all unique combinations of parameter values
+            # 4. Generate combinations
             param_combinations = list(itertools.product(*param_ranges))
 
-            # MODIFICATION: Filter out invalid micro hub assignments
+            # Filter MicroHub assignments
             if action_type.name == "ASSIGN_ORDER_TO_MICRO_HUB":
                 filtered_combinations = []
                 for combo in param_combinations:
-                    # combo is expected to be ((pickup_node_id, delivery_node_id), micro_hub_id)
                     node_pair, micro_hub_id = combo
                     pickup_node_id, delivery_node_id = node_pair
-
-                    # The micro hub cannot be the same as the pickup or delivery node
                     if micro_hub_id != pickup_node_id and micro_hub_id != delivery_node_id:
                         filtered_combinations.append(combo)
                 param_combinations = filtered_combinations
 
+            # 5. Assign Indexes and Map to Entities
             for combo in param_combinations:
                 action_tuple = (action_type,) + combo
+
                 if action_tuple not in action_map:
+                    # A. Register the action
                     action_map[action_tuple] = current_index
+
+                    # --- [START OF MODIFICATION 3] ---
+                    # [NEW] Map this SPECIFIC action index (int) to the SPECIFIC entity instances involved.
+                    # This enables O(1) lookup in constraints: "p_entity.associated_action_indexes"
+                    if action_type.params:
+                        for i, param_val in enumerate(combo):
+                            param_type = action_type.params[i]['type']
+                            target_entity = None
+
+                            # Resolve ID to Object
+                            if param_type in entity_objects_map:
+                                target_entity = entity_objects_map[param_type].get(param_val)
+                            elif param_type == 'Vehicle':
+                                # Try both fleets
+                                if param_val in global_state.trucks:
+                                    target_entity = global_state.trucks[param_val]
+                                elif param_val in global_state.drones:
+                                    target_entity = global_state.drones[param_val]
+
+                            # Assign Index
+                            if target_entity is not None and hasattr(target_entity, 'associated_action_indexes'):
+                                target_entity.associated_action_indexes.add(current_index)
+                    # --- [END OF MODIFICATION 3] ---
+
                     current_index += 1
 
         action_space_size = len(action_map)

@@ -1,14 +1,15 @@
-from typing import Dict, Any, List, Tuple, Optional
-
+from ddls_src.entities.edge import Edge
+from ddls_src.entities.micro_hub import MicroHub
 # Import entity classes
 from ddls_src.entities.node import Node
-from ddls_src.entities.edge import Edge
-from ddls_src.entities.order import Order
+from ddls_src.entities.order import Order, NodePair
 from ddls_src.entities.vehicles.base import Vehicle
-from ddls_src.entities.vehicles.truck import Truck
 from ddls_src.entities.vehicles.drone import Drone
-from ddls_src.entities.micro_hub import MicroHub
+from ddls_src.entities.vehicles.truck import Truck
+from itertools import product
 from mlpro.bf.various import Log
+from typing import Dict, Any, List, Tuple, Optional
+
 
 class ScenarioGenerator:
     """
@@ -19,11 +20,14 @@ class ScenarioGenerator:
     def __init__(self, raw_entity_data: Optional[Dict[str, Any]] = None):
         self._raw_entity_data = raw_entity_data if raw_entity_data is not None else {}
         self.nodes: Dict[int, Node] = {}
+        self.customer_nodes = {}
+        self.supplier_nodes = {}
         self.edges: Dict[int, Edge] = {}
         self.trucks: Dict[int, Truck] = {}
         self.drones: Dict[int, Drone] = {}
         self.micro_hubs: Dict[int, MicroHub] = {}
         self.orders: Dict[int, Order] = {}
+        self.node_pairs = {}
         self.initial_time: float = self._raw_entity_data.get('initial_time', 0.0)
         print("ScenarioGenerator initialized.")
 
@@ -39,12 +43,18 @@ class ScenarioGenerator:
     def add_node(self, p_logging = Log.C_LOG_NOTHING, **p_kwargs) -> Node:
         node = Node(p_logging=p_logging, **p_kwargs)
         self.nodes[node.id] = node
+        if p_kwargs["type"] == "depot" or p_kwargs["type"] == "supplier":
+            self.supplier_nodes[node.id] = node
+        elif p_kwargs["type"] == "customer":
+            self.customer_nodes[node.id] = node
         return node
 
     def add_micro_hub(self, p_logging = Log.C_LOG_NOTHING, **p_kwargs) -> MicroHub:
         micro_hub = MicroHub(p_logging=p_logging, **p_kwargs)
         self.micro_hubs[micro_hub.id] = micro_hub
         self.nodes[micro_hub.id] = micro_hub
+        self.customer_nodes[micro_hub.id] = micro_hub
+        self.supplier_nodes[micro_hub.id] = micro_hub
         return micro_hub
 
     def build_entities(self, p_logging=Log.C_LOG_NOTHING, **p_kwargs) -> Dict[str, Dict[int, Any]]:
@@ -84,6 +94,10 @@ class ScenarioGenerator:
             order_data = self._prepare_kwargs(order_data)  # <-- FIX
             self.orders[order_data['p_id']] = Order(**order_data, p_logging=p_logging, **p_kwargs
                                                     )
+        # Building node_pairs
+        node_pairs = product(self.supplier_nodes.keys(), self.customer_nodes.keys())
+        for pid, did in node_pairs:
+            self.node_pairs[pid, did] = NodePair(pid, did, **p_kwargs)
 
         print("ScenarioGenerator: All entities instantiated (Phase 1 complete).")
 
@@ -94,5 +108,6 @@ class ScenarioGenerator:
             'drones': self.drones,
             'micro_hubs': self.micro_hubs,
             'orders': self.orders,
-            'initial_time': self.initial_time
+            'initial_time': self.initial_time,
+            "node_pairs": self.node_pairs
         }

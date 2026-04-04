@@ -1,11 +1,12 @@
-from typing import Dict, Any, List, Type
 import os  # Import os for path manipulation
+from ddls_src.scenarios.vrp_d_instances.vrpd_instance_generator import VRPDBenchmarkDataGenerator
+from typing import Dict, Any, List, Type
 
 # Import the base data generator and its concrete implementations
 from ..generators.data_generator import BaseDataGenerator
-from ..generators.random_generator import RandomDataGenerator
 from ..generators.json_file_data_generator import JsonFileDataGenerator
 from ..generators.random_distance_matrix_generator import DistanceMatrixDataGenerator
+from ..generators.random_generator import RandomDataGenerator
 
 
 class DataLoader:
@@ -57,6 +58,8 @@ class DataLoader:
             # from .generators.custom_paper_data_generator import CustomPaperDataGenerator
             # return CustomPaperDataGenerator(self.generator_config)
             raise NotImplementedError("Custom paper data generator not yet implemented.")
+        elif self.generator_type == "vrpd":
+            return VRPDBenchmarkDataGenerator(self.generator_config)
         else:
             raise ValueError(f"Unsupported data generator type: {self.generator_type}")
 
@@ -99,3 +102,4 @@ class DataLoader:
         """
         print("DataLoader: Updating plot data (no dynamic changes expected).")
         # No dynamic updates typically for a data loader, as it's mostly static once loaded.
+

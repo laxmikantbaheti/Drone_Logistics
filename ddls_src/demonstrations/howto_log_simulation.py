@@ -1,11 +1,11 @@
 import os
 from datetime import datetime, timedelta
 
-from dateutil.tz import datetime_ambiguous
+# from dateutil.tz import datetime_ambiguous
 
 from ddls_src.scenarios.scenario import LogisticsScenario
 
-def run_matrix_scenario_demo():
+def run_scenario_demo():
     """
     Demonstrates and validates the distance matrix-based movement functionality
     by running the standard LogisticsScenario with a specific configuration.
@@ -17,13 +17,13 @@ def run_matrix_scenario_demo():
     # 1. Define the simulation configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
     # Point to the new matrix-specific data file
-    config_file_path = os.path.join(script_path, '..', 'config', 'large_instance.json')
+    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
     config_file_path = os.path.normpath(config_file_path)
 
     sim_config = {
         "movement_mode": "matrix",
         "initial_time": 0.0,
-        "main_timestep_duration": 1.0,  # 1-second steps for clear validation
+        "main_timestep_duration": 10.0,  # 1-second steps for clear validation
         "data_loader_config": {
             "generator_type": "json_file",
             "generator_config": {"file_path": config_file_path}
@@ -54,4 +54,4 @@ def run_matrix_scenario_demo():
 
 
 if __name__ == "__main__":
-    run_matrix_scenario_demo()
+    run_scenario_demo()

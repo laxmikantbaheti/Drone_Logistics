@@ -1,8 +1,10 @@
-from mlpro.bf.exceptions import ParamError
-from mlpro.bf.systems import System, State, Action
-from mlpro.bf.math import Set, Dimension, MSpace, ESpace
 from datetime import timedelta
+from ddls_src.actions.base import ActionIndex
 from mlpro.bf.events import EventManager, Event
+from mlpro.bf.exceptions import ParamError
+from mlpro.bf.math import Set, Dimension, MSpace, ESpace
+from mlpro.bf.systems import System, State, Action
+
 
 class LogisticEntity(System):
 
@@ -29,8 +31,12 @@ class LogisticEntity(System):
         self.setup_event_string()
         self.data_storage = {}
 
+        # [NEW] Added an attribute for global state reference
+        self.global_state = None
+
         # [NEW] Set to store actions involved with this entity
         self.associated_actions = set()
+        self.associated_action_indexes = set()
 
         # [NEW] Dictionary to store operability flags for each associated action
         # Key: ActionType, Value: bool (True = Operable/Valid)
@@ -62,7 +68,7 @@ class LogisticEntity(System):
                 dim = self.get_state_space().get_dim_by_name(dims)
                 self.log(self.C_LOG_TYPE_S, f"{dim.get_name_long()} updated.")
                 if self.custom_log:
-                    print(f"{self.C_NAME}{self.get_id()} - {dim.get_name_long()} updated to {p_value[i]}.")
+                    print(f"{self.global_state.current_time} - {self.C_NAME}{self.get_id()} - {dim.get_name_long()} updated to {p_value[i]}.")
                 self._state.set_value(dim.get_id(), p_value[i])
             self.raise_state_change_event()
         else:
@@ -98,3 +104,11 @@ class LogisticEntity(System):
             else:
                 self.data_storage[p_frame] = {}
                 self.data_storage[p_frame][p_key] = [p_value]
+
+    def update_associated_actions(self, p_action_index: ActionIndex):
+
+        # self.associated_actions = p_action_index.actions_involving_entity[(self.C_NAME, self.get_id())]
+        pass
+
+    def add_global_state(self, global_state):
+        self.global_state = global_state

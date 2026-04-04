@@ -1,6 +1,5 @@
 # Complete Python script for plotting vehicle timelines and states.
 
-import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from typing import Dict, Any, List
 
@@ -212,7 +211,6 @@ def plot_vehicle_states(global_state: Any) -> None:
     plt.show()
 
 
-import matplotlib.pyplot as plt
 import math
 
 

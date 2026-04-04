@@ -1,9 +1,9 @@
-import os
 import numpy as np
+import os
+from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
 from ddls_src.core.logistics_system import LogisticsSystem
 from ddls_src.rl_interface.gym_env import LogisticsEnv
-from ddls_src.config.automatic_logic_maps import AUTOMATIC_LOGIC_CONFIG
-from ddls_src.actions.action_enums import SimulationAction
 
 
 def run_rl_agent():

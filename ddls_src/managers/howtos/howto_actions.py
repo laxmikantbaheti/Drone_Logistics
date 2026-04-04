@@ -1,6 +1,6 @@
-import sys
-import os
 import numpy as np
+import os
+import sys
 
 # Add the project root to the Python path to allow importing ddls_src
 # Assuming this script is in project_root/examples/

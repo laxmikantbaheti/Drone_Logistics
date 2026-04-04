@@ -1,10 +1,9 @@
-from typing import List, Tuple, Any, Dict
 from datetime import timedelta
-
+from ddls_src.entities.base import LogisticEntity
+from mlpro.bf.math import MSpace, Dimension
 # MLPro Imports - Assuming mlpro is in the python path
 from mlpro.bf.systems import System, State, Action
-from mlpro.bf.math import MSpace, Dimension
-from ddls_src.entities.base import LogisticEntity
+from typing import List, Tuple, Any, Dict
 
 
 class Node(LogisticEntity):
@@ -128,3 +127,6 @@ class Node(LogisticEntity):
         Returns a copy of the list of order IDs currently held at this node.
         """
         return list(self.packages_held)
+
+    def __repr__(self):
+        return f"{self.C_NAME} - {self.get_id()}"

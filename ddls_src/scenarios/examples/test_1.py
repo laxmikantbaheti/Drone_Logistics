@@ -1,6 +1,7 @@
 # Import the main system and the scenario runner
-from ...core.logistics_system import LogisticsSystem
 from ..scenarios.scenario import LogisticsScenario
+from ...core.logistics_system import LogisticsSystem
+
 
 # This 'howto' script demonstrates the full refactored architecture.
 # Note: This script assumes that all the refactored entity and manager classes

@@ -1,14 +1,15 @@
 # In file: ddls_src/scenarios/scenario.py
 
 import numpy as np
+from agents.dummy_agent import DummyAgent
 from datetime import timedelta
-from mlpro.bf.ml import Scenario
-from mlpro.bf.ops import Mode
+from ddls_src.actions.base import SimulationActions
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.core.logistics_system import LogisticsSystem
-from ddls_src.actions.base import SimulationActions
-from agents.dummy_agent import DummyAgent
-from ddls_src.functions.plotting import plot_vehicle_gantt_chart, plot_vehicle_states, plot_vehicle_cargo_history, plot_invalid_delivery_gantt_chart
+from ddls_src.functions.plotting import plot_vehicle_gantt_chart, plot_vehicle_states, plot_vehicle_cargo_history, \
+    plot_invalid_delivery_gantt_chart
+from mlpro.bf.ml import Scenario
+from mlpro.bf.ops import Mode
 
 
 class LogisticsScenario(Scenario):
@@ -169,7 +170,14 @@ class LogisticsScenario(Scenario):
             # plot_vehicle_states(self._system.global_state)
             # plot_vehicle_cargo_history(self._system.global_state)
             # plot_invalid_delivery_gantt_chart(self._system.global_state)
-            pass
+
+            # --- MODIFICATION: Added Export Call ---
+            from ddls_src.functions.reports import export_simulation_reports
+
+            print("\nGenerating final simulation reports...")
+            # Set to 'csv' to generate two files (scenario_report_nodes.csv & scenario_report_orders.csv)
+            # Set to 'json' to generate one file (scenario_report.json)
+            export_simulation_reports(self._system.global_state, output_format='csv', base_filepath='scenario_report')# ---------------------------------------
 
         new_state = self._system.get_state()
         return self._system.get_success(), self._system.get_broken(), adapted, eof_data

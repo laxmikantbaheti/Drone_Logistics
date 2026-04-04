@@ -1,8 +1,8 @@
+import matplotlib.pyplot as plt
+import numpy as np
 import os
 import sys
-import numpy as np
 import time
-import matplotlib.pyplot as plt
 
 # Ensure the project root is in the python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

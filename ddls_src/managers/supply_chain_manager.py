@@ -1,18 +1,17 @@
-from typing import List, Dict, Any, Optional
 from datetime import timedelta
-
-from mlpro.bf.events import Event
-# MLPro Imports
-from mlpro.bf.systems import System, State
-from mlpro.bf.math import MSpace, Dimension
-
-# Local Imports
-
-from ddls_src.core.basics import LogisticsAction
 from ddls_src.actions.base import SimulationActions, ActionType
+from ddls_src.core.basics import LogisticsAction
 from ddls_src.core.global_state import GlobalState
 from ddls_src.entities import *
 from ddls_src.entities.order import PseudoOrder
+from mlpro.bf.events import Event
+from mlpro.bf.math import MSpace, Dimension
+# MLPro Imports
+from mlpro.bf.systems import System, State
+from typing import List, Dict, Any, Optional
+
+
+# Local Imports
 
 
 # # Forward declarations
@@ -136,7 +135,7 @@ class SupplyChainManager(System):
                 truck_id = action_kwargs['truck_id']
                 truck: 'Truck' = self.global_state.get_entity('truck', truck_id)
                 if (truck and truck.get_state_value_by_dim_name(truck.C_DIM_TRIP_STATE[0])
-                        in [truck.C_TRIP_STATE_IDLE, truck.C_TRIP_STATE_HALT] and (len(truck.pickup_orders) > 0 or truck.get_current_cargo_size()>0)):
+                        in [truck.C_TRIP_STATE_IDLE, truck.C_TRIP_STATE_HALT, truck.C_TRIP_STATE_IDLE] and (len(truck.pickup_orders) > 0 or truck.get_current_cargo_size()>0)):
                     truck.consolidation_confirmed = True
                     if self.custom_log:
                         print(f"Consolidation confirmed for Truck {truck_id}. Starting route.")
@@ -149,7 +148,7 @@ class SupplyChainManager(System):
                 drone_id = action_kwargs['drone_id']
                 drone: 'Drone' = self.global_state.get_entity('drone', drone_id)
                 if (drone and drone.get_state_value_by_dim_name(drone.C_DIM_TRIP_STATE[0])
-                        in [drone.C_TRIP_STATE_IDLE, drone.C_TRIP_STATE_HALT] and (
+                        in [drone.C_TRIP_STATE_IDLE, drone.C_TRIP_STATE_HALT, drone.C_TRIP_STATE_IDLE] and (
                                 len(drone.pickup_orders) > 0 or drone.get_current_cargo_size() > 0)):
                     drone.consolidation_confirmed = True
                     # self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Drone {drone_id}. Starting route.")
@@ -244,7 +243,7 @@ class SupplyChainManager(System):
             assigned = p_order.assign_micro_hub(p_entity.id) and assigned
             assigned = p_entity.assign_order(p_order) and assigned
         elif isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
-            assigned = p_order.assign_vehicle(p_entity._id)
+            assigned = p_order.assign_vehicle(p_entity._id, p_entity)
             assigned = p_entity.assign_orders([p_order]) and assigned
         # self.global_state.get_order_requests()[
         #         (p_order.get_pickup_node_id(), p_order.get_delivery_node_id())].remove(p_order)
