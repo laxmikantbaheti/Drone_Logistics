@@ -1,74 +1,214 @@
-# ddls_src/functions/reports.py
-import pandas as pd
+import csv
+import json
 from typing import Any, Dict, Tuple
 
 
 def export_simulation_reports(global_state: Any, output_format: str = 'csv', base_filepath: str = 'scenario_report') -> \
-Tuple[pd.DataFrame, pd.DataFrame, Dict]:
-    print(f"Generating single-row order reports with cross-referenced actual node tracking...")
+Tuple[Dict, list, Dict]:
+    """
+    Extracts:
+    1. The sequential node visits per vehicle, capturing 0-duration stops and mapping orders.
+    2. Detailed order assignment/coordination records.
+    3. A timeline of completed deliveries per vehicle.
+    """
+    all_vehicles = {
+        **getattr(global_state, 'trucks', {}),
+        **getattr(global_state, 'drones', {})
+    }
 
-    # 1. First, prepare Vehicle Data for cross-referencing
-    all_vehicles = {**getattr(global_state, 'trucks', {}), **getattr(global_state, 'drones', {})}
-    vehicle_histories = {}
-    master_vehicle_logs = []
+    nodes_report_data = {}
+    order_records = []
+    timeline_report_data = {}
 
-    for v_id, vehicle_obj in all_vehicles.items():
-        if hasattr(vehicle_obj, 'state_history') and vehicle_obj.state_history:
-            vehicle_histories[v_id] = vehicle_obj.state_history
-            master_vehicle_logs.extend(vehicle_obj.state_history)
+    if not all_vehicles:
+        print("No vehicles found for reporting.")
+        return nodes_report_data, order_records, timeline_report_data
 
-    # Save standard vehicle report
-    df_veh_out = pd.DataFrame(master_vehicle_logs)
-    if not df_veh_out.empty:
-        df_veh_out.to_csv(f"{base_filepath}_vehicles.csv", index=False)
+    for vehicle_id, vehicle_obj in all_vehicles.items():
 
-    # 2. Extract Order Information (One Row Per Order)
-    all_orders = getattr(global_state, 'orders', {})
-    master_order_rows = []
+        # --- 1. Process Sequential Node Visits (FIXED MICRO-EVENT PARSING) ---
+        state_data = vehicle_obj.data_storage.get(vehicle_obj.C_DATA_FRAME_VEH_STATES, {})
+        node_visits = []
+        current_visit = None
 
-    for o_id, order_obj in all_orders.items():
-        oid_str = str(order_obj.get_id())
+        if state_data:
+            sorted_events = sorted(state_data.items())
+            for current_time, micro_events in sorted_events:
+                # Iterate through ALL events recorded at this exact timestep
+                # This prevents overwriting the initial node if the vehicle leaves at t=0
+                for event in micro_events:
+                    try:
+                        node = event[1]
+                    except (IndexError, TypeError):
+                        continue
 
-        # Base row data
-        row = {
-            'order_id': oid_str,
-            'planned_pickup': order_obj.pickup_node_id,
-            'planned_delivery': order_obj.delivery_node_id,
-            'final_status': order_obj.status,
-            'time_placed': order_obj.time_received,
-            'actual_pickup_node': None,
-            'time_picked_up': None,
-            'actual_delivery_node': None,
-            'time_delivered': None,
-            'assigned_vehicle': order_obj.assigned_vehicle_id
+                    if node is not None:
+                        # Vehicle is at a node
+                        if current_visit is None or current_visit['node'] != node:
+                            if current_visit is not None:
+                                current_visit['departure_time'] = current_time
+                                node_visits.append(current_visit)
+                            current_visit = {
+                                'node': node,
+                                'arrival_time': current_time,
+                                'departure_time': global_state.current_time,  # Fallback to current time
+                                'pickups': [],
+                                'deliveries': []
+                            }
+                    elif node is None and current_visit is not None:
+                        # Vehicle departed the node (Node becomes None when En Route)
+                        current_visit['departure_time'] = current_time
+                        node_visits.append(current_visit)
+                        current_visit = None
+
+            # Append the final visit if the simulation ends while the vehicle is at a node
+            if current_visit is not None:
+                node_visits.append(current_visit)
+
+        # --- 2. Process Order Assignments & Map to Nodes ---
+        timeline_data = vehicle_obj.data_storage.get(vehicle_obj.C_DATA_FRAME_VEH_TIMELINE, {})
+        vehicle_deliveries = []
+
+        for order_id, times in timeline_data.items():
+            if not times:
+                continue
+
+            clean_id = str(order_id).strip()
+            start_time = times[0][0]
+
+            # Map Pickup to the correct Node Visit
+            for visit in node_visits:
+                # Includes 0-duration windows where arrival_time == departure_time
+                if visit['arrival_time'] <= start_time <= visit['departure_time']:
+                    visit['pickups'].append({'order_id': clean_id, 'time': start_time})
+                    break
+
+            if len(times) >= 2:
+                end_time = times[1][0]
+                status = "Delivered"
+
+                # Map Delivery to the correct Node Visit
+                for visit in node_visits:
+                    if visit['arrival_time'] <= end_time <= visit['departure_time']:
+                        visit['deliveries'].append({'order_id': clean_id, 'time': end_time})
+                        break
+
+                # Add to flattened delivery timeline report
+                time_window_str = f"({start_time}, {end_time})"
+                vehicle_deliveries.append({
+                    "Order ID": clean_id,
+                    "Delivery Time (s)": end_time,
+                    "Time Window": time_window_str
+                })
+            else:
+                end_time = global_state.current_time
+                status = "In Transit"
+
+            # Parse coordinated order details
+            base_id = clean_id.split("_")[0]
+            leg_info = "Direct Delivery"
+            if "_1" in clean_id:
+                leg_info = "Leg 1 (Hub/Transfer)"
+            elif "_2" in clean_id:
+                leg_info = "Leg 2 (Final Delivery)"
+
+            pickup_node = "Unknown"
+            delivery_node = "Unknown"
+            try:
+                order_obj = global_state.get_entity("order", int(clean_id) if clean_id.isdigit() else clean_id)
+                if order_obj:
+                    pickup_node = order_obj.get_pickup_node_id()
+                    delivery_node = order_obj.get_delivery_node_id()
+            except Exception:
+                pass
+
+            order_records.append({
+                "Base Order ID": base_id,
+                "Order ID (Leg)": clean_id,
+                "Coordination Type": leg_info,
+                "Assigned Vehicle": vehicle_id,
+                "Pickup Node": pickup_node,
+                "Delivery Node": delivery_node,
+                "Start Time (s)": start_time,
+                "End Time (s)": end_time,
+                "Duration (s)": end_time - start_time,
+                "Status": status
+            })
+
+        # Finalize data structures for this vehicle
+        nodes_report_data[vehicle_id] = node_visits
+        vehicle_deliveries.sort(key=lambda x: x["Delivery Time (s)"])
+        timeline_report_data[vehicle_id] = vehicle_deliveries
+
+    # Sort master order records
+    order_records.sort(key=lambda x: (x["Base Order ID"], x["Start Time (s)"]))
+
+    # --- 3. Export Logic ---
+    if output_format.lower() == 'csv':
+
+        # Export Node Sequence with Pickup/Delivery Details
+        nodes_path = f"{base_filepath}_nodes.csv"
+        with open(nodes_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([
+                "Vehicle ID", "Sequence Step", "Node ID",
+                "Arrival Time (s)", "Departure Time (s)",
+                "Pickup Count", "Picked Up Orders (ID @ Time)",
+                "Delivery Count", "Delivered Orders (ID @ Time)"
+            ])
+            for v_id, visits in nodes_report_data.items():
+                for idx, visit in enumerate(visits):
+                    pickups_str = ", ".join([f"{p['order_id']} @ {p['time']}s" for p in visit['pickups']])
+                    deliveries_str = ", ".join([f"{d['order_id']} @ {d['time']}s" for d in visit['deliveries']])
+
+                    writer.writerow([
+                        v_id,
+                        idx + 1,
+                        visit['node'],
+                        visit['arrival_time'],
+                        visit['departure_time'],
+                        len(visit['pickups']),
+                        pickups_str,
+                        len(visit['deliveries']),
+                        deliveries_str
+                    ])
+
+        # Export Orders CSV
+        orders_path = f"{base_filepath}_orders.csv"
+        with open(orders_path, mode='w', newline='') as file:
+            if order_records:
+                writer = csv.DictWriter(file, fieldnames=order_records[0].keys())
+                writer.writeheader()
+                writer.writerows(order_records)
+
+        # Export Delivery Timeline CSV (Flattened)
+        timeline_path = f"{base_filepath}_delivery_timeline.csv"
+        with open(timeline_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            max_deliveries = max([len(deliveries) for deliveries in timeline_report_data.values()], default=0)
+
+            header = ["Vehicle ID"]
+            for i in range(1, max_deliveries + 1):
+                header.extend([f"Order {i} ID", f"Order {i} (Pickup, Delivery)"])
+            writer.writerow(header)
+
+            for v_id, deliveries in timeline_report_data.items():
+                row = [v_id]
+                for delivery in deliveries:
+                    row.extend([delivery["Order ID"], delivery["Time Window"]])
+                writer.writerow(row)
+
+        print(f"Successfully exported CSV reports to:\n - {nodes_path}\n - {orders_path}\n - {timeline_path}")
+
+    elif output_format.lower() == 'json':
+        full_path = f"{base_filepath}.json"
+        combined_data = {
+            "node_visits": nodes_report_data,
+            "order_assignments": order_records,
+            "delivery_timeline": timeline_report_data
         }
+        with open(full_path, 'w') as file:
+            json.dump(combined_data, file, indent=4)
+        print(f"Successfully exported combined JSON report to {full_path}")
 
-        # --- SEARCH LOGIC ---
-        # We look through every vehicle history to find exactly when this order appeared/disappeared
-        for v_id, history in vehicle_histories.items():
-            for entry in history:
-                # Check if our order was in the vehicle's delivery_orders list at this time
-                # Note: We assume the history stores delivery_orders as a list of IDs
-                cargo = entry.get('delivery_orders', [])
-
-                # If order just appeared in cargo -> that's the ACTUAL PICKUP
-                if oid_str in str(cargo) and row['time_picked_up'] is None:
-                    row['time_picked_up'] = entry['time']
-                    row['actual_pickup_node'] = entry['node_id']
-                    row['assigned_vehicle'] = v_id
-
-                # If order was in cargo and now is gone -> that's the ACTUAL DELIVERY
-                if row['time_picked_up'] is not None and oid_str not in str(cargo) and row['time_delivered'] is None:
-                    # We check the previous entry to see where it was dropped off
-                    row['time_delivered'] = entry['time']
-                    row['actual_delivery_node'] = entry['node_id']
-
-        master_order_rows.append(row)
-
-    df_orders = pd.DataFrame(master_order_rows)
-    if not df_orders.empty:
-        df_orders = df_orders.sort_values(by=['order_id'])
-        df_orders.to_csv(f"{base_filepath}_order_report.csv", index=False)
-
-    print("Export complete. CSV generated with one row per order and actual nodes.")
-    return df_veh_out, df_orders, {}
+    return nodes_report_data, order_records, timeline_report_data

@@ -413,6 +413,31 @@ class OrderRequestAssignabilityConstraint(Constraint):
                     p_entity.action_operability[action_type] = is_active_request
 
 
+# class VehicleAssignabilityConstraint(Constraint):
+#     C_NAME = "Vehicle Assignability Constraint"
+#     C_ACTIVE = True
+#     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+#                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
+
+    # def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    #     if not isinstance(p_entity, Vehicle):
+    #         raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
+    #
+    #     relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+    #     state = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0])
+    #     is_en_route = (state == p_entity.C_TRIP_STATE_EN_ROUTE)
+    #     is_available = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_AVAILABLE[0])
+    #
+    #     if (not is_en_route) and is_available:
+    #         return [], list(relevant_actions)
+    #     else:
+    #         return list(relevant_actions), []
+    #
+    # # --- [LEGACY METHODS] ---
+    # def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+    #     return [], []
+
 class VehicleAssignabilityConstraint(Constraint):
     C_NAME = "Vehicle Assignability Constraint"
     C_ACTIVE = True
@@ -425,14 +450,17 @@ class VehicleAssignabilityConstraint(Constraint):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
-        state = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0])
-        is_en_route = (state == p_entity.C_TRIP_STATE_EN_ROUTE)
+
+        # Fetch our new state boundaries
+        current_status = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0])
+        is_locked = getattr(p_entity, 'consolidation_confirmed', False)
         is_available = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_AVAILABLE[0])
 
-        if (not is_en_route) and is_available:
-            return [], list(relevant_actions)
+        # The agent can ONLY assign orders if the vehicle is strictly IDLE, unlocked, and generally available
+        if current_status == p_entity.C_TRIP_STATE_IDLE and not is_locked and is_available:
+            return [], list(relevant_actions)  # Unblock
         else:
-            return list(relevant_actions), []
+            return list(relevant_actions), []  # Block
 
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
@@ -638,36 +666,58 @@ class ConsolidationConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.CONSOLIDATE_FOR_TRUCK,
                           SimulationActions.CONSOLIDATE_FOR_DRONE]
 
+    # def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+    #     if not isinstance(p_entity, Vehicle):
+    #         raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
+    #
+    #     consolidation_action_ids = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+    #     if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) in [p_entity.C_TRIP_STATE_EN_ROUTE]:
+    #         return list(consolidation_action_ids), []
+    #
+    #     if not (len(p_entity.get_pickup_orders()) or len(p_entity.get_delivery_orders())):
+    #         return list(consolidation_action_ids), []
+    #
+    #     current_node_id = p_entity.get_current_node()
+    #
+    #     has_pending_loads = False
+    #     for order in p_entity.get_pickup_orders():
+    #         if order.get_pickup_node_id() == current_node_id:
+    #             has_pending_loads = True
+    #             break
+    #
+    #     has_pending_unloads = False
+    #     if not has_pending_loads:
+    #         for order in p_entity.get_delivery_orders():
+    #             if order.get_delivery_node_id() == current_node_id:
+    #                 has_pending_unloads = True
+    #                 break
+    #
+    #     if has_pending_loads or has_pending_unloads:
+    #         return list(consolidation_action_ids), []
+    #     else:
+    #         return [], list(consolidation_action_ids)
+
     def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
         consolidation_action_ids = self.associated_action_index.intersection(p_entity.associated_action_indexes)
-        if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) in [p_entity.C_TRIP_STATE_EN_ROUTE]:
+
+        current_status = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0])
+        is_locked = getattr(p_entity, 'consolidation_confirmed', False)
+
+        # 1. Guard: If it's already locked or not IDLE, block it immediately
+        if current_status != p_entity.C_TRIP_STATE_IDLE or is_locked:
             return list(consolidation_action_ids), []
 
-        if not (len(p_entity.get_pickup_orders()) or len(p_entity.get_delivery_orders())):
+        # 2. Guard: Does it actually have orders to consolidate?
+        has_pending_tasks = bool(p_entity.get_pickup_orders())
+
+        if not has_pending_tasks:
             return list(consolidation_action_ids), []
 
-        current_node_id = p_entity.get_current_node()
-
-        has_pending_loads = False
-        for order in p_entity.get_pickup_orders():
-            if order.get_pickup_node_id() == current_node_id:
-                has_pending_loads = True
-                break
-
-        has_pending_unloads = False
-        if not has_pending_loads:
-            for order in p_entity.get_delivery_orders():
-                if order.get_delivery_node_id() == current_node_id:
-                    has_pending_unloads = True
-                    break
-
-        if has_pending_loads or has_pending_unloads:
-            return list(consolidation_action_ids), []
-        else:
-            return [], list(consolidation_action_ids)
+        # If it is IDLE, unlocked, and has tasks waiting, allow consolidation!
+        return [], list(consolidation_action_ids)
 
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:

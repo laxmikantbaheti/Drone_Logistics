@@ -364,8 +364,8 @@ class LogisticsSystem(System, EventManager):
             automatic_actions_to_take = self.get_automatic_actions()
             # If the list is empty, the system is stable.
             if not automatic_actions_to_take:
-                if self.custom_log:
-                    print(f"Auto-action loop stable after {i} iterations.")
+                # if self.custom_log:
+                    # print(f"Auto-action loop stable after {i} iterations.")
                 break
             # Select the first available automatic action to execute.
             auto_action_tuple = automatic_actions_to_take[0]
@@ -420,36 +420,30 @@ class LogisticsSystem(System, EventManager):
 
     def advance_time(self, p_t_step: timedelta = None):
         """
-        Advances the simulation time by one timestep.
-
-        Parameters:
-            p_t_step (timedelta): The amount of time to advance. If None, uses the system's default latency.
+        Advances the simulation time by one timestep, then simulates all objects.
         """
         # Get the duration of a single timestep from the system's latency.
         timestep_duration = self.get_latency().total_seconds()
-        # Use the provided t_step or the default duration.
         t_step = p_t_step or timedelta(seconds=timestep_duration)
-        # Advance the time in the TimeManager.
-        self.time_manager.advance_time(timestep_duration)
-        # Update the current time in the GlobalState.
-        self.global_state.current_time = self.time_manager.get_current_time()
 
-        # Log the time advancement.
+        # --- 1. Step up the clock first ---
+        self.time_manager.advance_time(timestep_duration)
+        self.global_state.current_time = self.time_manager.get_current_time()
         self.log(self.C_LOG_TYPE_I, f"Time advanced to {self.global_state.current_time}s.")
-        # Trigger the OrderGenerator to see if any new orders should be created at this time.
+
+        # Trigger the OrderGenerator at the new time
         self.order_generator.generate(self.global_state.current_time)
 
-        # Collect all entities and managers that need to be updated with the time progression.
+        # --- 2. Simulate the objects for that step ---
         all_systems = (list(self.global_state.trucks.values()) +
                        list(self.global_state.drones.values()) +
                        list(self.global_state.micro_hubs.values()) +
                        [self.supply_chain_manager, self.resource_manager, self.network_manager])
 
-        # Call the simulate_reaction method on each component to process time-based events (e.g., vehicle movement).
         for system in all_systems:
             system.simulate_reaction(p_state=None, p_action=None, p_t_step=t_step)
 
-        # Update the MLPro state object after time has advanced.
+        # Update the MLPro state object after time has advanced and objects are simulated.
         self._update_state()
 
     # --------------------------------------------------------------------------------------------------

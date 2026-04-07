@@ -1,14 +1,16 @@
-import gymnasium as gym
-import numpy as np
 from datetime import datetime
-# from ddls_src.actions.action_enums import SimulationAction
-from ddls_src.actions.base import SimulationActions
-from ddls_src.core.basics import LogisticsAction
+
+import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
+from typing import Dict, Any
+
 # Local Imports from your uploaded files
 from ddls_src.core.logistics_system import LogisticsSystem
+from ddls_src.core.basics import LogisticsAction
+# from ddls_src.actions.action_enums import SimulationAction
+from ddls_src.actions.base import SimulationActions
 from ddls_src.functions.plotting import plot_vehicle_gantt_chart, plot_vehicle_states
-from gymnasium import spaces
-from typing import Dict, Any
 
 
 class LogisticRLScenario(gym.Env):
@@ -338,7 +340,7 @@ class LogisticRLScenario(gym.Env):
 
     def _check_done(self):
         success = self._system.get_success()
-        broken = True if self.truncate_counter > 1000 else False
+        broken = True if self.truncate_counter > 500 else False
         if success and self.visualize:
             plot_vehicle_gantt_chart(self._system.global_state)
             plot_vehicle_states(self._system.global_state)

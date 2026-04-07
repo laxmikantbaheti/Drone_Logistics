@@ -1,8 +1,7 @@
-import numpy as np
+from mlpro.bf.systems.basics import Action
 from mlpro.bf.math.basics import Set
 from mlpro.bf.streams.basics import TStampType
-from mlpro.bf.systems.basics import Action
-
+import numpy as np
 
 class LogisticsAction(Action):
 

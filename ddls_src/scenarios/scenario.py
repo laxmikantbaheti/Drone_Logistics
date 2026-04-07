@@ -107,77 +107,63 @@ class LogisticsScenario(Scenario):
     #     new_state = self._system.get_state()
     #     return False, self._system.get_broken(), self._system.get_success(), False
 
-
     def _run_cycle(self):
-        """
-        Runs a single macro-cycle, with the decision loop now correctly using the agent-specific mask.
-        """
         eof_data = False
         adapted = False
         self.log(self.C_LOG_TYPE_I, f"--- Starting Macro-Cycle {self.get_cycle_id()} ---")
 
-        # 1. Decision Phase
+        # --- 1. DECISION & CASCADE PHASE ---
         self.log(self.C_LOG_TYPE_I, "Entering Decision Phase...")
 
-        while True:#not all(self._system.get_masks()):
-            if not len(self._system.get_automatic_actions()):
+        while True:
+            # Step A: Settle the system.
+            # Resolve ALL automatic actions until exhaustion before the agent even looks at the state.
+            self._system.run_automatic_action_loop()
 
-                current_state = self._system.get_state()
-                # --- MODIFIED: Get the mask for the agent ---
-                agent_mask = self._system.get_agent_mask()
-                # --------------------------------------------
-                # System No Op Index
-                no_op_idx = list(self._system.action_map.values())[-1]
-                # Agent No Op Index
-                no_op_idx = self._system.agent_to_system_map.index(no_op_idx)
+            # Step B: Observe stable state and valid agent actions.
+            current_state = self._system.get_state()
+            agent_mask = self._system.get_agent_mask()
 
-                # Condition 1: Are there any valid actions left for the agent?
-                agent_has_moves = np.any(agent_mask)
-                if not agent_has_moves:
-                    self.log(self.C_LOG_TYPE_I, "No valid agent actions available. Ending Decision Phase.")
-                    break
+            system_no_op_idx = list(self._system.action_map.values())[-1]
+            agent_no_op_idx = self._system.agent_to_system_map.index(system_no_op_idx)
 
-                # Agent selects an action based on its specific mask
-                action = self._model.compute_action(p_state=current_state, p_action_mask=agent_mask)
-                action_idx = action.get_sorted_values()[0]
-                sys_action_id = self._system.agent_to_system_map[int(action_idx)]
+            # Step C: Check Exit Condition 1 -> Are all agent actions masked?
+            if not np.any(agent_mask):
+                self.log(self.C_LOG_TYPE_I,
+                         "No valid agent actions available. System deadlocked. Ending Decision Phase.")
+                break
 
-                # Condition 2: Did the agent choose NO_OPERATION?
-                if action_idx == no_op_idx:
-                    self.log(self.C_LOG_TYPE_I, "Agent chose NO_OPERATION. Ending Decision Phase.")
-                    break
+            # Step D: Agent selects an action
+            action = self._model.compute_action(p_state=current_state, p_action_mask=agent_mask)
+            action_idx = action.get_sorted_values()[0]
 
-                action = LogisticsAction(p_action_space=self._system._action_space, p_values=[sys_action_id])
+            # Step E: Check Exit Condition 2 -> Did the agent explicitly yield?
+            if action_idx == agent_no_op_idx:
+                self.log(self.C_LOG_TYPE_I, "Agent chose NO_OPERATION. Ending Decision Phase.")
+                break
 
-            # Process the agent's chosen action
-                self._system.process_action(action)
-            else:
-                self._system.run_automatic_action_loop()
+            # Step F: Process the agent's action
+            sys_action_id = self._system.agent_to_system_map[int(action_idx)]
+            action_obj = LogisticsAction(p_action_space=self._system._action_space, p_values=[sys_action_id])
+
+            self._system.process_action(action_obj)
 
             if self._visualize:
                 self._system.network.update_plot()
 
-        # 2. Progression Phase
+            # The loop now restarts at Step A to immediately resolve any new
+            # automatic actions triggered by the agent's choice in Step F.
+
+        # --- 2. PROGRESSION PHASE ---
         self.log(self.C_LOG_TYPE_I, "Entering Progression Phase...")
+
+        # Time and physics only advance once the cascade is broken
         self._system.advance_time()
 
-        # if self._visualize and self._system.movement_mode == "network":
-            # self._system.network.update_plot()
-
-        # if self._system.get_success() and self._visualize:
         if self._system.get_success():
-            # plot_vehicle_gantt_chart(self._system.global_state)
-            # plot_vehicle_states(self._system.global_state)
-            # plot_vehicle_cargo_history(self._system.global_state)
-            # plot_invalid_delivery_gantt_chart(self._system.global_state)
-
-            # --- MODIFICATION: Added Export Call ---
             from ddls_src.functions.reports import export_simulation_reports
-
             print("\nGenerating final simulation reports...")
-            # Set to 'csv' to generate two files (scenario_report_nodes.csv & scenario_report_orders.csv)
-            # Set to 'json' to generate one file (scenario_report.json)
-            export_simulation_reports(self._system.global_state, output_format='csv', base_filepath='scenario_report')# ---------------------------------------
+            export_simulation_reports(self._system.global_state, output_format='csv', base_filepath='scenario_report')
 
         new_state = self._system.get_state()
         return self._system.get_success(), self._system.get_broken(), adapted, eof_data

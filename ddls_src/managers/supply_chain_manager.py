@@ -96,7 +96,7 @@ class SupplyChainManager(System):
         if p_action is not None:
             self._process_action(p_action)
 
-        self._check_and_assign_orders()
+        # self._check_and_assign_orders()
 
         self._update_state()
         return self._state
@@ -105,22 +105,138 @@ class SupplyChainManager(System):
         """
         Scans for pending orders and assigns them to available vehicles if auto-assignment is enabled.
         """
-        if not self.automatic_logic_config.get(SimulationActions.ASSIGN_ORDER_TO_TRUCK, False):
-            return
+        # if not self.automatic_logic_config.get(SimulationActions.ASSIGN_ORDER_TO_TRUCK, False):
+        #     return
+        #
+        # pending_orders = [o for o in self.global_state.orders.values() if o.status == 'pending']
+        # idle_trucks = [t for t in self.global_state.trucks.values() if t.status == 'idle']
+        #
+        # if not pending_orders or not idle_trucks:
+        #     return
+        #
+        # order_to_assign = pending_orders[0]
+        # truck_to_assign = idle_trucks[0]
+        #
+        # if self.custom_log:
+        #             print(
+        #     f"  - AUTOMATIC LOGIC (SupplyChainManager): Assigning Order {order_to_assign.get_id()} to Truck {truck_to_assign.get_id()}")
+        # order_to_assign.assign_vehicle(truck_to_assign.get_id())
 
-        pending_orders = [o for o in self.global_state.orders.values() if o.status == 'pending']
-        idle_trucks = [t for t in self.global_state.trucks.values() if t.status == 'idle']
+        pass
 
-        if not pending_orders or not idle_trucks:
-            return
-
-        order_to_assign = pending_orders[0]
-        truck_to_assign = idle_trucks[0]
-
-        if self.custom_log:
-                    print(
-            f"  - AUTOMATIC LOGIC (SupplyChainManager): Assigning Order {order_to_assign.get_id()} to Truck {truck_to_assign.get_id()}")
-        order_to_assign.assign_vehicle(truck_to_assign.get_id())
+    # def _process_action(self, p_action: LogisticsAction) -> bool:
+    #     """
+    #     Processes a high-level command related to order management.
+    #     """
+    #     action_id = int(p_action.get_sorted_values()[0])
+    #     action_type = ActionType.get_by_id(action_id)
+    #     action_kwargs = p_action.data
+    #
+    #     try:
+    #         if action_type == SimulationActions.CONSOLIDATE_FOR_TRUCK:
+    #             truck_id = action_kwargs['truck_id']
+    #             truck: 'Truck' = self.global_state.get_entity('truck', truck_id)
+    #             if (truck and truck.get_state_value_by_dim_name(truck.C_DIM_TRIP_STATE[0])
+    #                     in [truck.C_TRIP_STATE_IDLE, truck.C_TRIP_STATE_HALT, truck.C_TRIP_STATE_IDLE] and (len(truck.pickup_orders) > 0 or truck.get_current_cargo_size()>0)):
+    #                 truck.consolidation_confirmed = True
+    #                 if self.custom_log:
+    #                     print(f"Consolidation confirmed for Truck {truck_id}. Starting route.")
+    #                 # self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Truck {truck_id}. Starting route.")
+    #                 self.system.network_manager.route_for_assigned_orders(truck_id)
+    #                 return True
+    #             return False
+    #
+    #         elif action_type == SimulationActions.CONSOLIDATE_FOR_DRONE:
+    #             drone_id = action_kwargs['drone_id']
+    #             drone: 'Drone' = self.global_state.get_entity('drone', drone_id)
+    #             if (drone and drone.get_state_value_by_dim_name(drone.C_DIM_TRIP_STATE[0])
+    #                     in [drone.C_TRIP_STATE_IDLE, drone.C_TRIP_STATE_HALT, drone.C_TRIP_STATE_IDLE] and (
+    #                             len(drone.pickup_orders) > 0 or drone.get_current_cargo_size() > 0)):
+    #                 drone.consolidation_confirmed = True
+    #                 # self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Drone {drone_id}. Starting route.")
+    #                 if self.custom_log:
+    #                     print(f"Consolidation confirmed for Drone {drone_id}. Starting route.")
+    #                 self.system.network_manager.route_for_assigned_orders(drone_id)
+    #                 return True
+    #             return False
+    #
+    #         # This block handles all actions that require an order or node_pair.
+    #         if "order" in action_kwargs.keys():
+    #             order_id = action_kwargs['order_id']
+    #             order: 'Order' = self.global_state.get_entity("order", order_id)
+    #         else:
+    #             node_pair = action_kwargs.get("pick_up_drop")
+    #             global_state: GlobalState = self.global_state
+    #             order: Order = global_state.get_order_requests()[node_pair][0]
+    #
+    #         if action_type == SimulationActions.ACCEPT_ORDER:
+    #             if order.status == "pending":
+    #                 order.update_status("accepted")
+    #                 return True
+    #             return False
+    #
+    #         elif action_type == SimulationActions.CANCEL_ORDER:
+    #             if order.status not in ["delivered", "cancelled"]:
+    #                 if order.assigned_vehicle_id is not None:
+    #                     order.unassign_vehicle()
+    #                 order.update_status("cancelled")
+    #                 return True
+    #             return False
+    #
+    #         elif action_type == SimulationActions.ASSIGN_ORDER_TO_TRUCK:
+    #             truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
+    #             assigned = self.assign_order(order, truck)
+    #             if assigned:
+    #                 if self.custom_log:
+    #                     print(f"Order {order.get_id()} assigned to vehicle {truck.get_id()}.")
+    #             return assigned
+    #
+    #         elif action_type == SimulationActions.ASSIGN_ORDER_TO_DRONE:
+    #             drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
+    #             assigned = self.assign_order(order, drone)
+    #             if assigned:
+    #                 if self.custom_log:
+    #                     print(f"Order {order.get_id()} assigned to vehicle {drone.get_id()}.")
+    #             return assigned
+    #
+    #         # elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
+    #         #     hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
+    #         #     assigned = self.assign_order(order, hub)
+    #         #     return assigned
+    #         # In file: ddls_src/managers/supply_chain_manager.py
+    #
+    #         elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
+    #             hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
+    #             assigned = self.assign_order(order, hub)
+    #             if assigned:
+    #                 # Create pseudo-orders
+    #                 # pseudo_order_1 = PseudoOrder(
+    #                 #     p_id=str(order.get_id())+"_a",
+    #                 #     p_pickup_node_id=order.get_pickup_node_id(),
+    #                 #     p_delivery_node_id=hub.id,
+    #                 #     global_state=self.global_state,
+    #                 #     p_parent_order = order
+    #                 # )
+    #                 # pseudo_order_2 = PseudoOrder(
+    #                 #     p_id=str(order.get_id())+"_b",
+    #                 #     p_pickup_node_id=hub.id,
+    #                 #     p_delivery_node_id=order.get_delivery_node_id(),
+    #                 #     global_state=self.global_state,
+    #                 #     p_parent_order = order
+    #                 # )
+    #                 pseudo_order_1, pseudo_order_2 = order.create_pseudo_orders(hub.id)
+    #                 self.create_order_requests([pseudo_order_1, pseudo_order_2])
+    #                 # order.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
+    #             if assigned:
+    #                 if self.custom_log:
+    #                     print(f"Order {order.get_id()} assigned to micro-hub {hub.get_id()}.")
+    #             return assigned
+    #
+    #     except KeyError as e:
+    #         self.log(self.C_LOG_TYPE_E, f"Action parameter missing: {e}")
+    #         return False
+    #
+    #     return False
 
     def _process_action(self, p_action: LogisticsAction) -> bool:
         """
@@ -132,31 +248,10 @@ class SupplyChainManager(System):
 
         try:
             if action_type == SimulationActions.CONSOLIDATE_FOR_TRUCK:
-                truck_id = action_kwargs['truck_id']
-                truck: 'Truck' = self.global_state.get_entity('truck', truck_id)
-                if (truck and truck.get_state_value_by_dim_name(truck.C_DIM_TRIP_STATE[0])
-                        in [truck.C_TRIP_STATE_IDLE, truck.C_TRIP_STATE_HALT, truck.C_TRIP_STATE_IDLE] and (len(truck.pickup_orders) > 0 or truck.get_current_cargo_size()>0)):
-                    truck.consolidation_confirmed = True
-                    if self.custom_log:
-                        print(f"Consolidation confirmed for Truck {truck_id}. Starting route.")
-                    # self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Truck {truck_id}. Starting route.")
-                    self.system.network_manager.route_for_assigned_orders(truck_id)
-                    return True
-                return False
+                return self.process_consolidate_action(action_kwargs['truck_id'], 'truck')
 
             elif action_type == SimulationActions.CONSOLIDATE_FOR_DRONE:
-                drone_id = action_kwargs['drone_id']
-                drone: 'Drone' = self.global_state.get_entity('drone', drone_id)
-                if (drone and drone.get_state_value_by_dim_name(drone.C_DIM_TRIP_STATE[0])
-                        in [drone.C_TRIP_STATE_IDLE, drone.C_TRIP_STATE_HALT, drone.C_TRIP_STATE_IDLE] and (
-                                len(drone.pickup_orders) > 0 or drone.get_current_cargo_size() > 0)):
-                    drone.consolidation_confirmed = True
-                    # self.log(self.C_LOG_TYPE_I, f"Consolidation confirmed for Drone {drone_id}. Starting route.")
-                    if self.custom_log:
-                        print(f"Consolidation confirmed for Drone {drone_id}. Starting route.")
-                    self.system.network_manager.route_for_assigned_orders(drone_id)
-                    return True
-                return False
+                return self.process_consolidate_action(action_kwargs['drone_id'], 'drone')
 
             # This block handles all actions that require an order or node_pair.
             if "order" in action_kwargs.keys():
@@ -197,34 +292,12 @@ class SupplyChainManager(System):
                         print(f"Order {order.get_id()} assigned to vehicle {drone.get_id()}.")
                 return assigned
 
-            # elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
-            #     hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
-            #     assigned = self.assign_order(order, hub)
-            #     return assigned
-            # In file: ddls_src/managers/supply_chain_manager.py
-
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB:
                 hub: 'MicroHub' = self.global_state.get_entity("micro_hub", action_kwargs['micro_hub_id'])
                 assigned = self.assign_order(order, hub)
                 if assigned:
-                    # Create pseudo-orders
-                    # pseudo_order_1 = PseudoOrder(
-                    #     p_id=str(order.get_id())+"_a",
-                    #     p_pickup_node_id=order.get_pickup_node_id(),
-                    #     p_delivery_node_id=hub.id,
-                    #     global_state=self.global_state,
-                    #     p_parent_order = order
-                    # )
-                    # pseudo_order_2 = PseudoOrder(
-                    #     p_id=str(order.get_id())+"_b",
-                    #     p_pickup_node_id=hub.id,
-                    #     p_delivery_node_id=order.get_delivery_node_id(),
-                    #     global_state=self.global_state,
-                    #     p_parent_order = order
-                    # )
                     pseudo_order_1, pseudo_order_2 = order.create_pseudo_orders(hub.id)
                     self.create_order_requests([pseudo_order_1, pseudo_order_2])
-                    # order.pseudo_orders.extend([pseudo_order_1, pseudo_order_2])
                 if assigned:
                     if self.custom_log:
                         print(f"Order {order.get_id()} assigned to micro-hub {hub.get_id()}.")
@@ -235,6 +308,23 @@ class SupplyChainManager(System):
             return False
 
         return False
+
+    def process_consolidate_action(self, vehicle_id: str, vehicle_type: str) -> bool:
+        """
+        Executes the CONSOLIDATE action from the RL agent by delegating
+        it to the specific vehicle's Route Sequencer.
+        """
+        target_vehicle = self.global_state.get_entity(vehicle_type, vehicle_id)
+
+        if target_vehicle:
+            # SCM doesn't do the routing math; it just tells the vehicle to execute
+            target_vehicle.consolidate_route()
+            if self.custom_log:
+                print(f"SCM triggered route consolidation for {vehicle_type.capitalize()} {vehicle_id}.")
+            return True
+        else:
+            self.log(self.C_LOG_TYPE_E, f"Failed to consolidate: {vehicle_type.capitalize()} {vehicle_id} not found.")
+            return False
 
     def assign_order(self, p_order: Order, p_entity):
         self.global_state.get_order_requests()
