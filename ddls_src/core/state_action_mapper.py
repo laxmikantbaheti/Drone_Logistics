@@ -707,16 +707,22 @@ class ConsolidationConstraint(Constraint):
         is_locked = getattr(p_entity, 'consolidation_confirmed', False)
 
         # 1. Guard: If it's already locked or not IDLE, block it immediately
-        if current_status != p_entity.C_TRIP_STATE_IDLE or is_locked:
+        if current_status != p_entity.C_TRIP_STATE_IDLE and (not is_locked):
             return list(consolidation_action_ids), []
 
         # 2. Guard: Does it actually have orders to consolidate?
-        has_pending_tasks = bool(p_entity.get_pickup_orders())
-
-        if not has_pending_tasks:
-            return list(consolidation_action_ids), []
+        # current_node = p_entity.current_node_id
+        # nodes = p_entity.pickup_node_ids+p_entity.delivery_node_ids
+        # if current_node in nodes:
+        #     has_pending_tasks = True
+        # else:
+        #     has_pending_tasks = True
+        #
+        # if not has_pending_tasks:
+        #     return list(consolidation_action_ids), []
 
         # If it is IDLE, unlocked, and has tasks waiting, allow consolidation!
+
         return [], list(consolidation_action_ids)
 
     # --- [LEGACY METHODS] ---
