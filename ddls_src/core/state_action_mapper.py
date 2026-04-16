@@ -1861,14 +1861,17 @@ class StateActionMapper:
         """
         Updates counters and flips boolean masks on 0 <-> 1 transitions.
         """
+        masked = 0
+        unmasked = 0
         # --- BLOCK LOGIC ---
         if self.custom_log:
             print("Masks updated")
         for idx in indices_to_block:
             if idx not in self.permanent_valid_actions:
                 self.mask_counters[idx] += 1
-                if self.mask_counters[idx] == 1:
+                if self.mask_counters[idx] >= 1:
                     self.masks[idx] = False
+                    masked += 1
 
         # --- UNBLOCK LOGIC ---
         for idx in indices_to_unblock:
@@ -1876,13 +1879,15 @@ class StateActionMapper:
                 self.mask_counters[idx] -= 1
                 if self.mask_counters[idx] == 0:
                     self.masks[idx] = True
+                    unmasked += 1
 
                 if self.mask_counters[idx] < 0:
                     if self.custom_log:
                         print(f"[StateActionMapper] Warning: Counter negative for index {idx}. Resetting to 0.")
                     self.mask_counters[idx] = 0
                     self.masks[idx] = True
-        print("Debug here")
+        print(f"Masks updated: Masked --> {masked} , Unmaked --> {unmasked}")
+        print(f"Changes requested: to block --> {len(list(indices_to_block))}, to unblock --> {len(list(indices_to_unblock))}")
         return 0
 
     def handle_new_masks_event(self, p_event_id, p_event_object):
