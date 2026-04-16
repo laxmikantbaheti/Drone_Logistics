@@ -1,5 +1,6 @@
 # In ddls_src/entities/vehicles/base.py
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from datetime import timedelta
 from ddls_src.actions.base import SimulationActions
 from ddls_src.actions.base import SimulationActions, ActionType
@@ -12,6 +13,8 @@ from mlpro.bf.math import MSpace, Dimension
 from mlpro.bf.systems import System, State, Action
 from typing import List, Tuple, Any, Dict, Optional, Set
 from ddls_src.entities.vehicles.sequencer import HeuristicSequencer
+from ddls_src.entities.vehicles.sequencer import HeuristicSequencer2
+
 
 # Forward declaration for NetworkManager
 class NetworkManager:
@@ -59,6 +62,8 @@ class Vehicle(LogisticEntity, ABC):
                          p_mode=System.C_MODE_SIM,
                          p_latency=timedelta(0, 0, 0))
 
+        self.current_sequence_index = 0
+        self.planned_order_sequence = []
         self.custom_log = False
         # Vehicle-specific attributes
         self.start_node_id: int = p_kwargs.get('start_node_id')
@@ -93,10 +98,10 @@ class Vehicle(LogisticEntity, ABC):
         self.pickup_node_ids = []
         self.cargo_stats = {}
         # --- NEW: Staging Area for the Batch Sequencer ---
-        self.staged_pickup_orders = []
-        self.staged_delivery_orders = []
-        self.staged_pickup_leg2_orders = []
-        self.staged_delivery_leg2_orders = []
+        self.staged_pickup_orders = defaultdict()
+        self.staged_delivery_orders = defaultdict()
+        self.staged_pickup_leg2_orders = defaultdict()
+        self.staged_delivery_leg2_orders = defaultdict()
 
         self.planned_node_sequence = []
         self.consolidation_confirmed = False
@@ -104,7 +109,7 @@ class Vehicle(LogisticEntity, ABC):
         # Attach the interchangeable sequencer (assuming you create this file next)
         try:
             # from ddls_src.entities.vehicles.sequencers import AI4DroneHeuristicSequencer
-            self.sequencer = p_kwargs.get('sequencer', HeuristicSequencer())
+            self.sequencer = p_kwargs.get('sequencer', HeuristicSequencer2())
         except ImportError:
             self.log(self.C_LOG_TYPE_E,
                      "Could not import HeuristicSequencer. Please ensure sequencers.py exists.")
@@ -195,13 +200,14 @@ class Vehicle(LogisticEntity, ABC):
                                                          self.current_location_coords[1]])
 
         # --- Staging Area for the Agent ---
-        self.staged_pickup_orders = []
-        self.staged_delivery_orders = []
-        self.staged_pickup_leg2_orders = []
-        self.staged_delivery_leg2_orders = []
+        self.staged_pickup_orders = defaultdict()
+        self.staged_delivery_orders = defaultdict()
+        self.staged_pickup_leg2_orders = defaultdict()
+        self.staged_delivery_leg2_orders = defaultdict()
 
         # The finalized sequence generated after CONSOLIDATE
         self.planned_node_sequence: List[int] = []
+        self.planned_order_sequence: List[Order] = []
 
         # Initialize the strategy
         # from ddls_src.entities.vehicles.sequencers import HeuristicSequencer
@@ -229,10 +235,10 @@ class Vehicle(LogisticEntity, ABC):
                 raise ValueError(
                     f"Location mismatch! Truck {truck_id} cannot load order {order_id} at node {truck.current_node_id}. Order is at {order.get_pickup_node_id()}.")
             else:
-                truck.pickup_orders.remove(order)
-                truck.delivery_orders.append(order)
-                truck.pickup_node_ids.remove(order.get_pickup_node_id())
-                truck.delivery_node_ids.append(order.get_delivery_node_id())
+                # truck.pickup_orders.remove(order)
+                # truck.delivery_orders.append(order)
+                # truck.pickup_node_ids.remove(order.get_pickup_node_id())
+                # truck.delivery_node_ids.append(order.get_delivery_node_id())
                 truck.add_cargo(order)
                 order.set_enroute()
                 if self.custom_log:
@@ -262,10 +268,10 @@ class Vehicle(LogisticEntity, ABC):
                 raise ValueError(
                     f"Location mismatch! Truck {truck_id} cannot unload order {order_id} at node {self.current_node_id}. Destination is {order.get_delivery_node_id()}.")
             else:
-                self.delivery_orders.remove(order)
+                # self.delivery_orders.remove(order)
                 self.remove_cargo(order.get_id())
                 order.set_delivered()
-                self.delivery_node_ids.remove(order.get_delivery_node_id())
+                # self.delivery_node_ids.remove(order.get_delivery_node_id())
                 # if self.delivery_node_ids or self.pickup_node_ids:
                 #     self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
 
@@ -294,10 +300,10 @@ class Vehicle(LogisticEntity, ABC):
                 raise ValueError(
                     f"Location mismatch! Drone {drone_id} cannot load order {order_id} at node {drone.current_node_id}. Order is at {order.get_pickup_node_id()}.")
             else:
-                drone.pickup_orders.remove(order)
-                drone.delivery_orders.append(order)
-                drone.pickup_node_ids.remove(order.get_pickup_node_id())
-                drone.delivery_node_ids.append(order.get_delivery_node_id())
+                # drone.pickup_orders.remove(order)
+                # drone.delivery_orders.append(order)
+                # drone.pickup_node_ids.remove(order.get_pickup_node_id())
+                # drone.delivery_node_ids.append(order.get_delivery_node_id())
                 drone.add_cargo(order)
                 order.set_enroute()
                 if self.custom_log:
@@ -327,10 +333,10 @@ class Vehicle(LogisticEntity, ABC):
                 raise ValueError(
                     f"Location mismatch! Drone {drone_id} cannot unload order {order_id} at node {self.current_node_id}. Destination is {order.get_delivery_node_id()}.")
             else:
-                self.delivery_orders.remove(order)
+                # self.delivery_orders.remove(order)
                 self.remove_cargo(order.get_id())
                 order.set_delivered()
-                self.delivery_node_ids.remove(order.get_delivery_node_id())
+                # self.delivery_node_ids.remove(order.get_delivery_node_id())
                 # if len(self.delivery_orders) or len(self.delivery_orders):
                 #     self.update_state_value_by_dim_name([self.C_DIM_TRIP_STATE[0], self.C_DIM_CURRENT_CARGO[0]],
                 #                                         [self.C_TRIP_STATE_EN_ROUTE, len(self.cargo_manifest)])
@@ -481,7 +487,7 @@ class Vehicle(LogisticEntity, ABC):
         self.update_energy(-time_to_move)
 
         if self.en_route_timer <= 0:
-            destination_node = self.planned_node_sequence[0]
+            destination_node = self.planned_node_sequence[self.current_sequence_index]
 
             self.set_current_node_id(destination_node)
             self.current_edge = None
@@ -592,9 +598,21 @@ class Vehicle(LogisticEntity, ABC):
     #         self.cargo_manifest.remove(order)
     #         self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
 
+    # def add_cargo(self, order: 'Order'):
+    #     """Adds a package to the manifest and safely mutates the MLPro state."""
+    #     # Sanity check to prevent physics-breaking glitches
+    #     if len(self.cargo_manifest) >= self.max_payload_capacity:
+    #         raise ValueError(f"Vehicle {self.get_id()} physically exceeded payload capacity!")
+    #
+    #     if order not in self.cargo_manifest:
+    #         self.cargo_manifest.append(order)
+    #         self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
+    #
+    #         # --- CENTRALIZED STATE MUTATION ---
+    #         self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], self.get_current_cargo_size())
+
     def add_cargo(self, order: 'Order'):
-        """Adds a package to the manifest and safely mutates the MLPro state."""
-        # Sanity check to prevent physics-breaking glitches
+        """Adds a package to the manifest, updates state, and crosses off the sequence clipboard."""
         if len(self.cargo_manifest) >= self.max_payload_capacity:
             raise ValueError(f"Vehicle {self.get_id()} physically exceeded payload capacity!")
 
@@ -602,20 +620,53 @@ class Vehicle(LogisticEntity, ABC):
             self.cargo_manifest.append(order)
             self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
 
-            # --- CENTRALIZED STATE MUTATION ---
             self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], self.get_current_cargo_size())
 
+            # --- THE NEW CLIPBOARD LOGIC ---
+            # If we are actively running a mission, check the current sequence step
+            # if self.consolidation_confirmed and self.current_sequence_index in self.planned_order_sequence:
+            current_step_orders = self.planned_order_sequence[self.current_sequence_index]
+            if order in current_step_orders:
+                current_step_orders.remove(order)  # Cross it off!
+                if self.custom_log:
+                    print(
+                        f"[Vehicle {self.get_id()}] Picked up {order.get_id()} - crossed off Sequence {self.current_sequence_index}")
+            self.pickup_orders.remove(order)
+            self.delivery_orders.append(order)
+
+    # def remove_cargo(self, order_id: int):
+    #     """Removes a package from the manifest by ID and safely mutates the MLPro state."""
+    #     # Find the order by ID since the manifest holds Order objects
+    #     order_to_remove = next((o for o in self.cargo_manifest if o.get_id() == order_id), None)
+    #
+    #     if order_to_remove:
+    #         self.cargo_manifest.remove(order_to_remove)
+    #         self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
+    #
+    #         # --- CENTRALIZED STATE MUTATION ---
+    #         self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], self.get_current_cargo_size())
+
     def remove_cargo(self, order_id: int):
-        """Removes a package from the manifest by ID and safely mutates the MLPro state."""
-        # Find the order by ID since the manifest holds Order objects
+        """Removes a package from the manifest, updates state, and crosses off the sequence clipboard."""
         order_to_remove = next((o for o in self.cargo_manifest if o.get_id() == order_id), None)
 
         if order_to_remove:
             self.cargo_manifest.remove(order_to_remove)
             self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
 
-            # --- CENTRALIZED STATE MUTATION ---
             self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], self.get_current_cargo_size())
+
+            # --- THE NEW CLIPBOARD LOGIC ---
+            # if self.consolidation_confirmed and self.current_sequence_index in self.planned_order_sequence:
+            current_step_orders = self.planned_order_sequence[self.current_sequence_index]
+            if order_to_remove in current_step_orders:
+                current_step_orders.remove(order_to_remove)  # Cross it off!
+                if self.custom_log:
+                    print(
+                        f"[Vehicle {self.get_id()}] Dropped off {order_to_remove.get_id()} - crossed off Sequence {self.current_sequence_index}")
+
+            self.delivery_orders.remove(order_to_remove)
+            print("Debugging")
 
     def set_route(self, route: List[int]):
         """
@@ -671,11 +722,58 @@ class Vehicle(LogisticEntity, ABC):
     #             self.raise_state_change_event()
     #         return True
 
+    # def assign_orders(self, p_orders: list):
+    #     """
+    #     Receives a list of orders from the Supply Chain Manager.
+    #     Maintains backward compatibility by populating old lists while simultaneously
+    #     staging orders for the new Batch Sequencer.
+    #     """
+    #     if p_orders:
+    #         from ddls_src.entities.order import PseudoOrder  # Ensure this is imported safely
+    #
+    #         if self.get_remaining_capacity() < len(p_orders):
+    #             self.log(self.C_LOG_TYPE_W,
+    #                      f"Vehicle {self.get_id()} REJECTED assignment. "
+    #                      f"Attempted: {len(p_orders)}, Remaining Capacity: {self.get_remaining_capacity()}")
+    #             raise ValueError("Vehicle Overloaded. Please check capacity management and/or constraint management. "
+    #                              "Agent is taking impossible actions.")
+    #
+    #         for order in p_orders:
+    #
+    #             # --- BACKWARD COMPATIBILITY BLOCK ---
+    #             self.pickup_orders.append(order)
+    #             self.pickup_node_ids.append(order.get_pickup_node_id())
+    #
+    #             if hasattr(self, 'delivery_orders'):
+    #                 self.delivery_orders.append(order)
+    #             if hasattr(self, 'delivery_node_ids'):
+    #                 self.delivery_node_ids.append(order.get_delivery_node_id())
+    #             # ------------------------------------
+    #
+    #             # --- NEW STAGING ARCHITECTURE ---
+    #             if isinstance(order, PseudoOrder) and getattr(order, 'predecessor', None) is not None:
+    #                 # It is a Leg 2 PseudoOrder
+    #                 self.staged_pickup_leg2_orders.append(order.get_pickup_node_id())
+    #                 self.staged_delivery_leg2_orders.append(order.get_delivery_node_id())
+    #                 self.log(self.C_LOG_TYPE_I,
+    #                          f"Staged Leg 2 Order: Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
+    #             else:
+    #                 # It is a Normal Order OR a Leg 1 PseudoOrder
+    #                 self.staged_pickup_orders.append(order.get_pickup_node_id())
+    #                 self.staged_delivery_orders.append(order.get_delivery_node_id())
+    #                 self.log(self.C_LOG_TYPE_I,
+    #                          f"Staged Normal/Leg 1 Order: Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
+    #
+    #         self.raise_state_change_event()
+    #         return True
+    #
+    #     return False
+
     def assign_orders(self, p_orders: list):
         """
         Receives a list of orders from the Supply Chain Manager.
         Maintains backward compatibility by populating old lists while simultaneously
-        staging orders for the new Batch Sequencer.
+        staging orders for the new Route Sequencer.
         """
         if p_orders:
             from ddls_src.entities.order import PseudoOrder  # Ensure this is imported safely
@@ -688,30 +786,43 @@ class Vehicle(LogisticEntity, ABC):
                                  "Agent is taking impossible actions.")
 
             for order in p_orders:
-
+                pickup_node_id = order.get_pickup_node_id()
+                delivery_node_id = order.get_delivery_node_id()
                 # --- BACKWARD COMPATIBILITY BLOCK ---
                 self.pickup_orders.append(order)
                 self.pickup_node_ids.append(order.get_pickup_node_id())
 
-                if hasattr(self, 'delivery_orders'):
-                    self.delivery_orders.append(order)
-                if hasattr(self, 'delivery_node_ids'):
-                    self.delivery_node_ids.append(order.get_delivery_node_id())
+                # if hasattr(self, 'delivery_orders'):
+                #     self.delivery_orders.append(order)
+                # if hasattr(self, 'delivery_node_ids'):
+                #     self.delivery_node_ids.append(order.get_delivery_node_id())
                 # ------------------------------------
 
-                # --- NEW STAGING ARCHITECTURE ---
-                if isinstance(order, PseudoOrder) and getattr(order, 'predecessor', None) is not None:
+                # --- NEW STAGING ARCHITECTURE (Node:Order Dictionary Grouping) ---
+                if isinstance(order, PseudoOrder) and len(order.predecessor_orders):
                     # It is a Leg 2 PseudoOrder
-                    self.staged_pickup_leg2_orders.append(order.get_pickup_node_id())
-                    self.staged_delivery_leg2_orders.append(order.get_delivery_node_id())
-                    self.log(self.C_LOG_TYPE_I,
-                             f"Staged Leg 2 Order: Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
+                    if pickup_node_id in self.staged_pickup_leg2_orders.keys():
+                        self.staged_pickup_leg2_orders[pickup_node_id].append(order)
+                    else:
+                        self.staged_pickup_leg2_orders[pickup_node_id] = [order]
+                    if delivery_node_id in self.staged_delivery_leg2_orders:
+                        self.staged_delivery_leg2_orders[delivery_node_id].append(order)
+                    else:
+                        self.staged_delivery_leg2_orders[delivery_node_id] = [order]
+                    if self.custom_log:
+                             print(f"Staged Leg 2 Order at Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
                 else:
                     # It is a Normal Order OR a Leg 1 PseudoOrder
-                    self.staged_pickup_orders.append(order.get_pickup_node_id())
-                    self.staged_delivery_orders.append(order.get_delivery_node_id())
-                    self.log(self.C_LOG_TYPE_I,
-                             f"Staged Normal/Leg 1 Order: Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
+                    if pickup_node_id in self.staged_pickup_orders:
+                        self.staged_pickup_orders[pickup_node_id].append(order)
+                    else:
+                        self.staged_pickup_orders[pickup_node_id] = [order]
+                    if delivery_node_id in self.staged_delivery_orders:
+                        self.staged_delivery_orders[order.get_delivery_node_id()].append(order)
+                    else:
+                        self.staged_delivery_orders[delivery_node_id] = [order]
+                    if self.custom_log:
+                             print(f"Staged Normal/Leg 1 Order at Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
 
             self.raise_state_change_event()
             return True
@@ -732,8 +843,10 @@ class Vehicle(LogisticEntity, ABC):
             self.log(self.C_LOG_TYPE_I, "Consolidate called, but no new orders are staged.")
             return
 
+            # Inside consolidate_route()
+
         # 1. Ask the Sequencer to generate the strict timeline
-        self.planned_node_sequence = self.sequencer.generate_sequence(
+        self.planned_node_sequence, self.planned_order_sequence = self.sequencer.generate_sequence(
             current_node=self.current_node_id,
             pickup_orders=self.staged_pickup_orders,
             delivery_orders=self.staged_delivery_orders,
@@ -746,6 +859,7 @@ class Vehicle(LogisticEntity, ABC):
         self.staged_delivery_orders.clear()
         self.staged_pickup_leg2_orders.clear()
         self.staged_delivery_leg2_orders.clear()
+        self.current_sequence_index = 0
 
         # 3. Lock in the mission flag
         self.consolidation_confirmed = True
@@ -759,60 +873,122 @@ class Vehicle(LogisticEntity, ABC):
 
         self.log_current_state()
 
+    # def _evaluate_route_state(self):
+    #     """
+    #     Navigation Logic: Evaluates the planned_node_sequence, waits for the Scenario
+    #     actions to clear the cargo manifests, and then drives to the next target.
+    #     """
+    #     current_status = self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0])
+    #
+    #     # Only evaluate navigation if we are waiting at a node (IDLE or HALT)
+    #     if current_status in [self.C_TRIP_STATE_IDLE, self.C_TRIP_STATE_HALT]:
+    #
+    #         # Guard Clause 1: Sequence is completely empty (Mission Complete)
+    #         if not self.planned_node_sequence:
+    #             if current_status != self.C_TRIP_STATE_IDLE:
+    #                 self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+    #                 self.log_current_state()
+    #             return
+    #
+    #         # Do we still have cargo to load/unload here?
+    #         # If yes, stay parked and let the Scenario actions do their work!
+    #         if (self.current_node_id in self.pickup_node_ids) or (self.current_node_id in self.delivery_node_ids):
+    #             return
+    #
+    #         # TODO: Add a custom halt check method here
+    #         if self._evaluate_halt():
+    #             return
+    #
+    #             # If the manifests for this node are clear, pop it off the sequence!
+    #         if self.planned_node_sequence and self.planned_node_sequence[0] == self.current_node_id:
+    #             self.planned_node_sequence.pop(0)
+    #
+    #             # If popping that node emptied the sequence, go IDLE and wait for SCM
+    #             if not self.planned_node_sequence:
+    #                 self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+    #                 self.consolidation_confirmed = False  # Unlock the mission flag!
+    #                 self.log_current_state()
+    #                 return
+    #
+    #         # --- STARTING THE NEXT LEG ---
+    #         next_target_node = self.planned_node_sequence[0]
+    #
+    #         if self.C_NAME == "Drone":
+    #             network_type = self.global_state.network.C_NETWORK_AIR
+    #         else:
+    #             network_type = self.global_state.network.C_NETWORK_GROUND
+    #
+    #         self.current_leg_duration = self.network_manager.network.get_travel_time(
+    #             self.current_node_id,
+    #             next_target_node,
+    #             network_type=network_type
+    #         )
+    #
+    #         self.en_route_timer = self.current_leg_duration
+    #
+    #         # Transition state to moving
+    #         self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
+    #         self.set_current_node_id(None)
+    #         self.log_current_state()
+
     def _evaluate_route_state(self):
         """
-        Navigation Logic: Evaluates the planned_node_sequence, waits for the Scenario
-        actions to clear the cargo manifests, and then drives to the next target.
+        The Brain: Evaluates the sequence clipboard using active list mutation.
         """
         current_status = self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0])
 
-        # Only evaluate navigation if we are waiting at a node (IDLE or HALT)
-        if current_status in [self.C_TRIP_STATE_IDLE, self.C_TRIP_STATE_HALT]:
+        if current_status != self.C_TRIP_STATE_HALT or not self.consolidation_confirmed:
+            return
 
-            # Guard Clause 1: Sequence is completely empty (Mission Complete)
-            if not self.planned_node_sequence:
-                if current_status != self.C_TRIP_STATE_IDLE:
-                    self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-                    self.log_current_state()
+        # 1. Mission Complete Check (Physical Ground Truth)
+        if not self.pickup_orders and not self.delivery_orders:
+            self.consolidation_confirmed = False
+            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+            if self.custom_log:
+                print(f"[Vehicle {self.get_id()}] Mission Complete. Vehicle is now IDLE.")
+            return
+
+        if self.current_sequence_index not in self.planned_node_sequence:
+            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
+            self.consolidation_confirmed = False
+            return
+
+        target_node = self.planned_node_sequence[self.current_sequence_index]
+
+        # 2. Are we at the target node?
+        if self.current_node_id == target_node:
+
+            # --- THE MASSIVE SIMPLIFICATION ---
+            # Just check if the clipboard for this step is empty!
+            orders_left = self.planned_order_sequence.get(self.current_sequence_index, [])
+
+            if len(orders_left) > 0:
+                # The list isn't empty yet. Wait for add_cargo/remove_cargo to finish crossing things off.
                 return
 
-            # --- YOUR BRILLIANT MANIFEST CHECK ---
-            # Do we still have cargo to load/unload here?
-            # If yes, stay parked and let the Scenario actions do their work!
-            if (self.current_node_id in self.pickup_node_ids) or (self.current_node_id in self.delivery_node_ids):
+                # Turn the page!
+            self.current_sequence_index += 1
+
+            # Re-evaluate mission completion
+            if not self.pickup_orders and not self.delivery_orders:
+                self.consolidation_confirmed = False
+                self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
                 return
 
-                # If the manifests for this node are clear, pop it off the sequence!
-            if self.planned_node_sequence and self.planned_node_sequence[0] == self.current_node_id:
-                self.planned_node_sequence.pop(0)
+            if self.current_sequence_index not in self.planned_node_sequence:
+                return
 
-                # If popping that node emptied the sequence, go IDLE and wait for SCM
-                if not self.planned_node_sequence:
-                    self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-                    self.consolidation_confirmed = False  # Unlock the mission flag!
-                    self.log_current_state()
-                    return
+            target_node = self.planned_node_sequence[self.current_sequence_index]
 
-            # --- STARTING THE NEXT LEG ---
-            next_target_node = self.planned_node_sequence[0]
+        # 3. START THE ENGINE
+        distance = self.global_state.network.calculate_distance(self.current_node_id, target_node)
+        self.en_route_timer = distance / self.get_speed()
 
-            if self.C_NAME == "Drone":
-                network_type = self.global_state.network.C_NETWORK_AIR
-            else:
-                network_type = self.global_state.network.C_NETWORK_GROUND
-
-            self.current_leg_duration = self.network_manager.network.get_travel_time(
-                self.current_node_id,
-                next_target_node,
-                network_type=network_type
-            )
-
-            self.en_route_timer = self.current_leg_duration
-
-            # Transition state to moving
-            self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
-            self.set_current_node_id(None)
-            self.log_current_state()
+        self.set_current_node_id(None)
+        self.update_state_value_by_dim_name(
+            p_dim_name=[self.C_DIM_AT_NODE[0], self.C_DIM_TRIP_STATE[0]],
+            p_value=[False, self.C_TRIP_STATE_EN_ROUTE]
+        )
 
     def unload_order(self, p_order):
         if p_order:
@@ -861,7 +1037,7 @@ class Vehicle(LogisticEntity, ABC):
 
     def __repr__(self):
         return (f"{self.C_NAME} - {self._id} - {self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0])} - "
-                f"{self.pickup_orders[0].get_id() if len(self.pickup_orders) else 'None'}")
+                f"{self.pickup_orders[0].get_id() if len(self.pickup_orders) else 'None'} - {len(self.get_current_cargo())} - {self.current_node_id}")
 
     def check_assignability(self) -> bool:
         status = self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0])
@@ -869,6 +1045,9 @@ class Vehicle(LogisticEntity, ABC):
             return True
         else:
             return False
+
+    def get_speed(self):
+        return 1
 
     # def _evaluate_route_state(self):
     #     """

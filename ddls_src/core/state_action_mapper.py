@@ -467,6 +467,53 @@ class VehicleAssignabilityConstraint(Constraint):
         return [], []
 
 
+# class VehicleCapacityConstraint(Constraint):
+#     C_NAME = "VehicleCapacityConstraint"
+#     C_ACTIVE = True
+#     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+#                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
+#
+#     def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+#         if not isinstance(p_entity, Vehicle):
+#             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
+#
+#         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+#         capacity = p_entity.get_cargo_capacity()
+#         committed_load = len(p_entity.get_pickup_orders()) + len(p_entity.get_delivery_orders())
+#
+#         if committed_load >= capacity:
+#             return list(relevant_actions), []
+#         else:
+#             return [], list(relevant_actions)
+#
+#     # --- [LEGACY METHODS] ---
+#     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+#         invalidation_idx = []
+#         vehicle = p_entity
+#
+#         vehicle_capacity = vehicle.get_cargo_capacity()
+#         committed_load = len(vehicle.get_pickup_orders()) + len(vehicle.get_delivery_orders())
+#
+#         if committed_load >= vehicle_capacity:
+#             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
+#             actions_by_entity = p_action_index.actions_involving_entity[(vehicle.C_NAME, vehicle.get_id())]
+#             invalidation_idx = list(actions_by_entity.intersection(actions_by_type))
+#             return invalidation_idx, []
+#         else:
+#             return [], []
+#
+#     def update_operability(self, p_entity, **p_kwargs):
+#         if not isinstance(p_entity, (Truck, Drone)):
+#             return
+#         vehicle = p_entity
+#         vehicle_capacity = vehicle.get_cargo_capacity()
+#         current_cargo_size = vehicle.get_current_cargo_size()
+#         has_capacity = (vehicle_capacity - current_cargo_size >= 1)
+#         for action_type in self.C_ACTIONS_AFFECTED:
+#             if action_type in p_entity.action_operability:
+#                 p_entity.action_operability[action_type] = has_capacity
+
 class VehicleCapacityConstraint(Constraint):
     C_NAME = "VehicleCapacityConstraint"
     C_ACTIVE = True
@@ -480,7 +527,15 @@ class VehicleCapacityConstraint(Constraint):
 
         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         capacity = p_entity.get_cargo_capacity()
-        committed_load = len(p_entity.get_pickup_orders()) + len(p_entity.get_delivery_orders())
+
+        # --- THE FIX: Use a set to prevent double-counting ---
+        # This grabs everything on the clipboard and everything physically in the back of the truck
+        # and ensures each unique order is only counted exactly once.
+        active_orders = set(p_entity.get_pickup_orders() +
+                            p_entity.get_delivery_orders() +
+                            p_entity.get_current_cargo())
+
+        committed_load = len(active_orders)
 
         if committed_load >= capacity:
             return list(relevant_actions), []
@@ -493,7 +548,12 @@ class VehicleCapacityConstraint(Constraint):
         vehicle = p_entity
 
         vehicle_capacity = vehicle.get_cargo_capacity()
-        committed_load = len(vehicle.get_pickup_orders()) + len(vehicle.get_delivery_orders())
+
+        # Apply the exact same fix to the legacy method just to be safe
+        active_orders = set(vehicle.get_pickup_orders() +
+                            vehicle.get_delivery_orders() +
+                            vehicle.get_current_cargo())
+        committed_load = len(active_orders)
 
         if committed_load >= vehicle_capacity:
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
@@ -508,8 +568,15 @@ class VehicleCapacityConstraint(Constraint):
             return
         vehicle = p_entity
         vehicle_capacity = vehicle.get_cargo_capacity()
-        current_cargo_size = vehicle.get_current_cargo_size()
-        has_capacity = (vehicle_capacity - current_cargo_size >= 1)
+
+        # Update operability to also reflect the true committed load, not just physical cargo
+        active_orders = set(vehicle.get_pickup_orders() +
+                            vehicle.get_delivery_orders() +
+                            vehicle.get_current_cargo())
+        committed_load = len(active_orders)
+
+        has_capacity = (vehicle_capacity - committed_load >= 1)
+
         for action_type in self.C_ACTIONS_AFFECTED:
             if action_type in p_entity.action_operability:
                 p_entity.action_operability[action_type] = has_capacity
@@ -707,7 +774,7 @@ class ConsolidationConstraint(Constraint):
         is_locked = getattr(p_entity, 'consolidation_confirmed', False)
 
         # 1. Guard: If it's already locked or not IDLE, block it immediately
-        if current_status != p_entity.C_TRIP_STATE_IDLE and (not is_locked):
+        if current_status != p_entity.C_TRIP_STATE_IDLE and is_locked:
             return list(consolidation_action_ids), []
 
         # 2. Guard: Does it actually have orders to consolidate?
@@ -723,7 +790,10 @@ class ConsolidationConstraint(Constraint):
 
         # If it is IDLE, unlocked, and has tasks waiting, allow consolidation!
 
-        return [], list(consolidation_action_ids)
+        if (len(p_entity.staged_pickup_orders) or len(p_entity.staged_delivery_orders) or len(p_entity.staged_pickup_leg2_orders) or len(p_entity.staged_delivery_leg2_orders)) and not p_entity.consolidation_confirmed:
+            return [], list(consolidation_action_ids)
+
+        return list(consolidation_action_ids), []
 
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
@@ -1141,7 +1211,7 @@ class VehicleLoadConstraint(Constraint):
 
         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
 
-        if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) in [p_entity.C_TRIP_STATE_EN_ROUTE]:
+        if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) not in [p_entity.C_TRIP_STATE_HALT]:
             return list(relevant_actions), []
 
         current_node = p_entity.get_current_node()
@@ -1160,6 +1230,40 @@ class VehicleLoadConstraint(Constraint):
         return list(to_mask), list(valid_action_ids)
 
     # NO LEGACY METHODS (New Constraint)
+
+# class VehicleLoadConstraint(Constraint):
+#     C_NAME = "VehicleLoadConstraint"
+#     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.LOAD_TRUCK_ACTION,
+#                           SimulationActions.LOAD_DRONE_ACTION]
+#
+#     def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
+#         if not isinstance(p_entity, Vehicle):
+#             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
+#
+#         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+#
+#         # 1. Strict State Guard: Must be explicitly parked (HALT) and locked into a mission
+#         current_status = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0])
+#         if current_status != p_entity.C_TRIP_STATE_HALT or not getattr(p_entity, 'consolidation_confirmed', False):
+#             return list(relevant_actions), []  # Block everything
+#
+#         # 2. Strict Sequence Guard: Only allow orders at the CURRENT sequence index
+#         valid_action_ids = set()
+#
+#         # Safely fetch the list of orders assigned to the current step
+#         current_step_orders = getattr(p_entity, 'planned_order_sequence', {}).get(getattr(p_entity, 'current_sequence_index', -1), [])
+#
+#         for order in current_step_orders:
+#             # Verify it is actually meant to be picked up
+#             if order in p_entity.get_pickup_orders():
+#                 actions_for_order = p_action_index.actions_involving_entity.get(("Order", order.get_id()), set())
+#                 valid_action_ids.update(relevant_actions.intersection(actions_for_order))
+#
+#         to_mask = relevant_actions.difference(valid_action_ids)
+#         return list(to_mask), list(valid_action_ids)
+
+    # NO LEGACY METHODS
 
 
 class OrderUnloadConstraint(Constraint):
@@ -1286,7 +1390,7 @@ class VehicleUnloadConstraint(Constraint):
 
         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
 
-        if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) in [p_entity.C_TRIP_STATE_EN_ROUTE]:
+        if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) not in [p_entity.C_TRIP_STATE_HALT]:
             return list(relevant_actions), []
 
         current_node = p_entity.get_current_node()
@@ -1306,6 +1410,40 @@ class VehicleUnloadConstraint(Constraint):
         return list(to_mask), list(valid_action_ids)
 
     # NO LEGACY METHODS (New Constraint)
+
+# class VehicleUnloadConstraint(Constraint):
+#     C_NAME = "VehicleUnloadConstraint"
+#     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
+#     C_ACTIONS_AFFECTED = [SimulationActions.UNLOAD_TRUCK_ACTION,
+#                           SimulationActions.UNLOAD_DRONE_ACTION]
+#
+#     def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
+#         if not isinstance(p_entity, Vehicle):
+#             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
+#
+#         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+#
+#         # 1. Strict State Guard: Must be explicitly parked (HALT) and locked into a mission
+#         current_status = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0])
+#         if current_status != p_entity.C_TRIP_STATE_HALT or not getattr(p_entity, 'consolidation_confirmed', False):
+#             return list(relevant_actions), []  # Block everything
+#
+#         # 2. Strict Sequence Guard: Only allow orders at the CURRENT sequence index
+#         valid_action_ids = set()
+#
+#         # Safely fetch the list of orders assigned to the current step
+#         current_step_orders = getattr(p_entity, 'planned_order_sequence', {}).get(getattr(p_entity, 'current_sequence_index', -1), [])
+#
+#         for order in current_step_orders:
+#             # Verify it is actually meant to be delivered AND is physically in the cargo
+#             if order in p_entity.get_delivery_orders() and order in p_entity.get_current_cargo():
+#                 actions_for_order = p_action_index.actions_involving_entity.get(("Order", order.get_id()), set())
+#                 valid_action_ids.update(relevant_actions.intersection(actions_for_order))
+#
+#         to_mask = relevant_actions.difference(valid_action_ids)
+#         return list(to_mask), list(valid_action_ids)
+
+    # NO LEGACY METHODS
 
 class OrderAtDeliveryNode(Constraint):
     C_NAME = "OrderAtDeliveryNode"
