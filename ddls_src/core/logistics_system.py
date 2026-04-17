@@ -376,10 +376,10 @@ class LogisticsSystem(System, EventManager):
             # Increment the counter.
             i += 1
             # A safety break to prevent infinite loops.
-            if i > 20:
-                if self.custom_log:
-                    print("Auto-action loop exceeded safety limit of 20 iterations.")
-                break
+            # if i > 20:
+            #     if self.custom_log:
+            #         print("Auto-action loop exceeded safety limit of 20 iterations.")
+            #     break
 
     # --------------------------------------------------------------------------------------------------
 
@@ -477,10 +477,12 @@ class LogisticsSystem(System, EventManager):
             np.ndarray: A boolean array where True indicates a valid action.
         """
         # If the StateActionMapper is initialized, use it to generate the mask.
-        if self.state_action_mapper:
-            return self.state_action_mapper.generate_masks()
+        # if self.state_action_mapper:
+        #     return self.state_action_mapper.generate_masks()
         # As a fallback, return a mask of all ones (all actions considered possible).
         # return np.ones(len(self.action_map), dtype=np.float64)
+        if self.constraint_manager:
+            return self.constraint_manager.get_masks()
 
     # --------------------------------------------------------------------------------------------------
 
@@ -580,7 +582,7 @@ class LogisticsSystem(System, EventManager):
         A convenience method to get the current action masks.
         """
         # Calls the state-action mapper to generate the masks.
-        return self.state_action_mapper.generate_masks()
+        return self.constraint_manager.get_masks()
 
     # --------------------------------------------------------------------------------------------------
 

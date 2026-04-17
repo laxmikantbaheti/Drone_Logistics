@@ -72,7 +72,7 @@ class Constraint(ABC, EventManager):
         """
         raise NotImplementedError
 
-    def evaluate_impact(self, p_entity, p_action_index: ActionIndex) -> Tuple[List[int], List[int]]:
+    def evaluate_impact(self, p_entity, p_action_index: ActionIndex, deck) -> Tuple[List[int], List[int]]:
         """
         Calculates the Delta (Impact) of this constraint.
         """
@@ -87,7 +87,10 @@ class Constraint(ABC, EventManager):
         # 3. Calculate Deltas
         to_block = list(current_block_set.difference(previous_block_set))
         to_unblock = list(previous_block_set.difference(current_block_set))
-
+        for action in to_block:
+            deck[action].add(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
+        for action in to_unblock:
+            deck[action].remove(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
         # 4. Update Memory
         self._entity_invalidation_map[entity_id] = current_block_set
 
@@ -1703,6 +1706,7 @@ class DeadlockPreventionConstraint(Constraint):
 # -- Part 3: Managers
 # -------------------------------------------------------------------------------------------------
 
+
 class ConstraintManager(EventManager):
     """
     Manages all constraints in the simulation.
@@ -1712,6 +1716,8 @@ class ConstraintManager(EventManager):
 
     def __init__(self, action_index: ActionIndex, reverse_action_map, custom_log = False):
         EventManager.__init__(self, p_logging=False)
+        self.masks = []
+        self.action_map = None
         self._update_counter = 0
         self.constraints = set()
         self.entity_constraints = {}
@@ -1719,6 +1725,8 @@ class ConstraintManager(EventManager):
         self.action_index = action_index
         self.setup_constraint_entity_map()
         self.custom_log = custom_log
+        self.constraint_deck = {key: set() for key in self.reverse_action_map}
+        self.masks = [0 for i in range(len(self.reverse_action_map))]
         if self.custom_log:
             print("Constraints Setup")
 
@@ -1761,7 +1769,7 @@ class ConstraintManager(EventManager):
             print(f"[ConstraintManager] Found {len(constraints_to_check)} constraints for entity {entity.C_NAME}")
 
         for constraint in constraints_to_check:
-            to_block, to_unblock = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index)
+            to_block, to_unblock = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
 
             # DEBUG 3: specific constraint output
             if to_block or to_unblock:
@@ -1793,7 +1801,8 @@ class ConstraintManager(EventManager):
         if self.custom_log:
             print("Update constraints method is called")
         self.reverse_action_map = reverse_action_map
-
+        self.constraint_deck = {key: set() for key in self.reverse_action_map.keys()}
+        self.masks = [0 for i in range(len(self.reverse_action_map))]
         for constraint in self.constraints:
             constraint.clear_cache()
             constraint.reverse_action_map = self.reverse_action_map
@@ -1804,7 +1813,7 @@ class ConstraintManager(EventManager):
             for entity in entity_dict.values():
                 constraints_to_check = self.get_constraints_by_entity(entity)
                 for constraint in constraints_to_check:
-                    to_block, _ = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index)
+                    to_block, _ = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
                     total_to_block.extend(to_block)
 
         if total_to_block:
@@ -1824,6 +1833,12 @@ class ConstraintManager(EventManager):
             #     constraint.associated_action_index.add(action_map[reverse_action_map_old[i]])
             # print("action_indexes_updated")
         self.update_entity_invalidation_maps(action_map, reverse_action_map_old)
+        constraint_deck_old = self.constraint_deck.copy()
+        self.constraint_deck = {key: set() for key in action_map.values()}
+        for action in reverse_action_map_old.values():
+            self.constraint_deck[action_map[action]] = constraint_deck_old[action_map_old[action]]
+        self.action_map = action_map
+        self.update_masks()
         return
 
     def update_entity_invalidation_maps(self, action_map, reverse_action_map_old):
@@ -1837,7 +1852,22 @@ class ConstraintManager(EventManager):
                     new_action_set.add(action_map[reverse_action_map_old[old_action]])
                 constraint._entity_invalidation_map[entity] = new_action_set
 
+    def update_masks(self):
+        self.masks = [False for i in range(len(self.constraint_deck.keys()))]
+        for key, value in self.constraint_deck.items():
+            if len(value):
+                self.masks[key] = False
+            else:
+                self.masks[key] = True
 
+    def get_masks(self):
+        for key, value in self.constraint_deck.items():
+            if len(value):
+                self.masks[key] = 0
+            else:
+                self.masks[key] = 1
+
+        return self.masks
 
 class StateActionMapper:
     """
