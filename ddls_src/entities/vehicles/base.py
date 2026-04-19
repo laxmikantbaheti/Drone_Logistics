@@ -105,6 +105,8 @@ class Vehicle(LogisticEntity, ABC):
 
         self.planned_node_sequence = []
         self.consolidation_confirmed = False
+        self.debug_planned_node_sequence = []
+        self.debug_planned_order_sequence = []
 
         # Attach the interchangeable sequencer (assuming you create this file next)
         try:
@@ -853,6 +855,9 @@ class Vehicle(LogisticEntity, ABC):
             pickup_leg2_orders=self.staged_pickup_leg2_orders,
             delivery_leg2_orders=self.staged_delivery_leg2_orders
         )
+
+        self.debug_planned_node_sequence = self.planned_node_sequence.copy()
+        self.debug_planned_order_sequence = self.planned_order_sequence.copy()
 
         # 2. Clear the staging area for the next operational cycle
         self.staged_pickup_orders.clear()

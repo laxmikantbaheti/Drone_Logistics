@@ -40,6 +40,7 @@ class Constraint(ABC, EventManager):
         self.find_associated_actions()
         self.initiated = False
         self.custom_log = custom_log
+        self.evaluation_history = []
 
     def find_associated_actions(self):
         if self.C_ACTIONS_AFFECTED:
@@ -77,7 +78,7 @@ class Constraint(ABC, EventManager):
         Calculates the Delta (Impact) of this constraint.
         """
         # 1. Get current "Desired Blocks"
-        current_actions_to_block, _ = self._get_restricted_actions(p_entity, p_action_index)
+        current_actions_to_block, current_actions_to_unblock = self._get_restricted_actions(p_entity, p_action_index)
         current_block_set = set(current_actions_to_block) if current_actions_to_block else set()
 
         # 2. Get "Previous Blocks"
@@ -93,6 +94,8 @@ class Constraint(ABC, EventManager):
             deck[action].remove(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
         # 4. Update Memory
         self._entity_invalidation_map[entity_id] = current_block_set
+
+        self.evaluation_history.append(f"{p_entity.C_NAME} - {p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}")
 
         return to_block, to_unblock
 
@@ -1187,7 +1190,7 @@ class CoordinatedOrderLoadConstraint(Constraint):
     def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
         if not isinstance(p_entity, Order):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
-        if len(p_entity.predecessor_orders) == 0:
+        if not isinstance(p_entity, PseudoOrder):
             return [], []
         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
         loadable = True

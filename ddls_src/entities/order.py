@@ -195,21 +195,21 @@ class Order(LogisticEntity):
         self.log_current_state()
         return True
 
-    # def update_state_value_by_dim_name(self, p_dim_name, p_value):
-    #     """Overrides the base method to catch framework-level state/node changes."""
-    #     super().update_state_value_by_dim_name(p_dim_name, p_value)
-    #
-    #     dim_names = p_dim_name if isinstance(p_dim_name, list) else [p_dim_name]
-    #
-    #     if hasattr(self, 'C_DIM_DELIVERY_STATUS') and self.C_DIM_DELIVERY_STATUS[0] in dim_names:
-    #         if isinstance(p_dim_name, list) and isinstance(p_value, list):
-    #             idx = p_dim_name.index(self.C_DIM_DELIVERY_STATUS[0])
-    #             self.status = str(p_value[idx])
-    #         else:
-    #             self.status = str(p_value)
-    #
-    #     # Trigger the smart logger. It will automatically filter out duplicates!
-    #     self.log_current_state()
+    def update_state_value_by_dim_name(self, p_dim_name, p_value):
+        """Overrides the base method to catch framework-level state/node changes."""
+        super().update_state_value_by_dim_name(p_dim_name, p_value)
+
+        dim_names = p_dim_name if isinstance(p_dim_name, list) else [p_dim_name]
+
+        if hasattr(self, 'C_DIM_DELIVERY_STATUS') and self.C_DIM_DELIVERY_STATUS[0] in dim_names:
+            if isinstance(p_dim_name, list) and isinstance(p_value, list):
+                idx = p_dim_name.index(self.C_DIM_DELIVERY_STATUS[0])
+                self.status = str(p_value[idx])
+            else:
+                self.status = str(p_value)
+
+        # Trigger the smart logger. It will automatically filter out duplicates!
+        self.log_current_state()
 
     def unassign_vehicle(self):
         self.assigned_vehicle_id = None
