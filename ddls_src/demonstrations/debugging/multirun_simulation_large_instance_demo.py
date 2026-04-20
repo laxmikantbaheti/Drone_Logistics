@@ -42,4 +42,4 @@ def run_multiple_times(num_runs):
 
 if __name__ == "__main__":
     # Specify how many times you want the scenario to run
-    run_multiple_times(500)
+    run_multiple_times(50)
