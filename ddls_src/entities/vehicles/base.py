@@ -967,7 +967,31 @@ class Vehicle(LogisticEntity, ABC):
             # Just check if the clipboard for this step is empty!
             orders_left = self.planned_order_sequence.get(self.current_sequence_index, [])
 
-            if len(orders_left) > 0:
+            pickup_orders, delivery_orders = self.planned_order_sequence[self.current_sequence_index]
+
+            all_picked_up = True
+            for o in pickup_orders:
+                if not isinstance(o, Order):
+                    raise TypeError("Order must be of type Order")
+                if o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) in [o.C_STATUS_EN_ROUTE]:
+                    all_picked_up = True or all_picked_up
+                elif o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) not in [o.C_STATUS_EN_ROUTE]:
+                    all_picked_up = False
+                if not all_picked_up:
+                    break
+
+            all_delivered = True
+            for o in delivery_orders:
+                if not isinstance(o, Order):
+                    raise TypeError("Order must be of type Order")
+                if o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) in [o.C_STATUS_DELIVERED]:
+                    all_delivered = True or all_delivered
+                elif o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) not in [o.C_STATUS_DELIVERED]:
+                    all_delivered = False
+                if not all_delivered:
+                    break
+
+            if (not all_picked_up) or (not all_delivered):
                 # The list isn't empty yet. Wait for add_cargo/remove_cargo to finish crossing things off.
                 return
 

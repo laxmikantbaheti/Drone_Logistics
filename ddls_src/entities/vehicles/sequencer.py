@@ -44,7 +44,104 @@ class HeuristicSequencer(RouteSequencer):
         return sequence
 
 
+from abc import ABC, abstractmethod
+from typing import List
+
+
+class RouteSequencer(ABC):
+    """
+    Abstract base class for batch-processing order assignments into a strict node sequence.
+    """
+
+    @abstractmethod
+    def generate_sequence(self,
+                          current_node: int,
+                          pickup_orders: List[int],
+                          delivery_orders: List[int],
+                          pickup_leg2_orders: List[int],
+                          delivery_leg2_orders: List[int]) -> List[int]:
+        pass
+
+    def reset(self):
+        pass
+
+
 class HeuristicSequencer2(RouteSequencer):
+    """
+    Generates a strict, indexed timeline for a vehicle, grouping consecutive
+    tasks at the same node into a single operational step.
+
+    Updated Output format for order_sequence:
+        node_sequence = {0: Node_A, 1: Node_B, 2: Node_A}
+        order_sequence = {0: [{Pickup_1, Pickup_2}, {Delivery_1}], 1: [{Pickup_3}, set()], 2: [set(), {Delivery_2}]}
+    """
+
+    def generate_sequence(self, current_node, pickup_orders: dict, delivery_orders: dict, pickup_leg2_orders: dict,
+                          delivery_leg2_orders: dict):
+
+        # Step 1: Flatten everything into a strict logical timeline
+        flat_nodes = []
+        flat_orders = []
+        flat_types = []  # Tracks whether the order is a "pickup" or "delivery"
+
+        def extract_phase(order_dict, order_type):
+            for node_id, orders in order_dict.items():
+                for order in orders:
+                    flat_nodes.append(node_id)
+                    flat_orders.append(order)
+                    flat_types.append(order_type)
+
+        # Build the timeline prioritizing pickups -> deliveries -> leg 2
+        extract_phase(pickup_orders, "pickup")
+        extract_phase(delivery_orders, "delivery")
+        extract_phase(pickup_leg2_orders, "pickup")
+        extract_phase(delivery_leg2_orders, "delivery")
+
+        node_sequence = {}
+        order_sequence = {}
+
+        # Guard: If no orders were assigned, return empty dicts
+        if not flat_nodes:
+            raise ValueError("Something is wrong!")
+            # return node_sequence, order_sequence
+
+        # Step 2: Group consecutive identical nodes into index keys
+        current_index = 0
+        node_sequence[current_index] = flat_nodes[0]
+
+        # Initialize with [set(pickups), set(deliveries)]
+        order_sequence[current_index] = [set(), set()]
+
+        # Helper function to place order in the correct set
+        def assign_order(index, order, o_type):
+            if o_type == "pickup":
+                order_sequence[index][0].add(order)
+            elif o_type == "delivery":
+                order_sequence[index][1].add(order)
+            else:
+                raise ValueError("Something is wrong!")
+
+        # Add the very first order
+        assign_order(current_index, flat_orders[0], flat_types[0])
+
+        for i in range(1, len(flat_nodes)):
+            node = flat_nodes[i]
+            order = flat_orders[i]
+            o_type = flat_types[i]
+
+            # If the node is the exact same as the current step, add the order to the respective set
+            if node == node_sequence[current_index]:
+                assign_order(current_index, order, o_type)
+            else:
+                # The node changed! Advance the index and create a new sequence step
+                current_index += 1
+                node_sequence[current_index] = node
+                order_sequence[current_index] = [set(), set()]
+                assign_order(current_index, order, o_type)
+
+        return node_sequence, order_sequence
+
+class HeuristicSequencer3(RouteSequencer):
     """
     Generates a strict, indexed timeline for a vehicle, grouping consecutive
     tasks at the same node into a single operational step.
@@ -82,7 +179,7 @@ class HeuristicSequencer2(RouteSequencer):
         # Step 2: Group consecutive identical nodes into index keys
         current_index = 0
         node_sequence[current_index] = flat_nodes[0]
-        order_sequence[current_index] = [flat_orders[0]]
+        order_sequence[current_index] = set([flat_orders[0]])
 
         for i in range(1, len(flat_nodes)):
             node = flat_nodes[i]
@@ -90,12 +187,11 @@ class HeuristicSequencer2(RouteSequencer):
 
             # If the node is the exact same as the current step, just add the order to the list
             if node == node_sequence[current_index]:
-                order_sequence[current_index].append(order)
+                order_sequence[current_index].add(order)
             else:
                 # The node changed! Advance the index and create a new sequence step
                 current_index += 1
                 node_sequence[current_index] = node
-                order_sequence[current_index] = [order]
+                order_sequence[current_index] = set([order])
 
         return node_sequence, order_sequence
-

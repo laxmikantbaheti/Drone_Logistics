@@ -328,8 +328,8 @@ class Order(LogisticEntity):
             if succ.node_pair is not None:
                 succ.node_pair.raise_state_change_event()
 
-        self.predecessor_orders = []
-        self.successor_orders = []
+        # self.predecessor_orders = []
+        # self.successor_orders = []
 
         return [pseudo_order_1, pseudo_order_2]
 
