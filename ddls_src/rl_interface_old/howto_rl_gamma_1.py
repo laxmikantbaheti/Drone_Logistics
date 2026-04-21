@@ -10,15 +10,46 @@ from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList, StopTrainingOnMaxEpisodes
 from stable_baselines3.common.monitor import Monitor
+from torch.cuda.amp import custom_bwd
 
 # Ensure the project root is in the python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import the environment wrapper
-from ddls_src.rl_interface.rl_scenario import LogisticRLScenario
+from ddls_src.rl_interface_old.rl_scenario import LogisticRLScenario
+# # ==============================================================================
+# # [FIX] MONKEY PATCH FOR PYTORCH SIMPLEX ERROR
+# # ==============================================================================
+import torch
+from sb3_contrib.common.maskable import distributions
+#
+# # 1. Save the original constructor so we can call it later
+# original_init = distributions.MaskableCategorical.__init__
+# torch.set_default_dtype(torch.float64)
+torch.set_default_device("cuda")
+
+# 2. Define a "Safe" constructor that sanitizes input
+def safe_init(self, probs=None, logits=None, validate_args=None):
+    if probs is not None:
+        # A. Fix tiny negative values (e.g. -1e-20) caused by float precision
+        if (probs < 0).any():
+            probs = torch.clamp(probs, min=1e-8)
+
+        # B. Force re-normalization so sum is EXACTLY 1.0
+        #    This satisfies the ((value.sum(-1) - 1).abs() < 1e-6) check
+        probs = probs / probs.sum(-1, keepdim=True)
+
+    # 3. Call the original PyTorch/SB3 logic with clean data
+    # original_init(self, probs=probs, logits=logits, validate_args=validate_args)
 
 
-# --- 1. Custom Callback for Metrics ONLY (Removed stopping logic) ---
+# 4. Apply the patch
+# distributions.MaskableCategorical.__init__ = safe_init
+
+
+# ==============================================================================
+
+# --- 1. Custom Callback for Metrics ONLY ---
 class LogisticsStatsCallback(BaseCallback):
     """
     Custom callback to extract specific logistics metrics.
@@ -58,7 +89,7 @@ class LogisticsStatsCallback(BaseCallback):
             self.current_episode_reward = 0.0
             self.episode_start_time = time.time()
 
-        return True  # Always return True, let StopTrainingOnMaxEpisodes handle stopping
+        return True
 
 
 # --- 2. Helper to expose the mask to SB3 ---
@@ -75,12 +106,13 @@ def run_ppo_simulation():
     # 1. Define Configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
     config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
-    config_file_path = os.path.normpath(config_file_path)
+    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
+    # config_file_path = os.path.normpath(config_file_path)
 
     sim_config = {
         "movement_mode": "matrix",
         "initial_time": 0.0,
-        "main_timestep_duration": 300.0,
+        "main_timestep_duration": 1.0,
         "data_loader_config": {
             "generator_type": "json_file",
             "generator_config": {
@@ -90,45 +122,58 @@ def run_ppo_simulation():
     }
 
     # 2. Initialize Environment
-    env = LogisticRLScenario(sim_config, visualize=False)
+    env = LogisticRLScenario(sim_config, visualize=False, custom_log = False)
 
-    # [CRITICAL CHECK] Wraps env to ensure it returns DONE after N steps if the simulation doesn't.
-    # Adjust max_episode_steps to a value slightly higher than your expected makespan
-    # If your environment handles this internally, you can remove this wrapper.
-    env = TimeLimit(env, max_episode_steps=5000)
+    # [CRITICAL] Set Max Episode Steps
+    # We set this to 5000. It is crucial that n_steps below is > 5000.
+    MAX_STEPS = 5000000
+    env = TimeLimit(env, max_episode_steps=MAX_STEPS)
 
     env = Monitor(env)
     env = ActionMasker(env, mask_fn)
 
+    # [CRITICAL MODIFICATION] - Episodic Update Configuration
+    # We want to collect a FULL episode before updating.
+    EPISODE_BUFFER_SIZE = 3000  # Must be > MAX_STEPS (5000)
+
+    # policy_kwargs = dict(activation_fn=nn.ReLU,
+    #                      net_arch=[dict(pi=[256, 256, 256], vf=[256, 256, 256])])
     # 3. Define Model
     model = MaskablePPO(
         "MlpPolicy",
         env,
-        verbose=0,
-        learning_rate=3e-3,
-        gamma=0.99,
+        verbose=1,
+        # policy_kwargs=policy_kwargs,
+        # --- Episodic Update Settings ---
+        learning_rate=2e-3,
+        n_steps=EPISODE_BUFFER_SIZE,  # Wait for ~5120 steps before training
+        batch_size=50,  # Standard mini-batch size (or set to 5120 for full-batch)
+        n_epochs=10,  # Train on this episode data 10 times
+        gamma=1,
+        gae_lambda=0.99,  # 1.0 = Monte Carlo (No bootstrapping)
+        ent_coef=0.00,
+        device="cuda"# Encourages exploration (helpful for sparse rewards)
     )
 
     # 4. Training Configuration
-    NUM_EPISODES = 1
-    LARGE_TIMESTEPS = 1_000_000  # Keep this high
+    # Increase this for real training (e.g., 500)
+    NUM_EPISODES = 1500
+
+
+    # Total timesteps must be enough to cover NUM_EPISODES * MAX_STEPS
+    LARGE_TIMESTEPS = NUM_EPISODES * (EPISODE_BUFFER_SIZE + 100)
 
     print(f"\n--- Starting Training for {NUM_EPISODES} episodes ---")
 
-    # [MODIFICATION] Create the Callback List
-    # 1. Stats callback (logs data)
+    # Callbacks
     stats_callback = LogisticsStatsCallback(verbose=1)
-    # 2. Stop callback (forces stop after N episodes)
     stop_callback = StopTrainingOnMaxEpisodes(max_episodes=NUM_EPISODES, verbose=1)
-
-    # Combine them
     callbacks = CallbackList([stats_callback, stop_callback])
 
     # Start learning
     model.learn(total_timesteps=LARGE_TIMESTEPS, callback=callbacks)
 
     # 5. Final Summary
-    # Note: We access stats_callback explicitly to get the data
     print("\n=========================================================")
     print(f"=== Training Summary ({len(stats_callback.episode_rewards)} Episodes Completed) ===")
     if len(stats_callback.episode_rewards) > 0:

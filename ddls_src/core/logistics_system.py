@@ -228,6 +228,13 @@ class LogisticsSystem(System, EventManager):
                     entity.global_state = self.global_state
                     entity.reset()
 
+                    # [NEW MODIFICATION]: Wire the EventLogger to listen to this entity
+                    if hasattr(entity, 'register_event_handler_for_constraints'):
+                        entity.register_event_handler_for_constraints(
+                            entity.C_EVENT_ENTITY_STATE_CHANGE,
+                            self.global_state.event_logger.handle_entity_state_change
+                        )
+
             # Create a dictionary of managers for easy access.
             managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
                         'NetworkManager': self.network_manager}
@@ -570,6 +577,11 @@ class LogisticsSystem(System, EventManager):
             order.add_global_state(self.global_state)
             order.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
                                                       self.constraint_manager.handle_entity_state_change)
+            # [NEW MODIFICATION]: Wire dynamically generated orders to the EventLogger
+            order.register_event_handler_for_constraints(
+                LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
+                self.global_state.event_logger.handle_entity_state_change
+            )
             # order.raise_state_change_event()
         # print("End --", datetime.now())
         # Re-generate the masks to account for the new state and actions.

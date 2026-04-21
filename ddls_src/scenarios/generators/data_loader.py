@@ -16,7 +16,7 @@ class DataLoader:
     and then delegates the data generation to it.
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], custom_log = False):
         """
         Initializes the DataLoader.
 
@@ -26,6 +26,7 @@ class DataLoader:
                                      'generator_type': str (e.g., 'json_file', 'random', 'osm', 'custom')
                                      'generator_config': Dict[str, Any] (config specific to the chosen generator)
         """
+        self.custom_log = custom_log
         self.config = config
         self.generator_type = config.get('generator_type', 'json_file')  # Default to 'json_file'
         self.generator_config = config.get('generator_config', {})
@@ -71,7 +72,8 @@ class DataLoader:
             Dict[str, Any]: A dictionary containing all initial entity data,
                             structured as expected by GlobalState's _populate_initial_state.
         """
-        print(f"DataLoader: Loading initial simulation data using '{self.generator_type}' generator.")
+        if self.custom_log:
+            print(f"DataLoader: Loading initial simulation data using '{self.generator_type}' generator.")
         try:
             raw_data = self.data_generator.generate_data()
             return raw_data

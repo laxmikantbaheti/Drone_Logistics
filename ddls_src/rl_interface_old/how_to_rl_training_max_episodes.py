@@ -15,30 +15,10 @@ from stable_baselines3.common.monitor import Monitor
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import the environment wrapper
-from ddls_src.rl_interface.rl_scenario import LogisticRLScenario
-
-# ==============================================================================
-# [OPTIONAL] MONKEY PATCH FOR PYTORCH SIMPLEX ERROR (left as-is)
-# ==============================================================================
-import torch
-from sb3_contrib.common.maskable import distributions
-
-# torch.set_default_device("cuda")
+from ddls_src.rl_interface_old.rl_scenario import LogisticRLScenario
 
 
-def safe_init(self, probs=None, logits=None, validate_args=None):
-    if probs is not None:
-        if (probs < 0).any():
-            probs = torch.clamp(probs, min=1e-8)
-        probs = probs / probs.sum(-1, keepdim=True)
-    # original_init(self, probs=probs, logits=logits, validate_args=validate_args)
-
-
-# distributions.MaskableCategorical.__init__ = safe_init
-
-# ==============================================================================
-# --- 1. Custom Callback for Metrics ONLY ---
-# ==============================================================================
+# --- 1. Custom Callback for Metrics ONLY (Removed stopping logic) ---
 class LogisticsStatsCallback(BaseCallback):
     """
     Custom callback to extract specific logistics metrics.
@@ -54,8 +34,10 @@ class LogisticsStatsCallback(BaseCallback):
         self.episode_count = 0
 
     def _on_step(self) -> bool:
+        # Accumulate reward
         self.current_episode_reward += self.locals["rewards"][0]
 
+        # Check if the episode is done
         if self.locals["dones"][0]:
             self.episode_count += 1
             real_duration = time.time() - self.episode_start_time
@@ -72,10 +54,11 @@ class LogisticsStatsCallback(BaseCallback):
                 print(f"    Makespan (Sim): {sim_makespan:.2f}s")
                 print(f"    Duration (Real): {real_duration:.4f}s")
 
+            # Reset trackers
             self.current_episode_reward = 0.0
             self.episode_start_time = time.time()
 
-        return True
+        return True  # Always return True, let StopTrainingOnMaxEpisodes handle stopping
 
 
 # --- 2. Helper to expose the mask to SB3 ---
@@ -89,105 +72,63 @@ def run_ppo_simulation():
     print("===   Running LogisticRLScenario with MaskablePPO     ===")
     print("=========================================================")
 
-    # ----------------------------------------------------------------------
-    # 1) Define Configuration (UPDATED TO USE VRPDBenchmarkDataGenerator)
-    # ----------------------------------------------------------------------
+    # 1. Define Configuration
     script_path = os.path.dirname(os.path.realpath(__file__))
-
-    # Change this to match where your VRP-D instances are stored
-    vrp_instance_path = os.path.join(
-        script_path,
-        "..",
-        "scenarios",
-        "vrp_d_instances",
-        "VRP-D",
-        "A-n32-k5-20.vrp"
-    )
-    vrp_instance_path = os.path.normpath(vrp_instance_path)
+    config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data_mh_matrix.json')
+    config_file_path = os.path.normpath(config_file_path)
 
     sim_config = {
         "movement_mode": "matrix",
         "initial_time": 0.0,
-        "main_timestep_duration": 1.0,
+        "main_timestep_duration": 300.0,
         "data_loader_config": {
-            # IMPORTANT: must match your generator factory registry name
-            "generator_type": "vrpd",
+            "generator_type": "json_file",
             "generator_config": {
-                "instance_path": vrp_instance_path,
-
-                # Keep these custom for your delivery model
-                "num_drones": 6,
-                "num_microhubs": 2,
-                "bbox": (0, 0, 100, 100),
-                "std_dev_scale": 4.0,
-
-                # Capacity-derived configs inside generator
-                "drone_capacity_ratio": 0.2,
-
-                # Speeds (if your sim uses them)
-                "truck_speed": 1.0,
-                "drone_speed": 1.0,
-
-                # Optional
-                "seed": 42,
-
-                # If you want to override trucks instead of using -k# from filename:
-                # "num_trucks": 5,
+                "file_path": config_file_path
             }
         },
     }
 
-    print("\n--- Scenario Config ---")
-    print("Generator:", sim_config["data_loader_config"]["generator_type"])
-    print("Instance:", sim_config["data_loader_config"]["generator_config"]["instance_path"])
+    # 2. Initialize Environment
+    env = LogisticRLScenario(sim_config, visualize=False)
 
-    # ----------------------------------------------------------------------
-    # 2) Initialize Environment
-    # ----------------------------------------------------------------------
-    env = LogisticRLScenario(sim_config, visualize=False, custom_log=1)
-
-    MAX_STEPS = 5_000_000
-    env = TimeLimit(env, max_episode_steps=MAX_STEPS)
+    # [CRITICAL CHECK] Wraps env to ensure it returns DONE after N steps if the simulation doesn't.
+    # Adjust max_episode_steps to a value slightly higher than your expected makespan
+    # If your environment handles this internally, you can remove this wrapper.
+    env = TimeLimit(env, max_episode_steps=5000)
 
     env = Monitor(env)
     env = ActionMasker(env, mask_fn)
 
-    # ----------------------------------------------------------------------
-    # 3) Define Model
-    # ----------------------------------------------------------------------
-    EPISODE_BUFFER_SIZE = 1000  # NOTE: you had a comment saying must be > MAX_STEPS; it's not.
-                              # Keep as-is since you didn't ask to change training behavior.
-
+    # 3. Define Model
     model = MaskablePPO(
         "MlpPolicy",
         env,
-        verbose=1,
-        learning_rate=2e-3,
-        n_steps=EPISODE_BUFFER_SIZE,
-        batch_size=50,
-        n_epochs=10,
-        gamma=1,
-        gae_lambda=0.99,
-        ent_coef=0.00,
+        verbose=0,
+        learning_rate=3e-3,
+        gamma=0.99,
     )
 
-    # ----------------------------------------------------------------------
-    # 4) Training Configuration
-    # ----------------------------------------------------------------------
-    NUM_EPISODES = 1500
-    LARGE_TIMESTEPS = NUM_EPISODES * (EPISODE_BUFFER_SIZE + 100)
+    # 4. Training Configuration
+    NUM_EPISODES = 1
+    LARGE_TIMESTEPS = 1_000_000  # Keep this high
 
     print(f"\n--- Starting Training for {NUM_EPISODES} episodes ---")
 
+    # [MODIFICATION] Create the Callback List
+    # 1. Stats callback (logs data)
     stats_callback = LogisticsStatsCallback(verbose=1)
+    # 2. Stop callback (forces stop after N episodes)
     stop_callback = StopTrainingOnMaxEpisodes(max_episodes=NUM_EPISODES, verbose=1)
+
+    # Combine them
     callbacks = CallbackList([stats_callback, stop_callback])
 
+    # Start learning
     model.learn(total_timesteps=LARGE_TIMESTEPS, callback=callbacks)
 
-    # ----------------------------------------------------------------------
-    # 5) Final Summary
-    # ----------------------------------------------------------------------
+    # 5. Final Summary
+    # Note: We access stats_callback explicitly to get the data
     print("\n=========================================================")
     print(f"=== Training Summary ({len(stats_callback.episode_rewards)} Episodes Completed) ===")
     if len(stats_callback.episode_rewards) > 0:
@@ -196,6 +137,7 @@ def run_ppo_simulation():
         print(f"  Mean Real Duration:{np.mean(stats_callback.episode_real_durations):.4f}s")
     print("=========================================================")
 
+    # 6. Plotting Results
     episode_indices = list(range(1, len(stats_callback.episode_rewards) + 1))
     plot_results(
         episode_indices,

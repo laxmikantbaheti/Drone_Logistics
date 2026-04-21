@@ -9,7 +9,7 @@ import time
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import the environment wrapper
-from ddls_src.rl_interface.rl_scenario import LogisticRLScenario
+from ddls_src.rl_interface_old.rl_scenario import LogisticRLScenario
 
 
 def random_policy(mask):

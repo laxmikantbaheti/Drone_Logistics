@@ -6,8 +6,7 @@ from datetime import timedelta
 from ddls_src.actions.base import SimulationActions
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.core.logistics_system import LogisticsSystem
-from ddls_src.functions.plotting import plot_vehicle_gantt_chart, plot_vehicle_states, plot_vehicle_cargo_history, \
-    plot_invalid_delivery_gantt_chart
+from ddls_src.functions.plotting import SimulationPlotter
 from mlpro.bf.ml import Scenario
 from mlpro.bf.ops import Mode
 
@@ -160,10 +159,26 @@ class LogisticsScenario(Scenario):
         # Time and physics only advance once the cascade is broken
         self._system.advance_time()
 
+        # --- MODIFIED: Export Reports using the new EventLogger ---
         if self._system.get_success():
-            from ddls_src.functions.reports import export_simulation_reports
-            print("\nGenerating final simulation reports...")
-            export_simulation_reports(self._system.global_state, output_format='csv', base_filepath='scenario_report')
+            print(f"\nSimulation successful at cycle {self.get_cycle_id()}. Generating event reports...")
+
+            # The EventLogger lives inside the GlobalState
+            if hasattr(self._system.global_state, 'event_logger'):
+                # Call export_reports. You can customize the base_filepath here if you want dynamically named folders.
+                self._system.global_state.event_logger.export_reports(base_filepath='scenario_report')
+            else:
+                self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
+
+            # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
+            plotter = SimulationPlotter(base_filepath='scenario_report')
+
+            # Generate the Gantt charts
+            plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+
+            # Generate the state timeline plot
+            plotter.generate_plot('state_timeline', save_to_disk=False)
+        # -----------------------------------------------------------
 
         new_state = self._system.get_state()
         return self._system.get_success(), self._system.get_broken(), adapted, eof_data

@@ -253,17 +253,35 @@ class VRPDBenchmarkDataGenerator(BaseDataGenerator):
             "start_node_id": depot_id,
         } for i in range(n)]
 
+    # def _build_orders_from_demand(self, parsed, depot_id):
+    #     orders = []
+    #     oid = 1000
+    #     for tsplib_id in range(2, parsed["dimension"] + 1):
+    #         for _ in range(parsed["demands"].get(tsplib_id, 0)):
+    #             orders.append({
+    #                 "id": oid,
+    #                 "p_pickup_node_id": depot_id,
+    #                 "p_delivery_node_id": tsplib_id - 1,
+    #             })
+    #             oid += 1
+    #     return orders
+
     def _build_orders_from_demand(self, parsed, depot_id):
         orders = []
         oid = 1000
         for tsplib_id in range(2, parsed["dimension"] + 1):
-            for _ in range(parsed["demands"].get(tsplib_id, 0)):
+            demand = parsed["demands"].get(tsplib_id, 0)
+
+            # If the node has demand, create EXACTLY ONE order with that size
+            if demand > 0:
                 orders.append({
                     "id": oid,
                     "p_pickup_node_id": depot_id,
                     "p_delivery_node_id": tsplib_id - 1,
+                    "size": float(demand)  # <--- NEW: The demand is now the order size
                 })
                 oid += 1
+
         return orders
 
     def _build_distance_matrices(self, nodes):

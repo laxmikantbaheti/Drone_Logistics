@@ -49,6 +49,7 @@ class Order(LogisticEntity):
                  p_delivery_node_id,
                  p_id,
                  p_name: str = '',
+                 size:float = 1,
                  p_visualize: bool = False,
                  p_logging=False,
                  **p_kwargs):
@@ -68,6 +69,7 @@ class Order(LogisticEntity):
         self.customer_node_id: int = p_kwargs.get('customer_node_id')
         self.time_received: float = p_kwargs.get('time_received', 0.0)
         self.SLA_deadline: float = p_kwargs.get('SLA_deadline', 0.0)
+        self.size: float = p_kwargs.get('size', 1.0)
         self.priority: int = p_kwargs.get('priority', 1)
         self.pickup_node_id = p_pickup_node_id
         self.delivery_node_id = p_delivery_node_id
@@ -370,7 +372,8 @@ class Order(LogisticEntity):
     def add_global_state(self, global_state):
         self.global_state = global_state
         self.node_pair = global_state.node_pairs[(self.pickup_node_id, self.delivery_node_id)]
-        print("Check here")
+        if self.custom_log:
+            print("Check here")
 
 
 class PseudoOrder(Order):
@@ -394,10 +397,11 @@ class PseudoOrder(Order):
                        p_id=p_id,
                        p_name=p_name,
                        p_visualize=p_visualize,
+                       size = p_parent_order.size,
                        p_logging=p_logging,
                        **p_kwargs)
         if p_leg is None:
-            raise ParamError("Please provide the number of leg this pseudo order represents.")
+            raise ValueError("Please provide the number of leg this pseudo order represents.")
         self.p_leg = p_leg
         self.parent_order = p_parent_order
 

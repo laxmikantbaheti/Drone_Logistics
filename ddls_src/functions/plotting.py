@@ -1,512 +1,315 @@
-# Complete Python script for plotting vehicle timelines and states.
-
-from matplotlib.patches import Patch
-from typing import Dict, Any, List
-
-
-# --- Consolidated Mocks for a Runnable Example ---
-
-class MockVehicle:
-    """A mock Vehicle class to simulate your updated data structure."""
-    C_DATA_FRAME_VEH_STATES = "VEH_STATES"
-    C_DATA_FRAME_VEH_TIMELINE = "VEH_TIMELINE"
-
-    def __init__(self, vehicle_id: str, state_data: Dict = None, order_data: Dict = None):
-        self.id = vehicle_id
-        self.data_storage = {
-            self.C_DATA_FRAME_VEH_STATES: state_data or {},
-            self.C_DATA_FRAME_VEH_TIMELINE: order_data or {}
-        }
-
-
-class MockGlobalState:
-    """A mock GlobalState class with all necessary attributes."""
-
-    def __init__(self, trucks: Dict[str, MockVehicle], drones: Dict[str, MockVehicle], current_time: float):
-        self.trucks = trucks
-        self.drones = drones
-        self.current_time = current_time
-
-
-# --- Plotting Function 1: Vehicle Order Timelines (Unchanged) ---
-
-def plot_vehicle_gantt_chart(global_state: Any, show_order_labels: bool = True) -> None:
-    """
-    Generates a Gantt chart for ALL vehicles, showing stacked order timelines.
-    Includes unused vehicles.
-    """
-    truck_data = getattr(global_state, 'trucks', {})
-    drone_data = getattr(global_state, 'drones', {})
-    all_vehicle_ids = sorted(list(truck_data.keys()) + list(drone_data.keys()))
-
-    if not all_vehicle_ids:
-        print("No vehicles found.")
-        return
-
-    processed_vehicles = {}
-    for vehicle_id in all_vehicle_ids:
-        vehicle_obj = truck_data.get(vehicle_id) or drone_data.get(vehicle_id)
-        timeline_data = vehicle_obj.data_storage.get(vehicle_obj.C_DATA_FRAME_VEH_TIMELINE, {})
-
-        orders = []
-        for order_id, times in timeline_data.items():
-            if len(times) == 2 and times[1][0] > times[0][0]:
-                orders.append({'id': order_id, 'start': times[0][0], 'end': times[1][0]})
-
-        if not orders:
-            continue
-
-        orders.sort(key=lambda x: x['start'])
-        lanes = []
-        for order in orders:
-            placed = False
-            for lane in lanes:
-                if order['start'] >= lane[-1]['end']:
-                    lane.append(order)
-                    placed = True
-                    break
-            if not placed:
-                lanes.append([order])
-
-        vehicle_type = 'truck' if vehicle_id in truck_data else 'drone'
-        processed_vehicles[vehicle_id] = {'lanes': lanes, 'type': vehicle_type}
-
-    total_lanes = sum(len(v['lanes']) for v in processed_vehicles.values())
-    num_unused = len(all_vehicle_ids) - len(processed_vehicles)
-    fig_height = total_lanes + num_unused + (len(all_vehicle_ids) * 0.5)
-    fig, ax = plt.subplots(figsize=(16, max(6, fig_height * 0.6)))
-
-    color_map = {'truck': 'tab:blue', 'drone': 'tab:green'}
-    y_ticks, y_tick_labels, y_pos = [], [], 0
-
-    for vehicle_id in all_vehicle_ids:
-        if vehicle_id in processed_vehicles:
-            data = processed_vehicles[vehicle_id]
-            lanes, num_lanes = data['lanes'], len(data['lanes'])
-            y_ticks.append(y_pos + (num_lanes - 1) / 2.0)
-            y_tick_labels.append(vehicle_id)
-            for lane in lanes:
-                bar_ranges = [(o['start'], o['end'] - o['start']) for o in lane]
-                ax.broken_barh(bar_ranges, (y_pos - 0.2, 0.4), facecolors=color_map[data['type']], edgecolor='black', alpha = 0.85)
-                if show_order_labels:
-                    for order in lane:
-                        start, duration = order['start'], order['end'] - order['start']
-                        ax.text(start + duration / 2, y_pos, order['id'], ha='center', va='center', color='black',
-                                fontsize=9)
-                y_pos += 1
-        else:
-            y_ticks.append(y_pos)
-            y_tick_labels.append(f"{vehicle_id} (Unused)")
-            y_pos += 1
-
-        ax.axhline(y_pos - 0.5, color='gray', linestyle='--', alpha=0.5)
-        y_pos += 0.5
-
-    if y_ticks:
-        ax.set_yticks(y_ticks)
-        ax.set_yticklabels(y_tick_labels, fontsize=10)
-    ax.invert_yaxis()
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Vehicle ID")
-    ax.set_title("Complete Vehicle Order Timeline")
-    ax.legend(handles=[Patch(facecolor=c, label=l.capitalize()) for l, c in color_map.items()], loc='best')
-    plt.tight_layout()
-    plt.show()
-
-
-# --- Plotting Function 2: Vehicle State Timelines (MODIFIED COLORING) ---
-
-def plot_vehicle_states(global_state: Any) -> None:
-    """
-    Generates a Gantt chart of vehicle states from time-keyed data.
-    Handles instantaneous events as "milestones."
-    """
-    all_vehicles = {**getattr(global_state, 'trucks', {}), **getattr(global_state, 'drones', {})}
-    if not all_vehicles:
-        print("No vehicles found.")
-        return
-
-    processed_data = {}
-    unique_states = set()
-
-    # 1. Parse the time-keyed structure for each vehicle
-    for vehicle_id, vehicle_obj in all_vehicles.items():
-        state_data = vehicle_obj.data_storage.get(vehicle_obj.C_DATA_FRAME_VEH_STATES)
-        if not state_data:
-            continue
-
-        sorted_events = sorted(state_data.items())
-        intervals, milestones = [], []
-
-        # 2. Separate events into intervals and milestones
-        for i in range(len(sorted_events)):
-            current_time, current_event = sorted_events[i]
-            current_state = current_event[-1][0]
-            current_node = current_event[-1][1]
-
-            next_time = sorted_events[i + 1][0] if i + 1 < len(sorted_events) else global_state.current_time
-
-            if next_time > current_time:
-                intervals.append({'state': current_state, 'start': current_time, 'duration': next_time - current_time, 'node':current_node})
-                unique_states.add(current_state)
-            else:
-                milestones.append({'time': current_time, 'label': current_state, "node":current_node})
-
-        processed_data[vehicle_id] = {'intervals': intervals, 'milestones': milestones}
-
-    if not unique_states:
-        print("No state data with duration found to plot.")
-        return
-
-    # 3. Plotting
-    # --- MODIFICATION: Use a categorical colormap for more distinct colors ---
-    cmap = plt.get_cmap('tab10')
-    colors = cmap.colors
-    state_colors = {name: colors[i % len(colors)] for i, name in enumerate(sorted(list(unique_states)))}
-    # --- END OF MODIFICATION ---
-
-    fig, ax = plt.subplots(figsize=(16, len(all_vehicles) * 0.8 + 2))
-
-    vehicle_ids = sorted(all_vehicles.keys())
-    for i, vehicle_id in enumerate(vehicle_ids):
-        data = processed_data.get(vehicle_id)
-        if not data: continue
-
-        # Plot state bars
-        if data['intervals']:
-            bar_ranges = [(iv['start'], iv['duration']) for iv in data['intervals']]
-            bar_colors = [state_colors.get(iv['state'], 'gray') for iv in data['intervals']]
-            ax.broken_barh(bar_ranges, (i - 0.1, 0.2), facecolors=bar_colors)
-
-            # --- NEW: Add text labels for node IDs to bars ---
-            for iv in data['intervals']:
-                center_x = iv['start'] + iv['duration'] / 2
-                ax.text(center_x, i, iv['node'], ha='center', va='center', color='white', fontsize=8, fontweight='bold')
-
-        # Plot milestones as diamonds
-        if data['milestones']:
-            milestone_times = [m['time'] for m in data['milestones']]
-            y_vals = [i] * len(milestone_times)
-            ax.plot(milestone_times, y_vals, 'D', markersize=8, color='black', label='Milestone' if i == 0 else "")
-
-            # --- NEW: Add text labels for node IDs to milestones ---
-            for m in data['milestones']:
-                ax.text(m['time'], i - 0.05, m['node'], ha='center', va='bottom', color='black', fontsize=7)
-
-    ax.set_yticks(range(len(vehicle_ids)))
-    ax.set_yticklabels(vehicle_ids)
-    ax.invert_yaxis()
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Vehicle ID")
-    ax.set_title("Vehicle State Timeline (with Milestones)")
-    ax.grid(axis='x', linestyle=':', alpha=0.7)
-
-    legend_elements = [Patch(facecolor=c, label=s) for s, c in state_colors.items()]
-    if any(p.get('milestones') for p in processed_data.values()):
-        legend_elements.append(
-            plt.Line2D([0], [0], marker='D', color='w', label='Milestone', markerfacecolor='black', markersize=10))
-    ax.legend(handles=legend_elements, bbox_to_anchor=(1.02, 1), loc='upper left')
-
-    plt.tight_layout(rect=[0, 0, 0.9, 1])
-    plt.show()
-
-
-import math
-
-
-def plot_vehicle_cargo_history(global_state):
-    """
-    Plots cargo statistics for each vehicle in separate subplots within the same figure.
-    Includes a reference dashed line for the vehicle's maximum payload capacity.
-    Ensures the timeline starts at t=0 with zero cargo if no initial data exists.
-
-    Args:
-        global_state: The GlobalState object containing 'trucks', 'drones', and 'current_time'.
-    """
-    # 1. Gather all vehicles (Trucks and Drones)
-    all_vehicles = list(global_state.trucks.values()) + list(global_state.drones.values())
-
-    # 2. Filter for vehicles that actually have cargo data
-    active_vehicles = [
-        v for v in all_vehicles
-        if hasattr(v, 'cargo_stats') and v.cargo_stats
-    ]
-
-    num_vehicles = len(active_vehicles)
-
-    if num_vehicles == 0:
-        print("No cargo statistics available to plot.")
-        return
-
-    # 3. Setup the subplots (Vertical stack)
-    # Share x-axis to easily compare timelines across vehicles
-    fig, axes = plt.subplots(nrows=num_vehicles, ncols=1, figsize=(10, 3 * num_vehicles), sharex=True)
-
-    # Handle the case where there is only 1 vehicle (axes is not a list)
-    if num_vehicles == 1:
-        axes = [axes]
-
-    for i, vehicle in enumerate(active_vehicles):
-        ax = axes[i]
-
-        # --- Prepare Data ---
-        sorted_times = sorted(vehicle.cargo_stats.keys())
-        loads = [vehicle.cargo_stats[t] for t in sorted_times]
-
-        # [NEW LOGIC] Prepend zero if the timeline doesn't start at 0.0
-        # This handles the "no cargo in the beginning" duration.
-        if sorted_times and sorted_times[0] > 0.0:
-            sorted_times.insert(0, 0.0)
-            loads.insert(0, 0)
-
-        # Extend line to current simulation time (holds the last known value)
-        if sorted_times and sorted_times[-1] < global_state.current_time:
-            sorted_times.append(global_state.current_time)
-            loads.append(loads[-1])
-
-        # --- Plot Cargo Load (Step Chart) ---
-        label_str = f"{vehicle.C_NAME} {vehicle.get_id()}"
-        ax.step(sorted_times, loads, where='post', label='Current Load', linewidth=2)
-
-        # --- Plot Capacity Reference Line ---
-        capacity = getattr(vehicle, 'max_payload_capacity', None)
-        if capacity is not None:
-            ax.axhline(y=capacity, color='r', linestyle='--', linewidth=1.5, alpha=0.7,
-                       label=f'Max Capacity ({capacity})')
-
-        # --- Formatting ---
-        ax.set_ylabel("Cargo Units")
-        ax.set_title(label_str, loc='left', fontsize=10, fontweight='bold')
-        ax.grid(True, linestyle=':', alpha=0.6)
-        ax.legend(loc='upper right', fontsize='small')
-
-        # Only set the X-label for the bottom-most subplot
-        if i == num_vehicles - 1:
-            ax.set_xlabel("Simulation Time (s)")
-
-    plt.tight_layout()
-    plt.show()
-
-
+import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
-from typing import Any
+import matplotlib.patches as mpatches
+import ast
+import os
 
 
-def plot_invalid_delivery_gantt_chart(global_state: Any, show_order_labels: bool = True) -> None:
+class SimulationPlotter:
     """
-    Generates a Gantt chart for ALL vehicles to visualize delivery sequences.
-
-    Highlights invalid deliveries with a red hatched pattern (//).
-    A delivery is INVALID if Leg 2 starts before Leg 1 ends (Start_2 < End_1),
-    regardless of which vehicle carries which leg.
+    A unified plotting engine that reads CSVs generated by EventLogger.
+    Call generate_plot('plot_name') to render specific visualizations.
     """
-    truck_data = getattr(global_state, 'trucks', {})
-    drone_data = getattr(global_state, 'drones', {})
-    all_vehicle_ids = sorted(list(truck_data.keys()) + list(drone_data.keys()))
 
-    if not all_vehicle_ids:
-        print("No vehicles found.")
-        return
+    def __init__(self, base_filepath='scenario_report'):
+        self.base_filepath = base_filepath
 
-    # --- Step 1: Global Order Registry ---
-    # Collect start/end times for EVERY order from EVERY vehicle.
-    # This enables us to cross-reference Leg 1 on a Truck with Leg 2 on a Drone.
-    all_orders_map = {}
-
-    for vehicle_id in all_vehicle_ids:
-        vehicle_obj = truck_data.get(vehicle_id) or drone_data.get(vehicle_id)
-        timeline_data = vehicle_obj.data_storage.get(vehicle_obj.C_DATA_FRAME_VEH_TIMELINE, {})
-
-        for order_id, times in timeline_data.items():
-            if not times: continue
-
-            # Start time is always the first event
-            start_time = times[0][0]
-
-            # End time is the second event, OR current_time if the order is still in transit
-            if len(times) >= 2:
-                end_time = times[1][0]
-            else:
-                end_time = global_state.current_time
-
-            if end_time > start_time:
-                clean_id = str(order_id).split(" - ")[0]
-                all_orders_map[clean_id] = {'start': start_time, 'end': end_time}
-
-    # --- Step 2: Plotting Loop ---
-    processed_vehicles = {}
-
-    # Pre-process lanes for plotting
-    for vehicle_id in all_vehicle_ids:
-        vehicle_obj = truck_data.get(vehicle_id) or drone_data.get(vehicle_id)
-        timeline_data = vehicle_obj.data_storage.get(vehicle_obj.C_DATA_FRAME_VEH_TIMELINE, {})
-
-        orders = []
-        for order_id, times in timeline_data.items():
-            if not times: continue
-
-            start_time = times[0][0]
-            if len(times) >= 2:
-                end_time = times[1][0]
-            else:
-                end_time = global_state.current_time
-
-            if end_time > start_time:
-                orders.append({'id': str(order_id).strip(), 'start': start_time, 'end': end_time})
-
-        if not orders:
-            continue
-
-        orders.sort(key=lambda x: x['start'])
-        lanes = []
-        for order in orders:
-            placed = False
-            for lane in lanes:
-                if order['start'] >= lane[-1]['end']:
-                    lane.append(order)
-                    placed = True
-                    break
-            if not placed:
-                lanes.append([order])
-
-        vehicle_type = 'truck' if vehicle_id in truck_data else 'drone'
-        processed_vehicles[vehicle_id] = {'lanes': lanes, 'type': vehicle_type}
-
-    # Setup Figure
-    total_lanes = sum(len(v['lanes']) for v in processed_vehicles.values())
-    num_unused = len(all_vehicle_ids) - len(processed_vehicles)
-    fig_height = total_lanes + num_unused + (len(all_vehicle_ids) * 0.5)
-
-    fig, ax = plt.subplots(figsize=(16, max(6, fig_height * 0.6)))
-    color_map = {'truck': 'tab:blue', 'drone': 'tab:green'}
-    y_ticks, y_tick_labels, y_pos = [], [], 0
-
-    for vehicle_id in all_vehicle_ids:
-        if vehicle_id in processed_vehicles:
-            data = processed_vehicles[vehicle_id]
-            lanes, num_lanes = data['lanes'], len(data['lanes'])
-
-            y_ticks.append(y_pos + (num_lanes - 1) / 2.0)
-            y_tick_labels.append(vehicle_id)
-
-            for lane in lanes:
-                normal_ranges = []
-                invalid_ranges = []
-
-                for order in lane:
-                    is_invalid = False
-                    order_id = order['id']
-
-                    # --- VALIDATION LOGIC ---
-                    # We only check validity if we are "Leg 2" (_2)
-                    if "_2" in order_id:
-                        base_id = order_id.split("_")[0]
-                        sibling_id = f"{base_id}_1"
-
-                        # We are Leg 2. Start time is s2.
-                        s2 = order['start']
-
-                        # Look up Leg 1 in the GLOBAL map (could be on any vehicle)
-                        if sibling_id in all_orders_map:
-                            e1 = all_orders_map[sibling_id]['end']
-
-                            # INVALID CONDITION: Leg 2 starts before Leg 1 ends
-                            if s2 < e1:
-                                is_invalid = True
-
-                    if "_1" in order_id:
-                        base_id = order_id.split("_")[0]
-                        sibling_id = f"{base_id}_2"
-
-                        # We are Leg 2. Start time is s2.
-                        e1 = order['end']
-
-                        # Look up Leg 1 in the GLOBAL map (could be on any vehicle)
-                        if sibling_id in all_orders_map:
-                            s2 = all_orders_map[sibling_id]['start']
-
-                            # INVALID CONDITION: Leg 2 starts before Leg 1 ends
-                            if s2 < e1:
-                                is_invalid = True
-                    # ------------------------
-
-                    duration = order['end'] - order['start']
-                    if is_invalid:
-                        invalid_ranges.append((order['start'], duration))
-                    else:
-                        normal_ranges.append((order['start'], duration))
-
-                # Draw Valid Bars
-                if normal_ranges:
-                    ax.broken_barh(normal_ranges, (y_pos - 0.2, 0.4),
-                                   facecolors=color_map[data['type']],
-                                   edgecolor='black', alpha=0.85)
-
-                # Draw Invalid Bars (Red + Hatched)
-                if invalid_ranges:
-                    ax.broken_barh(invalid_ranges, (y_pos - 0.2, 0.4),
-                                   facecolors="white",
-                                   edgecolor='gray', hatch='//', linewidth=1.0, alpha=0.5)
-
-                if show_order_labels:
-                    for order in lane:
-                        start, duration = order['start'], order['end'] - order['start']
-                        ax.text(start + duration / 2, y_pos, order['id'],
-                                ha='center', va='center', color='black', fontsize=8, clip_on=True)
-                y_pos += 1
+        # Load Vehicles Data
+        v_path = f"{base_filepath}_vehicles.csv"
+        if os.path.exists(v_path):
+            self.df_vehicles = pd.read_csv(v_path)
+            # Safely parse the string representation of lists back into actual lists
+            self.df_vehicles['cargo_manifest'] = self.df_vehicles['cargo_manifest'].apply(ast.literal_eval)
         else:
-            y_ticks.append(y_pos)
-            y_tick_labels.append(f"{vehicle_id} (Unused)")
-            y_pos += 1
+            self.df_vehicles = None
+            print(f"Warning: {v_path} not found.")
 
-        ax.axhline(y_pos - 0.5, color='gray', linestyle='--', alpha=0.5)
-        y_pos += 0.5
+        # Load Orders Data
+        o_path = f"{base_filepath}_orders.csv"
+        if os.path.exists(o_path):
+            self.df_orders = pd.read_csv(o_path)
+        else:
+            self.df_orders = None
 
-    if y_ticks:
-        ax.set_yticks(y_ticks)
-        ax.set_yticklabels(y_tick_labels, fontsize=10)
+    def generate_plot(self, plot_type: str, save_to_disk: bool = False, output_dir: str = "."):
+        """
+        Router method to generate plots by name.
+        Available plot_types:
+        - 'cargo_gantt': Fleet-wide Gantt chart of order holding times (Optimized).
+        - 'state_timeline': Timeline of vehicle statuses (Idle, En Route, Halt) and node visits.
+        """
+        if plot_type == 'cargo_gantt':
+            self._plot_cargo_gantt(save_to_disk, output_dir)
+        elif plot_type == 'state_timeline':
+            self._plot_state_timeline(save_to_disk, output_dir)
+        else:
+            print(f"Error: Unknown plot type '{plot_type}'.")
 
-    ax.invert_yaxis()
-    ax.set_xlabel("Time (seconds)")
-    ax.set_ylabel("Vehicle ID")
-    ax.set_title("Vehicle Order Timeline (Red// = Invalid Sequence: Leg 2 starts before Leg 1 ends)")
+    def _plot_state_timeline(self, save_to_disk: bool, output_dir: str):
+        """
+        Generates a state timeline for each vehicle showing their status durations
+        and intelligently annotates the node ID only when it changes.
+        """
+        if self.df_vehicles is None or self.df_vehicles.empty:
+            print("No vehicle data available to plot state timeline.")
+            return
 
-    legend_elements = [Patch(facecolor=c, label=l.capitalize()) for l, c in color_map.items()]
-    legend_elements.append(Patch(facecolor='white', edgecolor='gray', hatch='//', label='Invalid Sequence'))
+        intervals = []
+        node_annotations = []
+        grouped = self.df_vehicles.groupby('vehicle_id')
 
-    ax.legend(handles=legend_elements, loc='upper right')
-    plt.tight_layout()
-    plt.show()
+        # 1. Process data into continuous state intervals and unique node visits
+        for vehicle_id, group_data in grouped:
+            group_data = group_data.sort_values(by='time')
 
+            prev_time = None
+            prev_status = None
+            last_annotated_node = None
 
-# --- Example Usage ---
+            for _, row in group_data.iterrows():
+                curr_time = row['time']
+                curr_status = str(row['status']).title()
+                curr_node = row['current_node']
 
-if __name__ == '__main__':
-    C_TRIP_STATE_IDLE = "Idle"
-    C_TRIP_STATE_EN_ROUTE = "En Route"
-    C_TRIP_STATE_LOADING = "Loading"
-    C_TRIP_STATE_UNLOADING = "Unloading"
+                # Record the duration of the previous state
+                if prev_time is not None and prev_status is not None:
+                    intervals.append({
+                        'Vehicle': f"Vehicle {vehicle_id}",
+                        'Start': prev_time,
+                        'End': curr_time,
+                        'Status': prev_status
+                    })
 
-    mock_trucks = {
-        "Truck-Alpha": MockVehicle("Truck-Alpha",
-                                   order_data={"Order-A": [10, 50]},
-                                   state_data={
-                                       0: [C_TRIP_STATE_IDLE, 'Depot'],
-                                       10: [C_TRIP_STATE_EN_ROUTE, 'n1'],
-                                       50: [C_TRIP_STATE_LOADING, 'p1'],  # This will become a Milestone
-                                       50.0: [C_TRIP_STATE_UNLOADING, 'p1'],  # This will be the state with duration
-                                       55: [C_TRIP_STATE_IDLE, 'd1']
-                                   }
-                                   ),
-    }
+                # Check if we moved to a new, valid node to place an annotation
+                is_valid_node = pd.notna(curr_node) and str(curr_node).lower() != 'none'
+                if is_valid_node and curr_node != last_annotated_node:
+                    node_annotations.append({
+                        'Vehicle': f"Vehicle {vehicle_id}",
+                        'Time': curr_time,
+                        'Node': curr_node
+                    })
+                    last_annotated_node = curr_node
 
-    mock_drones = {"Drone-X": MockVehicle("Drone-X")}
+                prev_time = curr_time
+                prev_status = curr_status
 
-    mock_state = MockGlobalState(trucks=mock_trucks, drones=mock_drones, current_time=60)
+        if not intervals:
+            print("Not enough event data to plot state timelines.")
+            return
 
-    print("--- Generating Plot 1: Vehicle Order Timelines ---")
-    plot_vehicle_gantt_chart(mock_state)
+        df_intervals = pd.DataFrame(intervals)
 
-    print("\n--- Generating Plot 2: Vehicle State Timelines ---")
-    plot_vehicle_states(mock_state)
+        # 2. Setup plotting colors
+        color_map = {
+            'Idle': '#B0BEC5',  # Blue-Gray
+            'En Route': '#81C784',  # Soft Green
+            'Halted': '#E57373',  # Soft Red
+            'Loading': '#FFD54F',  # Yellow
+            'Unloading': '#FFB74D'  # Orange
+        }
+        default_color = '#9E9E9E'
+
+        # 3. Render the Plot
+        fig, ax = plt.subplots(figsize=(14, 8))
+
+        # Sort vehicles descending for Y-axis
+        unique_vehicles = sorted(df_intervals['Vehicle'].unique(), reverse=True)
+
+        for i, vehicle in enumerate(unique_vehicles):
+            v_data = df_intervals[df_intervals['Vehicle'] == vehicle]
+
+            for _, row in v_data.iterrows():
+                duration = row['End'] - row['Start']
+                # Skip 0-duration artifacts
+                if duration <= 0:
+                    continue
+
+                color = color_map.get(row['Status'], default_color)
+
+                # Draw state bar
+                ax.barh(y=vehicle,
+                        width=duration,
+                        left=row['Start'],
+                        height=0.5,
+                        color=color,
+                        edgecolor='black',
+                        linewidth=0.5,
+                        alpha=0.9)
+
+        # 4. Add Node Annotations on top of the bars
+        for ann in node_annotations:
+            ax.text(x=ann['Time'],
+                    y=ann['Vehicle'],
+                    s=f" N:{int(ann['Node'])}",
+                    va='bottom', ha='left',
+                    fontsize=9, color='black', fontweight='bold',
+                    bbox=dict(facecolor='white', alpha=0.5, edgecolor='none', pad=0.1))
+
+        # 5. Formatting and Legend
+        ax.set_xlabel("Simulation Time (s)", fontsize=12)
+        ax.set_ylabel("Fleet Vehicles", fontsize=12)
+        ax.set_title("Fleet State Timeline & Node Progression", fontsize=14)
+        ax.grid(axis='x', linestyle='--', alpha=0.5)
+
+        # Create custom legend based on the colors used
+        legend_patches = [mpatches.Patch(color=color, label=status) for status, color in color_map.items()]
+        ax.legend(handles=legend_patches, loc='upper right', bbox_to_anchor=(1.15, 1), title="Vehicle States")
+
+        plt.tight_layout()
+
+        # 6. Save or Show
+        if save_to_disk:
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            filename = os.path.join(output_dir, "gantt_fleet_state_timeline.png")
+            plt.savefig(filename, bbox_inches="tight")
+            print(f"Saved: {filename}")
+        else:
+            plt.show()
+
+    def _plot_cargo_gantt(self, save_to_disk: bool, output_dir: str):
+        """
+        Generates a single Gantt chart for the entire fleet.
+        Uses greedy lane assignment to ensure overlapping orders are stacked
+        neatly without overlapping visually.
+        """
+        if self.df_vehicles is None or self.df_vehicles.empty:
+            print("No vehicle data available to plot cargo Gantt.")
+            return
+
+        intervals = []
+        grouped = self.df_vehicles.groupby('vehicle_id')
+
+        # Collect timeline data across all vehicles
+        for vehicle_id, group_data in grouped:
+            group_data = group_data.sort_values(by='time')
+            active_orders = {}  # Tracks {order_id: pickup_time}
+
+            for _, row in group_data.iterrows():
+                current_time = row['time']
+                current_manifest = set(row['cargo_manifest'])
+
+                # 1. Detect newly loaded orders
+                for o_id in current_manifest:
+                    if o_id not in active_orders:
+                        active_orders[o_id] = current_time
+
+                # 2. Detect unloaded orders
+                removed_orders = []
+                for o_id, start_time in active_orders.items():
+                    if o_id not in current_manifest:
+                        intervals.append({
+                            'Vehicle': f"Vehicle {vehicle_id}",
+                            'Order': o_id,
+                            'Start': start_time,
+                            'End': current_time
+                        })
+                        removed_orders.append(o_id)
+
+                for o_id in removed_orders:
+                    del active_orders[o_id]
+
+            # 3. Handle orders still in the vehicle at the end of the simulation
+            last_known_time = group_data['time'].max()
+            for o_id, start_time in active_orders.items():
+                intervals.append({
+                    'Vehicle': f"Vehicle {vehicle_id}",
+                    'Order': o_id,
+                    'Start': start_time,
+                    'End': last_known_time
+                })
+
+        if not intervals:
+            print("No vehicles carried any cargo. Skipping plot.")
+            return
+
+        df_intervals = pd.DataFrame(intervals)
+
+        # --- OPTIMIZATION: Greedy Lane Assignment ---
+        # Sort by Vehicle, then by Start Time to assign non-overlapping lanes
+        df_intervals = df_intervals.sort_values(by=['Vehicle', 'Start'])
+        optimized_intervals = []
+
+        for vehicle, group in df_intervals.groupby('Vehicle'):
+            lanes_end_times = []  # Tracks when each lane becomes free
+
+            for _, row in group.iterrows():
+                assigned_lane = -1
+
+                # Find the first available lane where the order can fit
+                for i, lane_end in enumerate(lanes_end_times):
+                    if lane_end <= row['Start']:
+                        assigned_lane = i
+                        lanes_end_times[i] = row['End']
+                        break
+
+                # If no lane is free, create a new one
+                if assigned_lane == -1:
+                    assigned_lane = len(lanes_end_times)
+                    lanes_end_times.append(row['End'])
+
+                row_dict = row.to_dict()
+                row_dict['Lane'] = assigned_lane
+                optimized_intervals.append(row_dict)
+
+        df_opt = pd.DataFrame(optimized_intervals)
+
+        # --- RENDER THE MASTER PLOT ---
+        fig, ax = plt.subplots(figsize=(14, 8))
+
+        unique_vehicles = df_opt['Vehicle'].unique()
+
+        yticks = []
+        yticklabels = []
+        current_y_base = 0  # Starting Y coordinate
+
+        for v in unique_vehicles:
+            v_data = df_opt[df_opt['Vehicle'] == v]
+            max_lane = v_data['Lane'].max()
+
+            # Draw all intervals for this vehicle
+            for _, row in v_data.iterrows():
+                y_pos = current_y_base + row['Lane']
+                duration = row['End'] - row['Start']
+
+                ax.barh(y=y_pos,
+                        width=duration,
+                        left=row['Start'],
+                        height=0.8,
+                        color='skyblue',
+                        edgecolor='black',
+                        alpha=0.8)
+
+                # Annotate the bar with the Order ID
+                mid_point = row['Start'] + (duration / 2)
+                ax.text(mid_point, y_pos, str(row['Order']),
+                        ha='center', va='center', fontsize=8, color='black',
+                        bbox=dict(facecolor='white', alpha=0.6, edgecolor='none', pad=0.3))
+
+            # Calculate the center of this vehicle's block for the Y-axis label
+            center_y = current_y_base + (max_lane / 2.0)
+            yticks.append(center_y)
+            yticklabels.append(v)
+
+            # Draw a subtle separator line between vehicles
+            ax.axhline(y=current_y_base - 0.5, color='gray', linestyle=':', alpha=0.4)
+
+            # Move the base Y up for the next vehicle, adding a gap of 2 units
+            current_y_base += max_lane + 2.0
+
+        ax.set_yticks(yticks)
+        ax.set_yticklabels(yticklabels)
+        ax.set_xlabel("Simulation Time (s)", fontsize=12)
+        ax.set_title("Fleet Cargo Manifest Timeline (Optimized Stack)", fontsize=14)
+        ax.grid(axis='x', linestyle='--', alpha=0.7)
+
+        plt.tight_layout()
+
+        if save_to_disk:
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            filename = os.path.join(output_dir, "gantt_fleet_cargo_optimized.png")
+            plt.savefig(filename)
+            print(f"Saved: {filename}")
+        else:
+            plt.show()

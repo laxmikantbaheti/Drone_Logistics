@@ -29,7 +29,7 @@ class Constraint(ABC, EventManager):
     C_NAME = None
     C_EVENT_CONSTRAINT_UPDATE = "ConstraintUpdate"
 
-    def __init__(self, p_reverse_action_map, p_action_index, custom_log = False):
+    def __init__(self, p_reverse_action_map, p_action_index, custom_log=False):
         EventManager.__init__(self, p_logging=False)
         self.reverse_action_map = p_reverse_action_map
 
@@ -95,7 +95,8 @@ class Constraint(ABC, EventManager):
         # 4. Update Memory
         self._entity_invalidation_map[entity_id] = current_block_set
 
-        self.evaluation_history.append(f"{p_entity.C_NAME} - {p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}")
+        self.evaluation_history.append(
+            f"{p_entity.C_NAME} - {p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}")
 
         return to_block, to_unblock
 
@@ -155,6 +156,7 @@ class VehicleAvailableConstraint(Constraint):
         for action_type in self.C_ACTIONS_AFFECTED:
             if action_type in p_entity.action_operability:
                 p_entity.action_operability[action_type] = is_operable
+
 
 #
 # class VehicleAtDeliveryNodeConstraint(Constraint):
@@ -343,6 +345,7 @@ class OrderRequestAssignabilityConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
+
     #
     # def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
     #     if not isinstance(p_entity, Order):
@@ -356,7 +359,7 @@ class OrderRequestAssignabilityConstraint(Constraint):
     #     else:
     #         return list(relevant_actions), []
 
-    # 
+    #
     # def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
     #     if not isinstance(p_entity, NodePair):
     #         raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entity.")
@@ -368,15 +371,14 @@ class OrderRequestAssignabilityConstraint(Constraint):
     #         associated_actions.update(np_actions)
     #     actions_to_mask = self.associated_action_index.difference(associated_actions)
     #     actions_to_unmask = self.associated_action_index.intersection(associated_actions)
-    # 
+    #
     #     return actions_to_mask, actions_to_unmask
-    
 
     def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         if not isinstance(p_entity, NodePair):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entity.")
         if p_entity.global_state is None:
-            return [],[]
+            return [], []
         associated_actions = set()
         relevant_actions = p_entity.associated_action_indexes.intersection(self.associated_action_index)
         if p_entity.get_id() not in p_entity.global_state.get_order_requests():
@@ -426,23 +428,23 @@ class OrderRequestAssignabilityConstraint(Constraint):
 #     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
 #                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
-    # def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
-    #     if not isinstance(p_entity, Vehicle):
-    #         raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
-    #
-    #     relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
-    #     state = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0])
-    #     is_en_route = (state == p_entity.C_TRIP_STATE_EN_ROUTE)
-    #     is_available = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_AVAILABLE[0])
-    #
-    #     if (not is_en_route) and is_available:
-    #         return [], list(relevant_actions)
-    #     else:
-    #         return list(relevant_actions), []
-    #
-    # # --- [LEGACY METHODS] ---
-    # def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
-    #     return [], []
+# def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+#     if not isinstance(p_entity, Vehicle):
+#         raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
+#
+#     relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+#     state = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0])
+#     is_en_route = (state == p_entity.C_TRIP_STATE_EN_ROUTE)
+#     is_available = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_AVAILABLE[0])
+#
+#     if (not is_en_route) and is_available:
+#         return [], list(relevant_actions)
+#     else:
+#         return list(relevant_actions), []
+#
+# # --- [LEGACY METHODS] ---
+# def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+#     return [], []
 
 class VehicleAssignabilityConstraint(Constraint):
     C_NAME = "Vehicle Assignability Constraint"
@@ -532,43 +534,21 @@ class VehicleCapacityConstraint(Constraint):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+        capacity = p_entity.get_cargo_capacity()
 
-        # 1. Fetch the dynamic remaining size of the vehicle
-        remaining_capacity = p_entity.get_remaining_capacity()
+        # --- THE FIX: Use a set to prevent double-counting ---
+        # This grabs everything on the clipboard and everything physically in the back of the truck
+        # and ensures each unique order is only counted exactly once.
+        active_orders = set(p_entity.get_pickup_orders() +
+                            p_entity.get_delivery_orders() +
+                            p_entity.get_current_cargo())
 
-        global_state = getattr(p_entity, 'global_state', None)
-        if global_state is None:
+        committed_load = len(active_orders)
+
+        if committed_load >= capacity:
+            return list(relevant_actions), []
+        else:
             return [], list(relevant_actions)
-
-        # 2. Fetch the active order requests
-        order_requests = global_state.get_order_requests()
-
-        actions_to_block = set()
-        actions_to_unblock = set()
-
-        # 3. Evaluate every possible assign action for this vehicle
-        for action_idx in relevant_actions:
-            action_tuple = self.reverse_action_map.get(action_idx)
-            if not action_tuple:
-                continue
-
-            # Action Tuple Format: (ActionType, NodePair_ID, Vehicle_ID)
-            node_pair_id = action_tuple[1]
-
-            if node_pair_id not in order_requests:
-                # If there's no active request here, unblock capacity (other constraints handle missing requests)
-                actions_to_unblock.add(action_idx)
-                continue
-
-            target_order = order_requests[node_pair_id][0]
-
-            # 4. Check if the specific order fits in the vehicle
-            if target_order.size > remaining_capacity:
-                actions_to_block.add(action_idx)
-            else:
-                actions_to_unblock.add(action_idx)
-
-        return list(actions_to_block), list(actions_to_unblock)
 
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
@@ -608,69 +588,6 @@ class VehicleCapacityConstraint(Constraint):
         for action_type in self.C_ACTIONS_AFFECTED:
             if action_type in p_entity.action_operability:
                 p_entity.action_operability[action_type] = has_capacity
-
-
-class OrderSizeConstraint(Constraint):
-    C_NAME = "OrderSizeConstraint"
-    C_ACTIVE = True
-    C_ASSOCIATED_ENTITIES = ["Node Pair"]
-    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
-                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
-
-    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
-        if not isinstance(p_entity, NodePair):
-            raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
-
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
-
-        global_state = getattr(p_entity, 'global_state', None)
-        if global_state is None:
-            return [], list(relevant_actions)
-
-        node_pair_id = p_entity.get_id()
-        order_requests = global_state.get_order_requests()
-
-        # If there's no active request here, unblock the actions (other constraints will handle missing requests)
-        if node_pair_id not in order_requests:
-            return [], list(relevant_actions)
-
-        target_order = order_requests[node_pair_id][0]
-        order_size = target_order.size
-
-        actions_to_block = set()
-        actions_to_unblock = set()
-
-        for action_idx in relevant_actions:
-            action_tuple = self.reverse_action_map.get(action_idx)
-            if not action_tuple:
-                continue
-
-            vehicle_id = action_tuple[2]
-            action_type = action_tuple[0]
-
-            # Safely fetch the target vehicle
-            vehicle = None
-            if action_type == SimulationActions.ASSIGN_ORDER_TO_TRUCK:
-                vehicle = global_state.get_entity("truck", vehicle_id)
-            elif action_type == SimulationActions.ASSIGN_ORDER_TO_DRONE:
-                vehicle = global_state.get_entity("drone", vehicle_id)
-
-            if vehicle:
-                if order_size > vehicle.get_remaining_capacity():
-                    actions_to_block.add(action_idx)
-                else:
-                    actions_to_unblock.add(action_idx)
-            else:
-                actions_to_block.add(action_idx)
-
-        return list(actions_to_block), list(actions_to_unblock)
-
-    # --- [LEGACY METHODS] ---
-    def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
-        return [], []
-
-    def update_operability(self, p_entity, **p_kwargs):
-        pass
 
 
 class TripWithinRangeConstraint(Constraint):
@@ -881,7 +798,9 @@ class ConsolidationConstraint(Constraint):
 
         # If it is IDLE, unlocked, and has tasks waiting, allow consolidation!
 
-        if (len(p_entity.staged_pickup_orders) or len(p_entity.staged_delivery_orders) or len(p_entity.staged_pickup_leg2_orders) or len(p_entity.staged_delivery_leg2_orders)) and not p_entity.consolidation_confirmed:
+        if (len(p_entity.staged_pickup_orders) or len(p_entity.staged_delivery_orders) or len(
+                p_entity.staged_pickup_leg2_orders) or len(
+                p_entity.staged_delivery_leg2_orders)) and not p_entity.consolidation_confirmed:
             return [], list(consolidation_action_ids)
 
         return list(consolidation_action_ids), []
@@ -972,7 +891,6 @@ class MicroHubAssignabilityConstraint(Constraint):
     #
     #     return list(actions_to_block), []
 
-
     def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs):
         if not isinstance(p_entity, NodePair):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
@@ -980,19 +898,18 @@ class MicroHubAssignabilityConstraint(Constraint):
         relevant_actions = p_entity.associated_action_indexes.intersection(self.associated_action_index)
         order_requests = p_entity.global_state.get_order_requests()
         if p_entity.get_id() not in order_requests.keys():
-            return [],list(relevant_actions)
+            return [], list(relevant_actions)
         current_order = order_requests[p_entity.get_id()][0]
         if not isinstance(current_order, PseudoOrder):
-            return [],list(relevant_actions)
-        if current_order.get_state_value_by_dim_name(current_order.C_DIM_DELIVERY_STATUS[0]) not in [current_order.C_STATUS_PLACED]:
-            return [],list(relevant_actions)
+            return [], list(relevant_actions)
+        if current_order.get_state_value_by_dim_name(current_order.C_DIM_DELIVERY_STATUS[0]) not in [
+            current_order.C_STATUS_PLACED]:
+            return [], list(relevant_actions)
         mh_history = current_order.mh_assignment_history
         actions_to_block = set()
         for mh in mh_history:
             actions_to_block.update(mh.associated_action_indexes.intersection(self.associated_action_index))
-        return list(actions_to_block),list(relevant_actions.difference(actions_to_block))
-
-
+        return list(actions_to_block), list(relevant_actions.difference(actions_to_block))
 
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
@@ -1037,6 +954,7 @@ class MicroHubAssignabilityConstraint(Constraint):
         for action_type in self.C_ACTIONS_AFFECTED:
             if action_type in p_entity.action_operability:
                 p_entity.action_operability[action_type] = is_operable
+
 
 #
 # class CoordinatedDeliveryAssignmentConstraint(Constraint):
@@ -1158,6 +1076,7 @@ class CoordinatedDeliveryAssignmentConstraint(Constraint):
         # If we passed the check, Leg 1 is assigned/moving. Unblock Leg 2!
         return [], list(relevant_actions)
 
+
 class OrderLoadConstraint(Constraint):
     C_NAME = "OrderLoadConstraint"
     C_ASSOCIATED_ENTITIES = ["Order"]
@@ -1176,8 +1095,6 @@ class OrderLoadConstraint(Constraint):
         actions_to_unblock = relevant_actions.intersection(veh_actions)
         actions_to_mask = relevant_actions.difference(veh_actions)
         return actions_to_mask, actions_to_unblock
-
-
 
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
@@ -1322,6 +1239,7 @@ class VehicleLoadConstraint(Constraint):
 
     # NO LEGACY METHODS (New Constraint)
 
+
 # class VehicleLoadConstraint(Constraint):
 #     C_NAME = "VehicleLoadConstraint"
 #     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
@@ -1354,7 +1272,7 @@ class VehicleLoadConstraint(Constraint):
 #         to_mask = relevant_actions.difference(valid_action_ids)
 #         return list(to_mask), list(valid_action_ids)
 
-    # NO LEGACY METHODS
+# NO LEGACY METHODS
 
 
 class OrderUnloadConstraint(Constraint):
@@ -1372,7 +1290,7 @@ class OrderUnloadConstraint(Constraint):
         if carrying_vehicle is None:
             return relevant_actions, []
         current_location = carrying_vehicle.get_current_node()
-        if not current_location == p_entity.get_delivery_node_id() :
+        if not current_location == p_entity.get_delivery_node_id():
             return relevant_actions, []
         if p_entity not in carrying_vehicle.get_current_cargo():
             return relevant_actions, []
@@ -1380,7 +1298,6 @@ class OrderUnloadConstraint(Constraint):
         actions_to_unblock = relevant_actions.intersection(veh_actions)
         actions_to_block = relevant_actions.difference(actions_to_unblock)
         return actions_to_block, actions_to_unblock
-
 
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
@@ -1502,6 +1419,7 @@ class VehicleUnloadConstraint(Constraint):
 
     # NO LEGACY METHODS (New Constraint)
 
+
 # class VehicleUnloadConstraint(Constraint):
 #     C_NAME = "VehicleUnloadConstraint"
 #     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
@@ -1534,7 +1452,7 @@ class VehicleUnloadConstraint(Constraint):
 #         to_mask = relevant_actions.difference(valid_action_ids)
 #         return list(to_mask), list(valid_action_ids)
 
-    # NO LEGACY METHODS
+# NO LEGACY METHODS
 
 class OrderAtDeliveryNode(Constraint):
     C_NAME = "OrderAtDeliveryNode"
@@ -1543,7 +1461,8 @@ class OrderAtDeliveryNode(Constraint):
     C_ACTIVE = False
 
     def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
-        return [],[]
+        return [], []
+
 
 #
 # class DeadlockPreventionConstraint(Constraint):
@@ -1790,6 +1709,7 @@ class DeadlockPreventionConstraint(Constraint):
         actions_to_unblock = relevant_actions.difference(actions_to_block)
         return list(actions_to_block), list(actions_to_unblock)
 
+
 # -------------------------------------------------------------------------------------------------
 # -- Part 3: Managers
 # -------------------------------------------------------------------------------------------------
@@ -1802,9 +1722,8 @@ class ConstraintManager(EventManager):
     C_NAME = "Constraint Manager"
     C_EVENT_MASK_UPDATED = "New Masks Necessary"
 
-    def __init__(self, action_index: ActionIndex, reverse_action_map, custom_log = False):
+    def __init__(self, action_index: ActionIndex, reverse_action_map, custom_log=False):
         EventManager.__init__(self, p_logging=False)
-        self.custom_log = custom_log
         self.masks = []
         self.action_map = None
         self._update_counter = 0
@@ -1813,11 +1732,11 @@ class ConstraintManager(EventManager):
         self.reverse_action_map = reverse_action_map
         self.action_index = action_index
         self.setup_constraint_entity_map()
+        self.custom_log = custom_log
         self.constraint_deck = {key: set() for key in self.reverse_action_map}
         self.masks = [0 for i in range(len(self.reverse_action_map))]
         if self.custom_log:
             print("Constraints Setup")
-
 
     def setup_constraint_entity_map(self):
         self.entity_constraints = {}
@@ -1831,8 +1750,8 @@ class ConstraintManager(EventManager):
                         self.entity_constraints[entity_name].append(constr)
                     else:
                         self.entity_constraints[entity_name] = [constr]
-        if self.custom_log:
-            print("Constraint dict updated")
+
+        print("Constraint dict updated")
 
     def get_constraints_by_entity(self, p_entity):
         if p_entity.C_NAME in self.entity_constraints:
@@ -1842,7 +1761,8 @@ class ConstraintManager(EventManager):
     def handle_entity_state_change(self, p_event_id, p_event_object):
         # DEBUG 1: Did we even get called?
         if self.custom_log:
-            print(f"[ConstraintManager] Event received: {p_event_id} from {p_event_object.get_raising_object().get_id()}")
+            print(
+                f"[ConstraintManager] Event received: {p_event_id} from {p_event_object.get_raising_object().get_id()}")
 
         self._update_counter += 1
         entity = p_event_object.get_raising_object()
@@ -1857,7 +1777,8 @@ class ConstraintManager(EventManager):
             print(f"[ConstraintManager] Found {len(constraints_to_check)} constraints for entity {entity.C_NAME}")
 
         for constraint in constraints_to_check:
-            to_block, to_unblock = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
+            to_block, to_unblock = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index,
+                                                              deck=self.constraint_deck)
 
             # DEBUG 3: specific constraint output
             if to_block or to_unblock:
@@ -1874,10 +1795,10 @@ class ConstraintManager(EventManager):
             }
             if self.custom_log:
                 print(f"[ConstraintManager] Raising update event! (+{len(total_to_block)} / -{len(total_to_unblock)})")
-            self._raise_event(p_event_id = ConstraintManager.C_EVENT_MASK_UPDATED,
-                              p_event_object = Event(p_raising_object=self,
-                                                     to_block = total_to_block,
-                                                     to_unblock = total_to_unblock))
+            self._raise_event(p_event_id=ConstraintManager.C_EVENT_MASK_UPDATED,
+                              p_event_object=Event(p_raising_object=self,
+                                                   to_block=total_to_block,
+                                                   to_unblock=total_to_unblock))
         else:
             if self.custom_log:
                 print("[ConstraintManager] No net change in masks. Event skipped.")
@@ -1901,7 +1822,8 @@ class ConstraintManager(EventManager):
             for entity in entity_dict.values():
                 constraints_to_check = self.get_constraints_by_entity(entity)
                 for constraint in constraints_to_check:
-                    to_block, _ = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
+                    to_block, _ = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index,
+                                                             deck=self.constraint_deck)
                     total_to_block.extend(to_block)
 
         if total_to_block:
@@ -1916,7 +1838,8 @@ class ConstraintManager(EventManager):
     def update_action_index(self, action_map, action_map_old, reverse_action_map_old):
         for constraint in self.constraints:
             as_action_index_old = list(constraint.associated_action_index)
-            constraint.associated_action_index = self.action_index.get_actions_of_type(constraint.C_ACTIONS_AFFECTED).copy()
+            constraint.associated_action_index = self.action_index.get_actions_of_type(
+                constraint.C_ACTIONS_AFFECTED).copy()
             # for i in as_action_index_old:
             #     constraint.associated_action_index.add(action_map[reverse_action_map_old[i]])
             # print("action_indexes_updated")
@@ -1957,12 +1880,13 @@ class ConstraintManager(EventManager):
 
         return self.masks
 
+
 class StateActionMapper:
     """
     Maps the system state to a valid action mask using reference counting.
     """
 
-    def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int], reverse_action_map, custom_log = False):
+    def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int], reverse_action_map, custom_log=False):
         self.old_counters = None
         self.global_state = global_state
         self.action_map = action_map
@@ -2004,9 +1928,9 @@ class StateActionMapper:
                         print(f"[StateActionMapper] Warning: Counter negative for index {idx}. Resetting to 0.")
                     self.mask_counters[idx] = 0
                     self.masks[idx] = True
-        if self.custom_log:
-            print(f"Masks updated: Masked --> {masked} , Unmaked --> {unmasked}")
-            print(f"Changes requested: to block --> {len(list(indices_to_block))}, to unblock --> {len(list(indices_to_unblock))}")
+        print(f"Masks updated: Masked --> {masked} , Unmaked --> {unmasked}")
+        print(
+            f"Changes requested: to block --> {len(list(indices_to_block))}, to unblock --> {len(list(indices_to_unblock))}")
         return 0
 
     def handle_new_masks_event(self, p_event_id, p_event_object):
@@ -2035,20 +1959,21 @@ class StateActionMapper:
         # TODO: migrate the handling of masks to Numpy
         self.old_counters = self.mask_counters.copy()
         self.mask_counters = [0] * len(action_map)
-        for a,idx in old_action_map.items():
+        for a, idx in old_action_map.items():
             self.mask_counters[action_map[a]] = self.old_counters[old_action_map[a]]
         self.masks = [True] * len(action_map)
         self.action_map = action_map
         self.update_masks()
 
     def update_masks(self):
-        for i,counter in enumerate(self.mask_counters):
+        for i, counter in enumerate(self.mask_counters):
             if counter:
                 self.masks[i] = False
             else:
                 self.masks[i] = True
         if self.custom_log:
             print("Masks updated after micro-hub assignement")
+
 
 if __name__ == '__main__':
     # Debugging: Print discovered constraints

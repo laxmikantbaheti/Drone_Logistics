@@ -1,9 +1,9 @@
 import itertools
 from ddls_src.entities.order import PseudoOrder
 # Import the DataManager from the functions directory
-from ddls_src.functions.data_manager import DataManager
+from ddls_src.functions.data_manager_obsolete import DataManager
 from typing import Dict, Any, List, Tuple
-
+from ddls_src.functions.event_logger import EventLogger
 
 # Forward declarations for entities to avoid circular imports.
 class Node: pass
@@ -36,7 +36,8 @@ class GlobalState:
     All managers and entities will interact with the simulation state through this class.
     """
 
-    def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode):
+    def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode, custom_log = False):
+        self.custom_log = custom_log
         self.entity_dicts = {}
         self.nodes: Dict[int, Node] = initial_entities.get('nodes', {})
         self.entity_dicts["Node"] = self.nodes
@@ -62,8 +63,10 @@ class GlobalState:
 
         # Initialize the centralized DataManager
         self.data_manager = DataManager()
+        self.event_logger = EventLogger()
 
-        print(f"GlobalState initialized with provided entities. Movement mode set to: '{self.movement_mode}'.")
+        if self.custom_log:
+            print(f"GlobalState initialized with provided entities. Movement mode set to: '{self.movement_mode}'.")
 
     def setup_node_pairs(self):
         node_ids = list(self.nodes.keys())
@@ -325,6 +328,7 @@ class GlobalState:
 
         # Clear logs at the start of a new run
         self.data_manager.reset()
+        self.event_logger.reset()
 
     # def add_global_state(self, entities):
     #     for entity in entities:

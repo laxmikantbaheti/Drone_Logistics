@@ -153,7 +153,7 @@ class Vehicle(LogisticEntity, ABC):
                 'time': current_time,
                 'vehicle_id': self.get_id(),
                 'node_id': self.get_current_node(),
-                'status': status,'num_pickup_tasks': len(pickup_list),
+                'status': status, 'num_pickup_tasks': len(pickup_list),
                 'pickup_orders': str(pickup_list),
                 'num_delivery_tasks': len(delivery_list),
                 'delivery_orders': str(delivery_list),
@@ -615,9 +615,8 @@ class Vehicle(LogisticEntity, ABC):
 
     def add_cargo(self, order: 'Order'):
         """Adds a package to the manifest, updates state, and crosses off the sequence clipboard."""
-        if self.get_current_cargo_size() + order.size > self.max_payload_capacity:
-            raise ValueError(f"Vehicle {self.get_id()} physically exceeded payload capacity! "
-                             f"Current: {self.get_current_cargo_size()}, Adding: {order.size}, Max: {self.max_payload_capacity}")
+        if len(self.cargo_manifest) >= self.max_payload_capacity:
+            raise ValueError(f"Vehicle {self.get_id()} physically exceeded payload capacity!")
 
         if order not in self.cargo_manifest:
             self.cargo_manifest.append(order)
@@ -813,7 +812,8 @@ class Vehicle(LogisticEntity, ABC):
                     else:
                         self.staged_delivery_leg2_orders[delivery_node_id] = [order]
                     if self.custom_log:
-                             print(f"Staged Leg 2 Order at Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
+                        print(
+                            f"Staged Leg 2 Order at Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
                 else:
                     # It is a Normal Order OR a Leg 1 PseudoOrder
                     if pickup_node_id in self.staged_pickup_orders:
@@ -825,7 +825,8 @@ class Vehicle(LogisticEntity, ABC):
                     else:
                         self.staged_delivery_orders[delivery_node_id] = [order]
                     if self.custom_log:
-                             print(f"Staged Normal/Leg 1 Order at Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
+                        print(
+                            f"Staged Normal/Leg 1 Order at Pickup {order.get_pickup_node_id()} -> Delivery {order.get_delivery_node_id()}")
 
             self.raise_state_change_event()
             return True
@@ -1041,24 +1042,23 @@ class Vehicle(LogisticEntity, ABC):
     def get_cargo_capacity(self):
         return self.max_payload_capacity
 
-    def get_current_cargo_size(self):
-        return sum(order.size for order in self.cargo_manifest)
-
     def get_committed_cargo_size(self) -> int:
         """
         Calculates the total cargo currently in the vehicle PLUS the cargo
         it is promised to pick up (but hasn't yet).
         Note: Assumes 1 order = 1 unit of capacity.
         """
-        current_size = self.get_current_cargo_size()
-        pending_size = sum(order.size for order in self.pickup_orders)
-        return current_size+pending_size
+        # pickup_orders dynamically shrinks as boxes are loaded into the manifest
+        return len(self.cargo_manifest) + len(self.pickup_orders)
 
-    def get_remaining_capacity(self):
+    def get_remaining_capacity(self) -> int:
         """
         Calculates exactly how many more orders the vehicle can safely commit to.
         """
-        return self.max_payload_capacity - self.get_committed_cargo_size()
+        return int(self.max_payload_capacity) - self.get_committed_cargo_size()
+
+    def get_current_cargo_size(self):
+        return len(self.cargo_manifest)
 
     def get_current_cargo(self):
         return self.cargo_manifest

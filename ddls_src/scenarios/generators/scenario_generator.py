@@ -17,7 +17,8 @@ class ScenarioGenerator:
     This version uses a two-phase initialization to handle dependencies.
     """
 
-    def __init__(self, raw_entity_data: Optional[Dict[str, Any]] = None):
+    def __init__(self, raw_entity_data: Optional[Dict[str, Any]] = None, custom_log = False):
+        self.custom_log = custom_log
         self._raw_entity_data = raw_entity_data if raw_entity_data is not None else {}
         self.nodes: Dict[int, Node] = {}
         self.customer_nodes = {}
@@ -29,7 +30,8 @@ class ScenarioGenerator:
         self.orders: Dict[int, Order] = {}
         self.node_pairs = {}
         self.initial_time: float = self._raw_entity_data.get('initial_time', 0.0)
-        print("ScenarioGenerator initialized.")
+        if self.custom_log:
+            print("ScenarioGenerator initialized.")
 
     def _prepare_kwargs(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -61,7 +63,8 @@ class ScenarioGenerator:
         """
         Phase 1 of initialization: Instantiates all entity objects from raw data.
         """
-        print("ScenarioGenerator: Building entities from raw data...")
+        if self.custom_log:
+            print("ScenarioGenerator: Building entities from raw data...")
 
         for node_data in self._raw_entity_data.get('nodes', []):
             node_data = self._prepare_kwargs(node_data)  # <-- FIX: Rename 'id' to 'p_id'
@@ -99,7 +102,8 @@ class ScenarioGenerator:
         for pid, did in node_pairs:
             self.node_pairs[pid, did] = NodePair(pid, did, **p_kwargs)
 
-        print("ScenarioGenerator: All entities instantiated (Phase 1 complete).")
+        if self.custom_log:
+            print("ScenarioGenerator: All entities instantiated (Phase 1 complete).")
 
         return {
             'nodes': self.nodes,

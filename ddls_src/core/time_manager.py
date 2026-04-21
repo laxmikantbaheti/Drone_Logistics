@@ -16,7 +16,7 @@ class TimeManager:
     Events are stored in a min-heap (priority queue) ordered by their scheduled time.
     """
 
-    def __init__(self, initial_time: float = 0.0):
+    def __init__(self, initial_time: float = 0.0, custom_log = False):
         """
         Initializes the simulation clock and the event scheduler.
 
@@ -30,6 +30,7 @@ class TimeManager:
         # ensuring consistent ordering and preventing comparison issues if event_data is complex.
         self.scheduled_events: List[Tuple[float, int, Dict[str, Any]]] = []
         self._event_id_counter: int = 0  # Unique ID generator for events
+        self.custom_log = custom_log
 
         print(f"TimeManager initialized at time: {self.current_time}")
 
@@ -100,7 +101,8 @@ class TimeManager:
         self.current_time = new_initial_time
         self.scheduled_events = []  # Clear the priority queue
         self._event_id_counter = 0  # Reset event ID counter
-        print(f"TimeManager: Reset to initial time: {self.current_time}. All scheduled events cleared.")
+        if self.custom_log:
+            print(f"TimeManager: Reset to initial time: {self.current_time}. All scheduled events cleared.")
 
 #
 # # Import manager classes

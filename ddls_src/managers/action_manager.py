@@ -31,8 +31,9 @@ class ActionManager:
     def __init__(self,
                  global_state: 'GlobalState',
                  managers: Dict[str, Any],
-                 action_map: Dict[Tuple, int]):
-
+                 action_map: Dict[Tuple, int],
+                 custom_log: bool = False):
+        self.custom_log = custom_log
         self.global_state = global_state
         self.action_map = action_map
         self._reverse_action_map: Dict[int, Tuple] = {idx: act_tuple for act_tuple, idx in action_map.items()}
@@ -45,7 +46,8 @@ class ActionManager:
         self._param_map: Dict[ActionType, Any] = {}
         self._build_maps()
 
-        print("ActionManager (Self-Configuring) initialized.")
+        if self.custom_log:
+            print("ActionManager (Self-Configuring) initialized.")
 
     def _build_maps(self):
         """
