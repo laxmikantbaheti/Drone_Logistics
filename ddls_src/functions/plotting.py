@@ -14,12 +14,24 @@ class SimulationPlotter:
     def __init__(self, base_filepath='scenario_report'):
         self.base_filepath = base_filepath
 
+        # --- MODIFICATION 1: Safe Parsing Function ---
+        def _safe_parse_manifest(val):
+            if isinstance(val, list):
+                return val
+            if pd.isna(val) or str(val).strip() == "":
+                return []
+            try:
+                return ast.literal_eval(str(val))
+            except (ValueError, SyntaxError):
+                return []
+
         # Load Vehicles Data
         v_path = f"{base_filepath}_vehicles.csv"
         if os.path.exists(v_path):
             self.df_vehicles = pd.read_csv(v_path)
             # Safely parse the string representation of lists back into actual lists
-            self.df_vehicles['cargo_manifest'] = self.df_vehicles['cargo_manifest'].apply(ast.literal_eval)
+            # --- MODIFICATION 1 APPLIED ---
+            self.df_vehicles['cargo_manifest'] = self.df_vehicles['cargo_manifest'].apply(_safe_parse_manifest)
         else:
             self.df_vehicles = None
             print(f"Warning: {v_path} not found.")
@@ -60,7 +72,8 @@ class SimulationPlotter:
 
         # 1. Process data into continuous state intervals and unique node visits
         for vehicle_id, group_data in grouped:
-            group_data = group_data.sort_values(by='time')
+            # --- MODIFICATION: Stable sort by time and original index ---
+            group_data = group_data.reset_index().sort_values(by=['time', 'index'])
 
             prev_time = None
             prev_status = None
@@ -167,7 +180,7 @@ class SimulationPlotter:
         else:
             plt.show()
 
-    def _plot_cargo_gantt(self, save_to_disk: bool, output_dir: str):
+    def _plot_cargo_gantt(self, save_to_disk: bool = False, output_dir: str = "."):
         """
         Generates a single Gantt chart for the entire fleet.
         Uses greedy lane assignment to ensure overlapping orders are stacked
@@ -182,12 +195,15 @@ class SimulationPlotter:
 
         # Collect timeline data across all vehicles
         for vehicle_id, group_data in grouped:
-            group_data = group_data.sort_values(by='time')
+            # --- MODIFICATION: Stable sort by time and original index ---
+            group_data = group_data.reset_index().sort_values(by=['time', 'index'])
             active_orders = {}  # Tracks {order_id: pickup_time}
 
             for _, row in group_data.iterrows():
                 current_time = row['time']
-                current_manifest = set(row['cargo_manifest'])
+
+                # --- MODIFICATION 2: Explicit string casting to prevent type mismatch ---
+                current_manifest = set(str(item) for item in row['cargo_manifest'])
 
                 # 1. Detect newly loaded orders
                 for o_id in current_manifest:
@@ -225,6 +241,14 @@ class SimulationPlotter:
 
         df_intervals = pd.DataFrame(intervals)
 
+        # --- MODIFICATION 3: Filter out zero-duration intervals to prevent rendering glitches ---
+        df_intervals['Duration'] = df_intervals['End'] - df_intervals['Start']
+        df_intervals = df_intervals[df_intervals['Duration'] > 0]
+
+        if df_intervals.empty:
+            print("No valid order holding durations found. Skipping plot.")
+            return
+
         # --- OPTIMIZATION: Greedy Lane Assignment ---
         # Sort by Vehicle, then by Start Time to assign non-overlapping lanes
         df_intervals = df_intervals.sort_values(by=['Vehicle', 'Start'])
@@ -257,7 +281,8 @@ class SimulationPlotter:
         # --- RENDER THE MASTER PLOT ---
         fig, ax = plt.subplots(figsize=(14, 8))
 
-        unique_vehicles = df_opt['Vehicle'].unique()
+        # --- MODIFICATION 4: Sort vehicles in descending order so 101 is at the top ---
+        unique_vehicles = sorted(df_opt['Vehicle'].unique(), reverse=True)
 
         yticks = []
         yticklabels = []
@@ -270,7 +295,7 @@ class SimulationPlotter:
             # Draw all intervals for this vehicle
             for _, row in v_data.iterrows():
                 y_pos = current_y_base + row['Lane']
-                duration = row['End'] - row['Start']
+                duration = row['Duration']
 
                 ax.barh(y=y_pos,
                         width=duration,
@@ -313,3 +338,4 @@ class SimulationPlotter:
             print(f"Saved: {filename}")
         else:
             plt.show()
+            print("debugging")
