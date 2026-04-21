@@ -243,6 +243,7 @@ class Vehicle(LogisticEntity, ABC):
                 # truck.delivery_node_ids.append(order.get_delivery_node_id())
                 truck.add_cargo(order)
                 order.set_enroute()
+                # self._evaluate_route_state()
                 if self.custom_log:
                     print(f"{order_id} is loaded in the truck {truck_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
@@ -273,6 +274,7 @@ class Vehicle(LogisticEntity, ABC):
                 # self.delivery_orders.remove(order)
                 self.remove_cargo(order.get_id())
                 order.set_delivered()
+                # self._evaluate_route_state()
                 # self.delivery_node_ids.remove(order.get_delivery_node_id())
                 # if self.delivery_node_ids or self.pickup_node_ids:
                 #     self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_EN_ROUTE)
@@ -308,6 +310,7 @@ class Vehicle(LogisticEntity, ABC):
                 # drone.delivery_node_ids.append(order.get_delivery_node_id())
                 drone.add_cargo(order)
                 order.set_enroute()
+                # self._evaluate_route_state()
                 if self.custom_log:
                     print(f"Order {order_id} is loaded in the Drone {drone_id}.")
                 self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], len(self.cargo_manifest))
@@ -338,6 +341,7 @@ class Vehicle(LogisticEntity, ABC):
                 # self.delivery_orders.remove(order)
                 self.remove_cargo(order.get_id())
                 order.set_delivered()
+                # self._evaluate_route_state()
                 # self.delivery_node_ids.remove(order.get_delivery_node_id())
                 # if len(self.delivery_orders) or len(self.delivery_orders):
                 #     self.update_state_value_by_dim_name([self.C_DIM_TRIP_STATE[0], self.C_DIM_CURRENT_CARGO[0]],
@@ -628,14 +632,16 @@ class Vehicle(LogisticEntity, ABC):
             # --- THE NEW CLIPBOARD LOGIC ---
             # If we are actively running a mission, check the current sequence step
             # if self.consolidation_confirmed and self.current_sequence_index in self.planned_order_sequence:
-            current_step_orders = self.planned_order_sequence[self.current_sequence_index]
-            if order in current_step_orders:
-                current_step_orders.remove(order)  # Cross it off!
+            pickup_orders, delivery_orders = self.planned_order_sequence[self.current_sequence_index]
+            if order in pickup_orders:
+                pickup_orders.remove(order)  # Cross it off!
                 if self.custom_log:
                     print(
                         f"[Vehicle {self.get_id()}] Picked up {order.get_id()} - crossed off Sequence {self.current_sequence_index}")
             self.pickup_orders.remove(order)
             self.delivery_orders.append(order)
+
+        self._evaluate_route_state()
 
     # def remove_cargo(self, order_id: int):
     #     """Removes a package from the manifest by ID and safely mutates the MLPro state."""
@@ -661,15 +667,16 @@ class Vehicle(LogisticEntity, ABC):
 
             # --- THE NEW CLIPBOARD LOGIC ---
             # if self.consolidation_confirmed and self.current_sequence_index in self.planned_order_sequence:
-            current_step_orders = self.planned_order_sequence[self.current_sequence_index]
-            if order_to_remove in current_step_orders:
-                current_step_orders.remove(order_to_remove)  # Cross it off!
+            pickup_orders, delivery_orders = self.planned_order_sequence[self.current_sequence_index]
+            if order_to_remove in delivery_orders:
+                delivery_orders.remove(order_to_remove)  # Cross it off!
                 if self.custom_log:
                     print(
                         f"[Vehicle {self.get_id()}] Dropped off {order_to_remove.get_id()} - crossed off Sequence {self.current_sequence_index}")
 
             self.delivery_orders.remove(order_to_remove)
             print("Debugging")
+        self._evaluate_route_state()
 
     def set_route(self, route: List[int]):
         """
@@ -878,7 +885,7 @@ class Vehicle(LogisticEntity, ABC):
         self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_HALT)
 
         self.log_current_state()
-
+        # self._evaluate_route_state()
     # def _evaluate_route_state(self):
     #     """
     #     Navigation Logic: Evaluates the planned_node_sequence, waits for the Scenario
