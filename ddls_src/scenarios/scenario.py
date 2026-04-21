@@ -122,7 +122,9 @@ class LogisticsScenario(Scenario):
             # Step B: Observe stable state and valid agent actions.
             current_state = self._system.get_state()
             agent_mask = self._system.get_agent_mask()
-
+            system_mask = self._system.get_masks()[:-1]
+            if not any(system_mask):
+                break
             system_no_op_idx = list(self._system.action_map.values())[-1]
             agent_no_op_idx = self._system.agent_to_system_map.index(system_no_op_idx)
 
@@ -130,7 +132,7 @@ class LogisticsScenario(Scenario):
             if not np.any(agent_mask):
                 self.log(self.C_LOG_TYPE_I,
                          "No valid agent actions available. System deadlocked. Ending Decision Phase.")
-                break
+                continue
 
             # Step D: Agent selects an action
             action = self._model.compute_action(p_state=current_state, p_action_mask=agent_mask)
