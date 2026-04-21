@@ -8,7 +8,7 @@ from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback, CallbackList
 
 # Import your custom Gymnasium environment
-from ddls_src.rl_interface.environment import LogisticsEnv
+from ddls_src.rl_interface_old2.environment import LogisticsEnv
 
 
 def mask_fn(env: gym.Env) -> np.ndarray:

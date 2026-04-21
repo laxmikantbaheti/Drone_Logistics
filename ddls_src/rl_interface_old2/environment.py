@@ -6,7 +6,7 @@ import time
 # Import your core framework classes
 from ddls_src.core.logistics_system import LogisticsSystem
 from ddls_src.core.basics import LogisticsAction
-from ddls_src.rl_interface.state_extractor import StateExtractor
+from ddls_src.rl_interface_old2.state_extractor import StateExtractor
 
 
 class LogisticsEnv(gym.Env):
