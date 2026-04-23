@@ -125,15 +125,34 @@ class LogisticsEnv(gym.Env):
         obs = self.obs_handler.get_observation(self._system.global_state)
         return obs
 
-    def _get_info(self) -> Dict:
-        """Returns diagnostic information and current action masks."""
+    def _get_info(self) -> dict:
+        """
+        Returns diagnostic information about the current simulation state.
+        """
+        # Directly query the system's termination status
+        is_success = self._system.get_success()
+        is_broken = self._system.get_broken()
+
         return {
-            "agent_mask": self._system.get_agent_mask(),  #
-            "current_time": self._system.global_state.current_time,  #
-            "success": self._system.get_success()
+            "is_success": is_success,
+            "is_broken": is_broken,
+            "agent_mask": self._system.get_agent_mask(),
+            "current_time": self._system.global_state.current_time,
+            "delivered_count": sum(
+                1 for o in self._system.global_state.orders.values()
+                if o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) == o.C_STATUS_DELIVERED
+            )
         }
+
+    def action_masks(self) -> np.ndarray:
+        """
+        Standard interface for MaskablePPO.
+        Returns a boolean array where True = Valid, False = Invalid.
+        """
+        # We query the same system logic used in your _proceed_simulation loop
+        return self._system.get_agent_mask().astype(bool)
 
     def _calculate_reward(self) -> float:
         """Computes the reward signal. To be expanded in rewards.py."""
-        reward = compute_reward(self._system)
+        reward = self.rewards_handler.get_reward(self._system)
         return reward

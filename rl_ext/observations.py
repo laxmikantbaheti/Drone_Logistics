@@ -1,96 +1,80 @@
-# ddls_src/rl_extension/observations.py
-
 import numpy as np
 from gymnasium import spaces
 from abc import ABC, abstractmethod
 
 
 class BaseObservations(ABC):
-    """Abstract base class for observation variations."""
-
     @abstractmethod
     def get_observation(self, global_state) -> np.ndarray:
-        """Translates GlobalState into a numerical array."""
         pass
 
     @abstractmethod
     def get_observation_space(self) -> spaces.Space:
-        """Returns the Gymnasium space definition."""
         pass
 
 
 class DefaultObservations(BaseObservations):
-    """
-    Standard observation variant including vehicle states, 
-    routes, and pending order details.
-    """
-
-    def __init__(self, max_vehicles=11, max_route_lookahead=3, max_order_slots=20):
+    def __init__(self, max_vehicles=10, max_order_slots=20):
         self.max_vehicles = max_vehicles
-        self.max_route_lookahead = max_route_lookahead
         self.max_order_slots = max_order_slots
 
-        # Calculate size: 
-        # Vehicles: (curr_node + rem_cap + lookahead) * max_vehicles
-        # Orders: (pickup + delivery + size) * max_orders
-        self._obs_size = ((2 + self.max_route_lookahead) * self.max_vehicles) + (3 * self.max_order_slots)
+        # Mapping categorical strings to floats for RL
+        self.trip_status_map = {"Idle": 0.0, "En Route": 1.0, "Halted": 2.0, "Loading": 3.0, "Unloading": 4.0}
+        self.order_status_map = {"pending": 0.0, "assigned": 1.0, "En Route": 2.0, "Delivered": 3.0}
+
+        # Size: Vehicle (6 features) + Order (4 features)
+        self._obs_size = (6 * self.max_vehicles) + (4 * self.max_order_slots)
 
     def get_observation_space(self) -> spaces.Box:
-        return spaces.Box(
-            low=-1,
-            high=np.inf,
-            shape=(self._obs_size,),
-            dtype=np.float32
-        )
+        return spaces.Box(low=-1.0, high=np.inf, shape=(self._obs_size,), dtype=np.float32)
 
     def get_observation(self, global_state) -> np.ndarray:
         obs = []
 
-        # --- 1. Encode Vehicles ---
-        # Sorting ensures the agent sees vehicles in the same order every step
+        # --- 1. ENCODE VEHICLES ---
         all_vehicles = sorted(
             list(global_state.trucks.values()) + list(global_state.drones.values()),
             key=lambda v: v.get_id()
         )
 
-        for v in all_vehicles:
-            curr_node = v.current_node_id if v.current_node_id is not None else -1
-            rem_cap = v.get_remaining_capacity()  #
+        for v in all_vehicles[:self.max_vehicles]:
+            # Physical Location (Direct strings from setup_spaces)
+            obs.append(float(v.get_state_value_by_dim_name("loc x")))
+            obs.append(float(v.get_state_value_by_dim_name("loc y")))
 
-            # Route lookahead (pickups then deliveries)
-            route_nodes = [o.get_pickup_node_id() for o in v.get_pickup_orders()]
-            route_nodes += [o.get_delivery_node_id() for o in v.get_delivery_orders()]  #
+            # Trip Status using class attribute
+            status_str = v.get_state_value_by_dim_name(v.C_DIM_TRIP_STATE[0])
+            obs.append(self.trip_status_map.get(status_str, -1.0))
 
-            # Pad or truncate route
-            padded_route = route_nodes[:self.max_route_lookahead]
-            padded_route += [-1] * (self.max_route_lookahead - len(padded_route))
+            # Availability and Node Boolean using class attributes
+            obs.append(1.0 if v.get_state_value_by_dim_name(v.C_DIM_AVAILABLE[0]) else 0.0)
+            obs.append(1.0 if v.get_state_value_by_dim_name(v.C_DIM_AT_NODE[0]) else 0.0)
 
-            obs.extend([curr_node, rem_cap] + padded_route)
+            # Cargo Manifest size using class attribute
+            obs.append(float(v.get_state_value_by_dim_name(v.C_DIM_CURRENT_CARGO[0])))
 
-        # Pad missing vehicles
+        # Pad remaining vehicle slots
         for _ in range(len(all_vehicles), self.max_vehicles):
-            obs.extend([-1, 0.0] + [-1] * self.max_route_lookahead)
+            obs.extend([0.0, 0.0, -1.0, 0.0, 0.0, 0.0])
 
-        # --- 2. Encode Active Orders ---
-        pending_orders = []
-        order_requests = global_state.get_order_requests()  #
-        for order_list in order_requests.values():
-            pending_orders.extend(order_list)
+        # --- 2. ENCODE ORDERS ---
+        active_orders = [o for o in global_state.orders.values()
+                         if o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) != o.C_STATUS_DELIVERED]
 
-        # Sort by deadline to keep observation consistent
-        pending_orders.sort(key=lambda o: getattr(o, 'SLA_deadline', 0.0))
+        for order in active_orders[:self.max_order_slots]:
+            # Network Nodes using class attributes
+            obs.append(float(order.get_state_value_by_dim_name(order.C_DIM_PICKUP_NODE[0])))
+            obs.append(float(order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_NODE[0])))
 
-        orders_processed = 0
-        for order in pending_orders[:self.max_order_slots]:
-            obs.extend([
-                order.get_pickup_node_id(),  #
-                order.get_delivery_node_id(),
-                order.size
-            ])
-            orders_processed += 1
+            # Weight/Size from generic Dimension
+            obs.append(float(order.get_state_value_by_dim_name("w")))
+
+            # Delivery Status using class attribute
+            ord_status = order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_STATUS[0])
+            obs.append(self.order_status_map.get(ord_status, -1.0))
 
         # Pad remaining order slots
-        for _ in range(orders_processed, self.max_order_slots):
-            obs.extend([-1, -1, 0.0])
+        for _ in range(len(active_orders), self.max_order_slots):
+            obs.extend([-1.0, -1.0, 0.0, -1.0])
 
         return np.array(obs, dtype=np.float32)
