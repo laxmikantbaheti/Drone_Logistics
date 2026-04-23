@@ -675,7 +675,7 @@ class Vehicle(LogisticEntity, ABC):
                         f"[Vehicle {self.get_id()}] Dropped off {order_to_remove.get_id()} - crossed off Sequence {self.current_sequence_index}")
 
             self.delivery_orders.remove(order_to_remove)
-            print("Debugging")
+            # print("Debugging")
         self._evaluate_route_state()
 
     def set_route(self, route: List[int]):

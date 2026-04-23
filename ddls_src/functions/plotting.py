@@ -338,4 +338,4 @@ class SimulationPlotter:
             print(f"Saved: {filename}")
         else:
             plt.show()
-            print("debugging")
+            # print("debugging")
