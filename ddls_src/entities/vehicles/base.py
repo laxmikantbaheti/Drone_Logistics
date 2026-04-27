@@ -13,7 +13,7 @@ from mlpro.bf.math import MSpace, Dimension
 from mlpro.bf.systems import System, State, Action
 from typing import List, Tuple, Any, Dict, Optional, Set
 from ddls_src.entities.vehicles.sequencer import HeuristicSequencer
-from ddls_src.entities.vehicles.sequencer import HeuristicSequencer2
+from ddls_src.entities.vehicles.sequencer import HeuristicSequencer2, ReturnSequencer
 
 
 # Forward declaration for NetworkManager
@@ -36,7 +36,8 @@ class Vehicle(LogisticEntity, ABC):
     C_TRIP_STATE_HALT = "Halted"
     C_TRIP_STATE_LOADING = "Loading"
     C_TRIP_STATE_UNLOADING = "Unloading"
-    C_VALID_TRIP_STATES = [C_TRIP_STATE_IDLE, C_TRIP_STATE_EN_ROUTE, C_TRIP_STATE_HALT]
+    C_TRIP_STATE_RETURNED = "Returned"
+    C_VALID_TRIP_STATES = [C_TRIP_STATE_IDLE, C_TRIP_STATE_EN_ROUTE, C_TRIP_STATE_HALT, C_TRIP_STATE_RETURNED]
     C_DIM_TRIP_STATE = ["trip", "Trip Status", C_VALID_TRIP_STATES]
     C_DIM_AVAILABLE = ["ava", "Is Available", [True, False]]
     C_DIM_AT_NODE = ["node_bool", "At Node", [True, False]]
@@ -97,6 +98,7 @@ class Vehicle(LogisticEntity, ABC):
         self.pickup_orders = []
         self.pickup_node_ids = []
         self.cargo_stats = {}
+        self.d_tstamps = []
         # --- NEW: Staging Area for the Batch Sequencer ---
         self.staged_pickup_orders = defaultdict()
         self.staged_delivery_orders = defaultdict()
@@ -111,7 +113,7 @@ class Vehicle(LogisticEntity, ABC):
         # Attach the interchangeable sequencer (assuming you create this file next)
         try:
             # from ddls_src.entities.vehicles.sequencers import AI4DroneHeuristicSequencer
-            self.sequencer = p_kwargs.get('sequencer', HeuristicSequencer2())
+            self.sequencer = p_kwargs.get('sequencer', ReturnSequencer())
         except ImportError:
             self.log(self.C_LOG_TYPE_E,
                      "Could not import HeuristicSequencer. Please ensure sequencers.py exists.")
@@ -176,6 +178,7 @@ class Vehicle(LogisticEntity, ABC):
         self.cargo_stats = {}
         self.en_route_timer = 0.0  # Timer for matrix-based movement
         self.current_leg_duration = 0.0  # NEW: Tracks the total time of the current matrix leg
+        self.d_tstamps = []
 
         # --- NEW: Initialize local history for this specific vehicle ---
         self.state_history = []
@@ -661,6 +664,7 @@ class Vehicle(LogisticEntity, ABC):
 
         if order_to_remove:
             self.cargo_manifest.remove(order_to_remove)
+            self.d_tstamps.append(self.global_state.current_time)
             self.cargo_stats[self.global_state.current_time] = self.get_current_cargo_size()
 
             self.update_state_value_by_dim_name(self.C_DIM_CURRENT_CARGO[0], self.get_current_cargo_size())
@@ -981,9 +985,9 @@ class Vehicle(LogisticEntity, ABC):
             for o in pickup_orders:
                 if not isinstance(o, Order):
                     raise TypeError("Order must be of type Order")
-                if o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) in [o.C_STATUS_EN_ROUTE]:
+                if o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) in [o.C_STATUS_EN_ROUTE, o.C_STATUS_DELIVERED]:
                     all_picked_up = True or all_picked_up
-                elif o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) not in [o.C_STATUS_EN_ROUTE]:
+                elif o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) not in [o.C_STATUS_EN_ROUTE, o.C_STATUS_DELIVERED]:
                     all_picked_up = False
                 if not all_picked_up:
                     break

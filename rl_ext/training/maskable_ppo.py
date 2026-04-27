@@ -18,10 +18,8 @@ class MaskablePPOTraining(Training):
         self.model = MaskablePPO(
             "MlpPolicy",
             self.env,
-            n_steps=200,
             verbose=1,
-            tensorboard_log=tb_log,
-            stats_window_size=1
+            tensorboard_log=tb_log
         )
 
         print(f"\n--- SESSION STARTING: {self.name} ---")

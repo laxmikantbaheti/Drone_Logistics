@@ -13,7 +13,14 @@ from rl_ext.env import LogisticsEnv
 class Training(ABC):
     name = "BaseTraining"
 
-    def __init__(self, config_path: str, **kwargs):
+    def __init__(self, config_path: str, sim_config = None, instance_name:str = None, **kwargs):
+
+        # Setting up names for later use for saving files
+        if instance_name is None:
+            pass
+        else:
+            self.name = self.name + "_" + instance_name
+
         # 1. Resolve Project Root (Drone_Logistics)
         self.project_root = Path(__file__).resolve().parents[2]
 
@@ -25,15 +32,18 @@ class Training(ABC):
             raise FileNotFoundError(f"Config not found at: {self.config_full_path}")
 
         # 3. Movement Config Wrapper
-        self.sim_wrapper_config = {
-            "movement_mode": "matrix",
-            "initial_time": 0.0,
-            "main_timestep_duration": 1.0,
-            "data_loader_config": {
-                "generator_type": "json_file",
-                "generator_config": {"file_path": str(self.config_full_path)}
+        if sim_config is None:
+            self.sim_wrapper_config = {
+                "movement_mode": "matrix",
+                "initial_time": 0.0,
+                "main_timestep_duration": 1.0,
+                "data_loader_config": {
+                    "generator_type": "json_file",
+                    "generator_config": {"file_path": str(self.config_full_path)}
+                }
             }
-        }
+        else:
+            self.sim_wrapper_config = sim_config
 
         self.run_id_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_id = f"{self.name}_{self.run_id_timestamp}"

@@ -13,13 +13,14 @@ from rl_ext.rewards import DefaultRewards, BaseRewards
 
 class LogisticsEnv(gym.Env):
     def __init__(self, sim_config: Dict[str, Any], observation_handler: BaseObservations = None,
-                 rewards_handler: BaseRewards = None, custom_log: bool = False):
+                 rewards_handler: BaseRewards = None, ret_trip=False, custom_log: bool = False):
         super().__init__()
 
         self._system = LogisticsSystem(
             config=sim_config,
             p_visualize=False,
             p_logging=False,
+            ret_trip=ret_trip,
             custom_log=custom_log
         )
 
@@ -35,6 +36,7 @@ class LogisticsEnv(gym.Env):
 
         self.action_space = spaces.Discrete(self._system.agent_action_space_size)
         self.observation_space = self.obs_handler.get_observation_space()
+        self.ret_trip = ret_trip
 
     def reset(self, seed=None, options=None) -> Tuple[np.ndarray, Dict]:
         super().reset(seed=seed)

@@ -8,6 +8,9 @@ import random
 from datetime import datetime
 # Import 'timedelta' for representing differences in time.
 from datetime import timedelta
+
+from sympy.plotting.intervalmath import ceil
+
 # Import action-related classes.
 from ddls_src.actions.base import SimulationActions, ActionType, ActionIndex
 from ddls_src.core.basics import LogisticsAction
@@ -62,6 +65,7 @@ class LogisticsSystem(System, EventManager):
                  p_visualize: bool = False,
                  p_logging=False,
                  custom_log = False,
+                 ret_trip = False,
                  **p_kwargs):
         """
         Initializes the LogisticsSystem.
@@ -127,6 +131,7 @@ class LogisticsSystem(System, EventManager):
         self.action_index = None
         # Call the reset method to perform the main setup.
         self.setup = False
+        self.ret_trip = ret_trip
         self.reset()
         # self.setup = True
 
@@ -639,8 +644,10 @@ class LogisticsSystem(System, EventManager):
             success = (ords.get_state_value_by_dim_name(
                 ords.C_DIM_DELIVERY_STATUS[0]) == ords.C_STATUS_DELIVERED) and success
         # If any order is not delivered, success will be false.
-        if success:
-            return success
+        # if success:
+        #     if not self.ret_trip:
+        #         self.compute_return_trips()
+        #         return success
         return success
 
     # --------------------------------------------------------------------------------------------------
@@ -655,6 +662,27 @@ class LogisticsSystem(System, EventManager):
         """
         return False
 
+    def compute_return_trips(self):
+        max_return = self.global_state.current_time
+        trucks = list(self.global_state.trucks.values())
+        drones = list(self.global_state.drones.values())
+        for v in trucks + drones:
+            if v.get_state_value_by_dim_name(v.C_DIM_TRIP_STATUS[0]) == v.C_TRIP_STATUS_IDLE:
+                current_node = v.get_current_node_id()
+                ret_node = v.start_node_id
+                dist = self.network.air_distance_matrix[str(current_node)][str(ret_node)]
+                v.ret_tstamp = v.d_tstamps[-1] + ceil(dist)
+                max_return = max(max_return, v.ret_tstamp)
+            else:
+                raise ValueError("The simulation shall not succeed without all vehicles being idle.")
+
+        self.time_manager.advance_time(max_return)
+        self.global_state.current_time = ceil(max_return)
+
+        for v in trucks + drones:
+            v.update_state_value_by_dim_name(v.C_DIM_TRIP_STATUS[0], v.C_TRIP_STATE_RETURNED)
+
+        return
 
 
 # -------------------------------------------------------------------------

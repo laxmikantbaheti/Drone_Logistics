@@ -463,7 +463,7 @@ class VehicleAssignabilityConstraint(Constraint):
         is_available = p_entity.get_state_value_by_dim_name(p_entity.C_DIM_AVAILABLE[0])
 
         # The agent can ONLY assign orders if the vehicle is strictly IDLE, unlocked, and generally available
-        if current_status == p_entity.C_TRIP_STATE_IDLE and not is_locked and is_available:
+        if current_status in [p_entity.C_TRIP_STATE_IDLE, p_entity.C_TRIP_STATE_RETURNED] and not is_locked and is_available:
             return [], list(relevant_actions)  # Unblock
         else:
             return list(relevant_actions), []  # Block
@@ -865,7 +865,7 @@ class ConsolidationConstraint(Constraint):
         is_locked = getattr(p_entity, 'consolidation_confirmed', False)
 
         # 1. Guard: If it's already locked or not IDLE, block it immediately
-        if current_status != p_entity.C_TRIP_STATE_IDLE and is_locked:
+        if current_status not in [p_entity.C_TRIP_STATE_IDLE, p_entity.C_TRIP_STATE_RETURNED] and is_locked:
             return list(consolidation_action_ids), []
 
         # 2. Guard: Does it actually have orders to consolidate?

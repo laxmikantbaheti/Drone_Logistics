@@ -11,7 +11,7 @@ class SimulationPlotter:
     Call generate_plot('plot_name') to render specific visualizations.
     """
 
-    def __init__(self, base_filepath='scenario_report'):
+    def __init__(self, base_filepath='scenario_report', plot_return=False):
         self.base_filepath = base_filepath
 
         # --- MODIFICATION 1: Safe Parsing Function ---
@@ -42,6 +42,7 @@ class SimulationPlotter:
             self.df_orders = pd.read_csv(o_path)
         else:
             self.df_orders = None
+        self.plot_return = plot_return
 
     def generate_plot(self, plot_type: str, save_to_disk: bool = False, output_dir: str = "."):
         """

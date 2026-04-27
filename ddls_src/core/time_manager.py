@@ -104,6 +104,9 @@ class TimeManager:
         if self.custom_log:
             print(f"TimeManager: Reset to initial time: {self.current_time}. All scheduled events cleared.")
 
+    def advance_to_time(self, time):
+        self.current_time = time
+
 #
 # # Import manager classes
 # from ..managers.action_manager import ActionManager

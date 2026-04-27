@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
+from datetime import datetime
 
 # Core Project Imports
 from ddls_src.functions.reports import export_simulation_reports
@@ -16,6 +17,9 @@ class SaveOnEpisodeCallback(BaseCallback):
     def _on_step(self) -> bool:
         if self.locals["dones"][0]:
             self.episode_count += 1
+
+            current_wall_time = datetime.now().strftime("%H:%M:%S")
+
             env = self.training_env.envs[0].unwrapped
             system = env._system
             logger = system.global_state.event_logger
@@ -23,17 +27,18 @@ class SaveOnEpisodeCallback(BaseCallback):
             info = self.locals["infos"][0]
             reward = float(info["reward"])
             makespan = float(info["makespan"])
+            logs = info["terminal_logs"]
             self.reward_history.append(reward)
 
             # Record to TensorBoard
-            self.logger.record("results/reward", reward)
-            self.logger.record("results/makespan", makespan)
-            self.logger.dump(step=self.num_timesteps)
+            # self.logger.record("results/reward", reward)
+            # self.logger.record("results/makespan", makespan)
+            # self.logger.dump(step=self.num_timesteps)
 
             # Export reports to episode subfolder
             report_name = f"{self.trainer.name}_ep_{self.episode_count}"
             report_path = os.path.join(self.trainer.episodes_dir, report_name)
-            logger.export_reports(base_filepath=report_path)
+            logger.export_reports(base_filepath=report_path, logs = logs)
 
             # --- MODIFICATION: Determine the Termination Status (Plain Text) ---
             if info.get("is_success"):
@@ -56,6 +61,7 @@ class SaveOnEpisodeCallback(BaseCallback):
 
             # --- MODIFICATION: Plain Text Console Print Card ---
             print(f"\n" + "-" * 50, flush=True)
+            print(f"   TIME:      {current_wall_time}", flush=True) # --- ADDED LINE ---
             print(f"   EPISODE {self.episode_count} COMPLETED", flush=True)
             print(f"   RESULT:    {status_text}", flush=True)
             print(f"   REWARD:    {reward}", flush=True)

@@ -69,7 +69,10 @@ class Order(LogisticEntity):
         self.customer_node_id: int = p_kwargs.get('customer_node_id')
         self.time_received: float = p_kwargs.get('time_received', 0.0)
         self.SLA_deadline: float = p_kwargs.get('SLA_deadline', 0.0)
-        self.size: float = p_kwargs.get('size', 1.0)
+        if size is not None:
+            self.size: float = size
+        else:
+            self.size = 1.0
         self.priority: int = p_kwargs.get('priority', 1)
         self.pickup_node_id = p_pickup_node_id
         self.delivery_node_id = p_delivery_node_id

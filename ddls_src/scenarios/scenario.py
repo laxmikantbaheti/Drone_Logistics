@@ -14,14 +14,21 @@ from mlpro.bf.ops import Mode
 class LogisticsScenario(Scenario):
     C_NAME = 'LogisticsScenario'
 
-    def __init__(self, p_mode=Mode.C_MODE_SIM, p_cycle_limit=100, p_visualize: bool = False, p_logging=False, p_system = None,
-                 custom_log = False, **p_kwargs):
+    def __init__(self, p_mode=Mode.C_MODE_SIM,
+                 p_cycle_limit=100,
+                 p_visualize: bool = False,
+                 p_logging=False,
+                 p_system = None,
+                 ret_trip:bool = False,
+                 custom_log = False,
+                 **p_kwargs):
         self._config = p_kwargs.pop('config', {})
         self._system: LogisticsSystem = p_system
         self._logging = p_logging
         # Store the visualization flag
         self._visualize = p_visualize
         self.custom_log = custom_log
+        self.ret_trip = ret_trip
 
         super().__init__(p_mode=p_mode, p_cycle_limit=p_cycle_limit, p_visualize=p_visualize, p_logging=p_logging,
                          **p_kwargs)
@@ -30,7 +37,7 @@ class LogisticsScenario(Scenario):
         self.log(self.C_LOG_TYPE_I, "Setting up scenario...")
         if self._system == None:
             self._system = LogisticsSystem(p_id='logsys_001', p_visualize=p_visualize, p_logging=p_logging,
-                                       config=self._config, custom_log = self.custom_log)
+                                       config=self._config, custom_log = self.custom_log, ret_trip=self.ret_trip)
 
         # --- NEW: Setup visualization if enabled ---
         if self._visualize:
@@ -173,7 +180,7 @@ class LogisticsScenario(Scenario):
                 self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
 
             # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
-            plotter = SimulationPlotter(base_filepath='scenario_report')
+            plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
 
             # Generate the Gantt charts
             plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
