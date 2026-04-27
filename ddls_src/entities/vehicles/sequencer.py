@@ -270,7 +270,5 @@ class ReturnSequencer(RouteSequencer):
                 order_sequence[current_index] = [set(), set()]
                 assign_order(current_index, order, o_type)
 
-        node_sequence[len(node_sequence)+1] = 0
-        order_sequence[len(order_sequence)+1] = [set(), set()]
 
         return node_sequence, order_sequence

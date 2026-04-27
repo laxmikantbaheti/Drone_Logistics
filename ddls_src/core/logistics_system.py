@@ -1,5 +1,7 @@
 # In file: ddls_src/core/logistics_system.py
 # Import NumPy for numerical operations, especially for handling arrays like action masks.
+import math
+
 import numpy as np
 # Import the 'os' module for interacting with the operating system, used for path manipulation.
 import os
@@ -78,6 +80,7 @@ class LogisticsSystem(System, EventManager):
             **p_kwargs: Additional keyword arguments, expected to contain 'config'.
         """
         # Retrieve the configuration dictionary from keyword arguments.
+        self.ret_computed:bool = False
         self.custom_log = custom_log
         self._config = p_kwargs.get('config', {})
 
@@ -268,6 +271,7 @@ class LogisticsSystem(System, EventManager):
             initial_sim_time = self.entities.get('initial_time', 0.0)
             self.time_manager.reset_time(new_initial_time=initial_sim_time)
             self.global_state.current_time = initial_sim_time
+            self.ret_computed = False
 
             # # Perform an initial update of the MLPro state object.
             # self._update_state()
@@ -293,6 +297,7 @@ class LogisticsSystem(System, EventManager):
             self.state_action_mapper.update_action_space(self.action_map, None)
             self.state_action_mapper.reverse_action_map = self._reverse_action_map
             self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
+            self.ret_computed = False
 
         # Perform an initial update of the MLPro state object.
         self._update_state()
@@ -644,10 +649,10 @@ class LogisticsSystem(System, EventManager):
             success = (ords.get_state_value_by_dim_name(
                 ords.C_DIM_DELIVERY_STATUS[0]) == ords.C_STATUS_DELIVERED) and success
         # If any order is not delivered, success will be false.
-        # if success:
-        #     if not self.ret_trip:
-        #         self.compute_return_trips()
-        #         return success
+        if success:
+            if (not self.ret_trip) and (not self.ret_computed):
+                self.ret_computed = self.compute_return_trips()
+                return success
         return success
 
     # --------------------------------------------------------------------------------------------------
@@ -667,22 +672,25 @@ class LogisticsSystem(System, EventManager):
         trucks = list(self.global_state.trucks.values())
         drones = list(self.global_state.drones.values())
         for v in trucks + drones:
-            if v.get_state_value_by_dim_name(v.C_DIM_TRIP_STATUS[0]) == v.C_TRIP_STATUS_IDLE:
-                current_node = v.get_current_node_id()
+            if v.get_state_value_by_dim_name(v.C_DIM_TRIP_STATE[0]) in v.C_TRIP_STATE_IDLE:
+                current_node = v.current_node_id
+                v.current_node_id = v.start_node_id
                 ret_node = v.start_node_id
-                dist = self.network.air_distance_matrix[str(current_node)][str(ret_node)]
-                v.ret_tstamp = v.d_tstamps[-1] + ceil(dist)
+                dist = math.ceil(self.network.air_distance_matrix[str(current_node)][str(ret_node)])
+                v.ret_tstamp = v.d_tstamps[-1] + dist
                 max_return = max(max_return, v.ret_tstamp)
+                self.global_state.current_time = math.ceil(v.ret_tstamp)
+                v.update_state_value_by_dim_name(v.C_DIM_TRIP_STATE[0], v.C_TRIP_STATE_RETURNED)
             else:
                 raise ValueError("The simulation shall not succeed without all vehicles being idle.")
 
-        self.time_manager.advance_time(max_return)
-        self.global_state.current_time = ceil(max_return)
+        self.time_manager.advance_to_time(max_return)
+        self.global_state.current_time = math.ceil(max_return)
 
-        for v in trucks + drones:
-            v.update_state_value_by_dim_name(v.C_DIM_TRIP_STATUS[0], v.C_TRIP_STATE_RETURNED)
+        # for v in trucks + drones:
+        #     v.update_state_value_by_dim_name_retro(v.C_DIM_TRIP_STATE[0], v.C_TRIP_STATE_RETURNED, time =)
 
-        return
+        return True
 
 
 # -------------------------------------------------------------------------
