@@ -65,7 +65,6 @@ class SimulationPlotter:
                 curr_node = row['current_node']
 
                 if prev_time is not None and prev_status is not None:
-                    # Capture the return trip interval
                     status_to_plot = prev_status
                     if curr_status_raw == 'returned':
                         status_to_plot = 'Returning'
@@ -101,20 +100,19 @@ class SimulationPlotter:
                 ax.barh(y=vehicle, width=duration, left=row['Start'], height=0.5,
                         color=color_map.get(row['Status'], '#9E9E9E'), edgecolor='black', linewidth=0.5)
 
+                # MODIFICATION: Added duration value in the center of the bar segment
+                ax.text(row['Start'] + (duration / 2), vehicle, f"{int(duration)}s",
+                        ha='center', va='center', fontsize=8, color='black', fontweight='bold')
+
         for ann in node_annotations:
             ax.text(x=ann['Time'], y=ann['Vehicle'], s=f" N:{int(ann['Node'])}", va='bottom', fontsize=9,
                     fontweight='bold')
 
-        # --- MODIFICATION: Dual-Grid (Manual Implementation) ---
         max_x = df_intervals['End'].max()
-        # Set Major Ticks (Every 100)
         ax.set_xticks(np.arange(0, max_x + 100, 100))
-        # Set Minor Ticks (Every 10)
         ax.set_xticks(np.arange(0, max_x + 10, 10), minor=True)
 
-        # Style Major: Darker, Solid/Dashed
         ax.grid(which='major', axis='x', linestyle='-', color='#757575', alpha=0.7)
-        # Style Minor: Lighter, Dotted
         ax.grid(which='minor', axis='x', linestyle=':', color='#BDBDBD', alpha=1)
 
         ax.set_xlabel("Simulation Time (s)")
@@ -150,7 +148,6 @@ class SimulationPlotter:
                         removed.append(o_id)
                 for o_id in removed: del active_orders[o_id]
 
-            # Final Return Leg detection
             returned_rows = group_data[group_data['status'].str.lower() == 'returned']
             if not returned_rows.empty:
                 pos = group_data.index.get_loc(returned_rows.index[0])
@@ -189,15 +186,17 @@ class SimulationPlotter:
                 y_pos = current_y_base + row['Lane']
                 color = '#FFA726' if row.get('IsReturn') else 'skyblue'
                 ax.barh(y=y_pos, width=row['Duration'], left=row['Start'], height=0.8, color=color, edgecolor='black')
-                ax.text(row['Start'] + (row['Duration'] / 2), y_pos, str(row['Order']), ha='center', va='center',
-                        fontsize=8)
+
+                # MODIFICATION: Updated text to include Order ID and Duration
+                label_text = f"{row['Order']} ({int(row['Duration'])}s)"
+                ax.text(row['Start'] + (row['Duration'] / 2), y_pos, label_text,
+                        ha='center', va='center', fontsize=8, fontweight='bold')
 
             yticks.append(current_y_base + (max_lane / 2.0))
             yticklabels.append(v)
             ax.axhline(y=current_y_base - 0.5, color='gray', linestyle=':', alpha=0.4)
             current_y_base += max_lane + 2.0
 
-        # --- MODIFICATION: Dual-Grid (Manual Implementation) ---
         max_x = df_opt['End'].max()
         ax.set_xticks(np.arange(0, max_x + 100, 100))
         ax.set_xticks(np.arange(0, max_x + 10, 10), minor=True)

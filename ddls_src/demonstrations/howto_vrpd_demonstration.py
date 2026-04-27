@@ -26,7 +26,7 @@ def run_matrix_scenario_demo():
         "scenarios",
         "vrp_d_instances",
         "VRP-D",
-        "A-n32-k5.vrp"
+        "A-n69-k9.vrp"
     )
     vrp_instance_path = os.path.normpath(vrp_instance_path)
     sim_config = {
