@@ -74,7 +74,7 @@ class Constraint(ABC, EventManager):
         """
         raise NotImplementedError
 
-    def _evaluate_impact(self, p_entity, p_action_index: ActionIndex, deck) -> Tuple[List[int], List[int]]:
+    def evaluate_impact(self, p_entity, p_action_index: ActionIndex, deck) -> Tuple[Set[int], Set[int]]:
         """
         Calculates the Delta (Impact) of this constraint.
         """
@@ -87,8 +87,8 @@ class Constraint(ABC, EventManager):
         previous_block_set = self._entity_invalidation_map[entity_id]
 
         # 3. Calculate Deltas
-        to_block = list(current_block_set.difference(previous_block_set))
-        to_unblock = list(previous_block_set.difference(current_block_set))
+        to_block = (current_block_set.difference(previous_block_set))
+        to_unblock = (previous_block_set.difference(current_block_set))
         for action in to_block:
             deck[action].add(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
         for action in to_unblock:
@@ -97,6 +97,12 @@ class Constraint(ABC, EventManager):
         self._entity_invalidation_map[entity_id] = current_block_set
 
         self.evaluation_history.append(f"{p_entity.C_NAME} - {p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}")
+
+        return to_block, to_unblock
+
+    def _evaluate_impact(self, p_entity, p_action_index, deck):
+        to_block = set()
+        to_unblock = set()
 
         return to_block, to_unblock
 
@@ -1872,7 +1878,7 @@ class ConstraintManager(EventManager):
             print(f"[ConstraintManager] Found {len(constraints_to_check)} constraints for entity {entity.C_NAME}")
 
         for constraint in constraints_to_check:
-            to_block, to_unblock = constraint._evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
+            to_block, to_unblock = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
 
             # DEBUG 3: specific constraint output
             if to_block or to_unblock:
@@ -1887,12 +1893,12 @@ class ConstraintManager(EventManager):
                 "to_block": total_to_block,
                 "to_unblock": total_to_unblock
             }
-            if self.custom_log:
-                print(f"[ConstraintManager] Raising update event! (+{len(total_to_block)} / -{len(total_to_unblock)})")
-            self._raise_event(p_event_id = ConstraintManager.C_EVENT_MASK_UPDATED,
-                              p_event_object = Event(p_raising_object=self,
-                                                     to_block = total_to_block,
-                                                     to_unblock = total_to_unblock))
+            # if self.custom_log:
+            #     print(f"[ConstraintManager] Raising update event! (+{len(total_to_block)} / -{len(total_to_unblock)})")
+            # self._raise_event(p_event_id = ConstraintManager.C_EVENT_MASK_UPDATED,
+            #                   p_event_object = Event(p_raising_object=self,
+            #                                          to_block = total_to_block,
+            #                                          to_unblock = total_to_unblock))
         else:
             if self.custom_log:
                 print("[ConstraintManager] No net change in masks. Event skipped.")
@@ -1916,7 +1922,7 @@ class ConstraintManager(EventManager):
             for entity in entity_dict.values():
                 constraints_to_check = self.get_constraints_by_entity(entity)
                 for constraint in constraints_to_check:
-                    to_block, _ = constraint._evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
+                    to_block, _ = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
                     total_to_block.extend(to_block)
 
         if total_to_block:

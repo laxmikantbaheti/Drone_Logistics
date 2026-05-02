@@ -1777,8 +1777,8 @@ class ConstraintManager(EventManager):
             print(f"[ConstraintManager] Found {len(constraints_to_check)} constraints for entity {entity.C_NAME}")
 
         for constraint in constraints_to_check:
-            to_block, to_unblock = constraint._evaluate_impact(p_entity=entity, p_action_index=self.action_index,
-                                                               deck=self.constraint_deck)
+            to_block, to_unblock = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index,
+                                                              deck=self.constraint_deck)
 
             # DEBUG 3: specific constraint output
             if to_block or to_unblock:
@@ -1822,8 +1822,8 @@ class ConstraintManager(EventManager):
             for entity in entity_dict.values():
                 constraints_to_check = self.get_constraints_by_entity(entity)
                 for constraint in constraints_to_check:
-                    to_block, _ = constraint._evaluate_impact(p_entity=entity, p_action_index=self.action_index,
-                                                              deck=self.constraint_deck)
+                    to_block, _ = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index,
+                                                             deck=self.constraint_deck)
                     total_to_block.extend(to_block)
 
         if total_to_block:

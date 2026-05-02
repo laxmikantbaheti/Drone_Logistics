@@ -26,7 +26,7 @@ def run_matrix_scenario_demo():
         "scenarios",
         "vrp_d_instances",
         "VRP-D",
-        "A-n69-k9.vrp"
+        "A-n32-k5.vrp"
     )
     vrp_instance_path = os.path.normpath(vrp_instance_path)
     sim_config = {
@@ -40,8 +40,8 @@ def run_matrix_scenario_demo():
                 "instance_path": vrp_instance_path,
 
                 # Keep these custom for your delivery model
-                "num_drones": 2,
-                "num_microhubs": 2,
+                "num_drones": 0,
+                "num_microhubs": 0,
                 "bbox": (0, 0, 100, 100),
                 "std_dev_scale": 4.0,
 

@@ -59,6 +59,7 @@ class GlobalState:
         self.entity_dicts["Node Pair"] = self.node_pairs
         self.entities_by_type = {"Node", "Edge", "Order", "Pseudo Order", "Truck", "Drone", "Micro Hub", "Node Pair"}
         self.orders_by_nodes = self.setup_order_by_node_pairs()
+        self.capacity_demands = {key: [o.size for o in value] for key, value in self.orders_by_nodes.items()}
         self.movement_mode = movement_mode
 
         # Initialize the centralized DataManager
@@ -280,14 +281,11 @@ class GlobalState:
         print("GlobalState: Update plot data placeholder added to figure_data.")
 
     def setup_order_by_node_pairs(self):
-        order_requests = {}
+        order_requests = {key:[] for key in self.node_pairs.keys()}
         for ids,order in self.orders.items() :
             node_pick_up = order.get_pickup_node_id()
             node_delivery = order.get_delivery_node_id()
-            if (node_pick_up, node_delivery) not in order_requests.keys():
-                order_requests[(node_pick_up, node_delivery)] = [order]
-            else:
-                order_requests[(node_pick_up,node_delivery)].append(order)
+            order_requests[(node_pick_up,node_delivery)].append(order)
         return order_requests
 
     def get_order_requests(self):
@@ -311,6 +309,8 @@ class GlobalState:
     def add_dynamic_orders(self, p_orders:list):
         for ordr in p_orders:
             self.orders[ordr.get_id()] = ordr
+            self.orders_by_nodes[ordr.get_pickup_node_id(), ordr.get_delivery_node_id()].append(ordr)
+            self.capacity_demands[ordr.get_pickup_node_id(), ordr.get_delivery_node_id()].append(ordr.size)
             if isinstance(ordr, PseudoOrder):
                 self.pseudo_orders[ordr.get_id()] = ordr
 
