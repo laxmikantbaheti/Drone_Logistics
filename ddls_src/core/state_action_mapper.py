@@ -26,7 +26,7 @@ class Constraint(ABC, EventManager):
     C_ASSOCIATED_ENTITIES = []
     C_ACTIONS_AFFECTED = []
     C_DEFAULT_EFFECT = True
-    C_CONTINUOUS_CONSTRAINT = True
+    C_GLOBAL_CONSTRAINT = False
     C_NAME = None
     C_EVENT_CONSTRAINT_UPDATE = "ConstraintUpdate"
 
@@ -685,7 +685,7 @@ class OrderSizeConstraint(Constraint):
 
 class CapacityConstraint(Constraint):
     C_NAME = "CapacityConstraint"
-    C_CONTINUOUS_CONSTRAINT = True
+    C_GLOBAL_CONSTRAINT = True
     C_ACTIVE = False
     C_ASSOCIATED_ENTITIES = ["Node Pair", "Vehicle", "Order"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
@@ -1833,6 +1833,7 @@ class ConstraintManager(EventManager):
         self.entity_constraints = {}
         self.reverse_action_map = reverse_action_map
         self.action_index = action_index
+        self.global_constraints = []
         self.setup_constraint_entity_map()
         self.constraint_deck = {key: set() for key in self.reverse_action_map}
         self.masks = [0 for i in range(len(self.reverse_action_map))]
@@ -1843,6 +1844,8 @@ class ConstraintManager(EventManager):
     def setup_constraint_entity_map(self):
         self.entity_constraints = {}
         for con in Constraint.__subclasses__():
+            if con.C_GLOBAL_CONSTRAINT:
+                self.global_constraints.append(con(p_reverse_action_map=self.reverse_action_map, p_action_index=self.action_index))
             # Skip abstract or base classes if they somehow get in
             if con.C_ACTIVE and con is not Constraint:
                 constr = con(p_reverse_action_map=self.reverse_action_map, p_action_index=self.action_index)
@@ -1884,6 +1887,17 @@ class ConstraintManager(EventManager):
             if to_block or to_unblock:
                 if self.custom_log:
                     print(f"   -> {constraint.C_NAME}: Block={len(to_block)}, Unblock={len(to_unblock)}")
+
+            total_to_block.extend(to_block)
+            total_to_unblock.extend(to_unblock)
+
+        for gl_constraint in self.global_constraints:
+            to_block, to_unblock = gl_constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
+
+            # DEBUG 3: specific constraint output
+            if to_block or to_unblock:
+                if self.custom_log:
+                    print(f"   -> {gl_constraint.C_NAME}: Block={len(to_block)}, Unblock={len(to_unblock)}")
 
             total_to_block.extend(to_block)
             total_to_unblock.extend(to_unblock)
