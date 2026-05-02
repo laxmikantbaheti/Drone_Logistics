@@ -26,6 +26,7 @@ class Constraint(ABC, EventManager):
     C_ASSOCIATED_ENTITIES = []
     C_ACTIONS_AFFECTED = []
     C_DEFAULT_EFFECT = True
+    C_CONTINUOUS_CONSTRAINT = True
     C_NAME = None
     C_EVENT_CONSTRAINT_UPDATE = "ConstraintUpdate"
 
@@ -73,7 +74,7 @@ class Constraint(ABC, EventManager):
         """
         raise NotImplementedError
 
-    def evaluate_impact(self, p_entity, p_action_index: ActionIndex, deck) -> Tuple[List[int], List[int]]:
+    def _evaluate_impact(self, p_entity, p_action_index: ActionIndex, deck) -> Tuple[List[int], List[int]]:
         """
         Calculates the Delta (Impact) of this constraint.
         """
@@ -531,44 +532,48 @@ class VehicleCapacityConstraint(Constraint):
         if not isinstance(p_entity, Vehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
-        relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+        if isinstance(p_entity, Vehicle):
+            relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
 
-        # 1. Fetch the dynamic remaining size of the vehicle
-        remaining_capacity = p_entity.get_remaining_capacity()
+            # 1. Fetch the dynamic remaining size of the vehicle
+            remaining_capacity = p_entity.get_remaining_capacity()
 
-        global_state = getattr(p_entity, 'global_state', None)
-        if global_state is None:
-            return [], list(relevant_actions)
+            global_state = getattr(p_entity, 'global_state', None)
+            if global_state is None:
+                return [], list(relevant_actions)
 
-        # 2. Fetch the active order requests
-        order_requests = global_state.get_order_requests()
+            # 2. Fetch the active order requests
+            order_requests = global_state.get_order_requests()
 
-        actions_to_block = set()
-        actions_to_unblock = set()
+            actions_to_block = set()
+            actions_to_unblock = set()
 
-        # 3. Evaluate every possible assign action for this vehicle
-        for action_idx in relevant_actions:
-            action_tuple = self.reverse_action_map.get(action_idx)
-            if not action_tuple:
-                continue
+            # 3. Evaluate every possible assign action for this vehicle
+            for action_idx in relevant_actions:
+                action_tuple = self.reverse_action_map.get(action_idx)
+                if not action_tuple:
+                    continue
 
-            # Action Tuple Format: (ActionType, NodePair_ID, Vehicle_ID)
-            node_pair_id = action_tuple[1]
+                # Action Tuple Format: (ActionType, NodePair_ID, Vehicle_ID)
+                node_pair_id = action_tuple[1]
 
-            if node_pair_id not in order_requests:
-                # If there's no active request here, unblock capacity (other constraints handle missing requests)
-                actions_to_unblock.add(action_idx)
-                continue
+                if node_pair_id not in order_requests:
+                    # If there's no active request here, unblock capacity (other constraints handle missing requests)
+                    actions_to_unblock.add(action_idx)
+                    continue
 
-            target_order = order_requests[node_pair_id][0]
+                target_order = order_requests[node_pair_id][0]
 
-            # 4. Check if the specific order fits in the vehicle
-            if target_order.size > remaining_capacity:
-                actions_to_block.add(action_idx)
-            else:
-                actions_to_unblock.add(action_idx)
+                # 4. Check if the specific order fits in the vehicle
+                if target_order.size > remaining_capacity:
+                    actions_to_block.add(action_idx)
+                else:
+                    actions_to_unblock.add(action_idx)
 
-        return list(actions_to_block), list(actions_to_unblock)
+            return list(actions_to_block), list(actions_to_unblock)
+
+        elif isinstance(p_entity, Order):
+            pass
 
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
@@ -672,6 +677,16 @@ class OrderSizeConstraint(Constraint):
     def update_operability(self, p_entity, **p_kwargs):
         pass
 
+class CapacityConstraint(Constraint):
+    C_NAME = "CapacityConstraint"
+    C_CONTINUOUS_CONSTRAINT = True
+    C_ACTIVE = False
+    C_ASSOCIATED_ENTITIES = ["Node Pair", "Vehicle", "Order"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
+
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+        return [],[]
 
 class TripWithinRangeConstraint(Constraint):
     C_ACTIVE = False
@@ -1857,7 +1872,7 @@ class ConstraintManager(EventManager):
             print(f"[ConstraintManager] Found {len(constraints_to_check)} constraints for entity {entity.C_NAME}")
 
         for constraint in constraints_to_check:
-            to_block, to_unblock = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
+            to_block, to_unblock = constraint._evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
 
             # DEBUG 3: specific constraint output
             if to_block or to_unblock:
@@ -1901,7 +1916,7 @@ class ConstraintManager(EventManager):
             for entity in entity_dict.values():
                 constraints_to_check = self.get_constraints_by_entity(entity)
                 for constraint in constraints_to_check:
-                    to_block, _ = constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
+                    to_block, _ = constraint._evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
                     total_to_block.extend(to_block)
 
         if total_to_block:
