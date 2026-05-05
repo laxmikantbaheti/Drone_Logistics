@@ -79,32 +79,41 @@ class Constraint(ABC, EventManager):
         Calculates the Delta (Impact) of this constraint.
         """
         # 1. Get current "Desired Blocks"
-        current_actions_to_block, current_actions_to_unblock = self._get_restricted_actions(p_entity, p_action_index)
-        current_block_set = set(current_actions_to_block) if current_actions_to_block else set()
+        if not self.C_GLOBAL_CONSTRAINT:
+            current_actions_to_block, current_actions_to_unblock = self._get_restricted_actions(p_entity, p_action_index)
+            current_block_set = set(current_actions_to_block) if current_actions_to_block else set()
 
         # 2. Get "Previous Blocks"
-        entity_id = p_entity.get_id()
-        previous_block_set = self._entity_invalidation_map[entity_id]
+            entity_id = p_entity.get_id()
+            previous_block_set = self._entity_invalidation_map[entity_id]
 
         # 3. Calculate Deltas
-        to_block = (current_block_set.difference(previous_block_set))
-        to_unblock = (previous_block_set.difference(current_block_set))
+            to_block = (current_block_set.difference(previous_block_set))
+            to_unblock = (previous_block_set.difference(current_block_set))
+            self.update_constraint_deck(to_block, to_unblock, deck, p_entity)
+            # 4. Update Memory
+            self._entity_invalidation_map[entity_id] = current_block_set
+
+            self.evaluation_history.append(f"{p_entity.C_NAME} - {p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}")
+
+        else:
+            to_block, to_unblock = self.evaluate_impact_global(p_entity=p_entity, p_action_index=p_action_index, deck=deck)
+            # current_block_set = set(current_actions_to_block) if current_actions_to_block else set()
+            # to_block, to_unblock = self.examine_global_cache(current_block_set)
+            # self.update_constraint_deck(to_block, to_unblock, deck, p_entity)
+
+        return to_block, to_unblock
+
+
+    def evaluate_impact_global(self, p_entity, p_action_index, deck):
+
+        raise NotImplementedError
+
+    def update_constraint_deck(self, to_block, to_unblock, deck, p_entity):
         for action in to_block:
             deck[action].add(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
         for action in to_unblock:
             deck[action].remove(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
-        # 4. Update Memory
-        self._entity_invalidation_map[entity_id] = current_block_set
-
-        self.evaluation_history.append(f"{p_entity.C_NAME} - {p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}")
-
-        return to_block, to_unblock
-
-    def _evaluate_impact(self, p_entity, p_action_index, deck):
-        to_block = set()
-        to_unblock = set()
-
-        return to_block, to_unblock
 
     def clear_cache(self):
         self._entity_invalidation_map.clear()
@@ -116,6 +125,10 @@ class Constraint(ABC, EventManager):
 
     def update_operability(self, p_entity: LogisticEntity, **p_kwargs):
         pass
+
+    def examine_global_cache(self, current_block_set):
+
+        raise NotImplementedError
 
 
 # -------------------------------------------------------------------------------------------------
@@ -529,7 +542,7 @@ class VehicleAssignabilityConstraint(Constraint):
 
 class VehicleCapacityConstraint(Constraint):
     C_NAME = "VehicleCapacityConstraint"
-    C_ACTIVE = True
+    C_ACTIVE = False
     C_ASSOCIATED_ENTITIES = ["Truck", "Drone"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
@@ -623,7 +636,7 @@ class VehicleCapacityConstraint(Constraint):
 
 class OrderSizeConstraint(Constraint):
     C_NAME = "OrderSizeConstraint"
-    C_ACTIVE = True
+    C_ACTIVE = False
     C_ASSOCIATED_ENTITIES = ["Node Pair"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
@@ -686,13 +699,59 @@ class OrderSizeConstraint(Constraint):
 class CapacityConstraint(Constraint):
     C_NAME = "CapacityConstraint"
     C_GLOBAL_CONSTRAINT = True
-    C_ACTIVE = False
-    C_ASSOCIATED_ENTITIES = ["Node Pair", "Vehicle", "Order"]
+    C_ACTIVE = True
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "Order"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
     def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         return [],[]
+
+    def evaluate_impact_global(self, p_entity, p_action_index, deck):
+
+        blocked_actions = []
+        unblocked_actions = []
+        for vid,v in (p_entity.global_state.trucks|p_entity.global_state.drones).items():
+            cap = v.get_remaining_capacity()
+            for nid, dem in p_entity.global_state.get_pending_demands().items():
+                n_pair = p_entity.global_state.node_pairs[nid]
+                if not len(dem):
+                    overload = True
+                else:
+                    demand = dem[-1]
+                    overload = cap < demand
+                act = list(v.associated_action_indexes.intersection(n_pair.associated_action_indexes))[0]
+
+                if overload:
+                    if act not in blocked_actions:
+                        blocked_actions.append(act)
+                    if vid in self._entity_invalidation_map.keys():
+                        self._entity_invalidation_map[vid].add(act)
+                    else:
+                        self._entity_invalidation_map[vid] = {act}
+                    if act in unblocked_actions:
+                        unblocked_actions.remove(act)
+                    if not act in deck.keys():
+                        raise ValueError("The constraint deck not initialized/updated correctly. All action ids shall always be present as keys in the constraint deck.")
+                    deck[act].add(f"{self.C_NAME} - {v.C_NAME} {v.get_id()} - {n_pair.C_NAME} {n_pair.get_id()}")
+                else:
+                    if act not in unblocked_actions:
+                        unblocked_actions.append(act)
+                    if vid not in self._entity_invalidation_map.keys():
+                        self._entity_invalidation_map[vid] = set()
+                    if act in self._entity_invalidation_map[vid]:
+                        self._entity_invalidation_map[vid].remove(act)
+                    if act in blocked_actions:
+                        blocked_actions.remove(act)
+                    if not act in deck.keys():
+                        raise ValueError("The constraint deck not initialized/updated correctly. All action ids shall always be present as keys in the constraint deck.")
+                    ident = f"{self.C_NAME} - {v.C_NAME} {v.get_id()} - {n_pair.C_NAME} {n_pair.get_id()}"
+                    if ident in deck[act]:
+                        deck[act].remove(ident)
+
+
+        return blocked_actions, unblocked_actions
+
 
 class TripWithinRangeConstraint(Constraint):
     C_ACTIVE = False
@@ -1891,23 +1950,23 @@ class ConstraintManager(EventManager):
             total_to_block.extend(to_block)
             total_to_unblock.extend(to_unblock)
 
-        for gl_constraint in self.global_constraints:
-            to_block, to_unblock = gl_constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
+        # for gl_constraint in self.global_constraints:
+        #     to_block, to_unblock = gl_constraint.evaluate_impact(p_entity=entity, p_action_index=self.action_index, deck=self.constraint_deck)
+        #
+        #     # DEBUG 3: specific constraint output
+        #     if to_block or to_unblock:
+        #         if self.custom_log:
+        #             print(f"   -> {gl_constraint.C_NAME}: Block={len(to_block)}, Unblock={len(to_unblock)}")
+        #
+        #     total_to_block.extend(to_block)
+        #     total_to_unblock.extend(to_unblock)
 
-            # DEBUG 3: specific constraint output
-            if to_block or to_unblock:
-                if self.custom_log:
-                    print(f"   -> {gl_constraint.C_NAME}: Block={len(to_block)}, Unblock={len(to_unblock)}")
-
-            total_to_block.extend(to_block)
-            total_to_unblock.extend(to_unblock)
-
-        if len(total_to_block) > 0 or len(total_to_unblock) > 0:
-            event_data = {
-                "to_block": total_to_block,
-                "to_unblock": total_to_unblock
-            }
-            # if self.custom_log:
+        # if len(total_to_block) > 0 or len(total_to_unblock) > 0:
+        #     event_data = {
+        #         "to_block": total_to_block,
+        #         "to_unblock": total_to_unblock
+        #     }
+        #     # if self.custom_log:
             #     print(f"[ConstraintManager] Raising update event! (+{len(total_to_block)} / -{len(total_to_unblock)})")
             # self._raise_event(p_event_id = ConstraintManager.C_EVENT_MASK_UPDATED,
             #                   p_event_object = Event(p_raising_object=self,

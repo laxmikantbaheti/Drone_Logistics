@@ -285,7 +285,7 @@ class GlobalState:
         for ids,order in self.orders.items() :
             node_pick_up = order.get_pickup_node_id()
             node_delivery = order.get_delivery_node_id()
-            order_requests[(node_pick_up,node_delivery)].append(order)
+            order_requests[node_pick_up,node_delivery].append(order)
         return order_requests
 
     def get_order_requests(self):
@@ -330,8 +330,10 @@ class GlobalState:
         self.data_manager.reset()
         self.event_logger.reset()
 
-    # def add_global_state(self, entities):
-    #     for entity in entities:
-    #         entity.global_state = self
+    def get_available_capacities(self):
 
+        caps = {v.get_id():v.get_remaining_capacity() for v in (self.trucks | self.drones).values()}
+        return caps
 
+    def get_pending_demands(self):
+        return self.capacity_demands
