@@ -792,7 +792,7 @@ class Vehicle(LogisticEntity, ABC):
         if p_orders:
             from ddls_src.entities.order import PseudoOrder  # Ensure this is imported safely
 
-            if self.get_remaining_capacity() < len(p_orders):
+            if self.get_remaining_capacity() < sum([o.size for o in p_orders]):
                 self.log(self.C_LOG_TYPE_W,
                          f"Vehicle {self.get_id()} REJECTED assignment. "
                          f"Attempted: {len(p_orders)}, Remaining Capacity: {self.get_remaining_capacity()}")

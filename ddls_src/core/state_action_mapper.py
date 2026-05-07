@@ -718,7 +718,7 @@ class CapacityConstraint(Constraint):
                 if not len(dem):
                     overload = True
                 else:
-                    demand = dem[-1]
+                    demand = dem[0]
                     overload = cap < demand
                 act = list(v.associated_action_indexes.intersection(n_pair.associated_action_indexes))[0]
 

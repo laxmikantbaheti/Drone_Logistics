@@ -288,17 +288,21 @@ class GlobalState:
             order_requests[node_pick_up,node_delivery].append(order)
         return order_requests
 
+    # def get_order_requests(self):
+        # order_requests = {}
+        # for ids, order in self.orders.items():
+        #     if order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_STATUS[0]) == order.C_STATUS_PLACED:
+        #         node_pick_up = order.get_pickup_node_id()
+        #         node_delivery = order.get_delivery_node_id()
+        #         if (node_pick_up, node_delivery) not in order_requests.keys():
+        #             order_requests[(node_pick_up, node_delivery)] = [order]
+        #         else:
+        #             order_requests[(node_pick_up, node_delivery)].append(order)
+        # return order_requests
+
     def get_order_requests(self):
-        order_requests = {}
-        for ids, order in self.orders.items():
-            if order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_STATUS[0]) == order.C_STATUS_PLACED:
-                node_pick_up = order.get_pickup_node_id()
-                node_delivery = order.get_delivery_node_id()
-                if (node_pick_up, node_delivery) not in order_requests.keys():
-                    order_requests[(node_pick_up, node_delivery)] = [order]
-                else:
-                    order_requests[(node_pick_up, node_delivery)].append(order)
-        return order_requests
+        req = {np_id: ords for np_id, ords in self.orders_by_nodes.items() if len(ords)}
+        return req
 
     # def setup_type_dicts(self):
     #     self.entity_dicts = {"Node":self.nodes, "Edge", "Micro Hub", "Truck", "Drone", "Order", "Pseudo Order", "Node Pair"}
@@ -336,4 +340,5 @@ class GlobalState:
         return caps
 
     def get_pending_demands(self):
-        return self.capacity_demands
+        caps = self.capacity_demands
+        return caps

@@ -282,6 +282,7 @@ class SupplyChainManager(System):
                 if assigned:
                     if self.custom_log:
                         print(f"Order {order.get_id()} assigned to vehicle {truck.get_id()}.")
+                        # order.global_state.orders_by_nodes[order.get_pickup_node_id(), order.get_delivery_node_id()].remove(order)
                 return assigned
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_DRONE:
@@ -327,7 +328,7 @@ class SupplyChainManager(System):
             return False
 
     def assign_order(self, p_order: Order, p_entity):
-        self.global_state.get_order_requests()
+        # self.global_state.get_order_requests()
         assigned = True
         if isinstance(p_entity, MicroHub):
             assigned = p_order.assign_micro_hub(p_entity.id) and assigned
