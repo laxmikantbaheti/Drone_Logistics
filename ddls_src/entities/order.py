@@ -183,14 +183,16 @@ class Order(LogisticEntity):
         self.assigned_vehicle_id = vehicle_id
         self.assigned_vehicle = vehicle
         self.status = "assigned"
-        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
-                                            [vehicle_id, self.C_STATUS_ASSIGNED])
+        # self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
+        #                                     [vehicle_id, self.C_STATUS_ASSIGNED])
         o = self.global_state.orders_by_nodes[(self.pickup_node_id, self.delivery_node_id)].pop(0)
         if o != self:
             raise ValueError("Something is wrong in handling orders in the node pair containers.")
         c = self.global_state.capacity_demands[self.pickup_node_id, self.delivery_node_id].pop(0)
         if c!=self.size:
             raise ValueError("Something is wrong in handling capacity demands in global state. The assigned order does not match with the token sequence.")
+        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
+                                            [vehicle_id, self.C_STATUS_ASSIGNED])
         self.log_current_state()
         return True
 

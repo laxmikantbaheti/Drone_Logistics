@@ -1,6 +1,6 @@
 import itertools
 
-from mlpro.bf import ParamError
+# from mlpro.bf import ParamError
 
 from ddls_src.entities.order import PseudoOrder
 # Import the DataManager from the functions directory
@@ -196,7 +196,7 @@ class GlobalState:
         elif p_vehicle_id in self.drones:
             return self.drones[p_vehicle_id]
         else:
-            raise ParamError("Vehicle does not exist in the keys of the global state.")
+            raise ValueError("Vehicle does not exist in the keys of the global state.")
 
     def get_vehicle_status(self, vehicle_id: int) -> str:
         """Returns vehicle status (can be truck or drone)."""
@@ -354,7 +354,7 @@ class GlobalState:
         return caps
 
     def get_pending_demands(self):
-        caps = self.capacity_demands
+        caps = self.setup_capacity_demands()
         return caps
 
     def setup_capacity_demands(self):
