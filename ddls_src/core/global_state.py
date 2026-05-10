@@ -1,4 +1,7 @@
 import itertools
+
+from mlpro.bf import ParamError
+
 from ddls_src.entities.order import PseudoOrder
 # Import the DataManager from the functions directory
 from ddls_src.functions.data_manager_obsolete import DataManager
@@ -59,7 +62,7 @@ class GlobalState:
         self.entity_dicts["Node Pair"] = self.node_pairs
         self.entities_by_type = {"Node", "Edge", "Order", "Pseudo Order", "Truck", "Drone", "Micro Hub", "Node Pair"}
         self.orders_by_nodes = self.setup_order_by_node_pairs()
-        self.capacity_demands = {key: [o.size for o in value] for key, value in self.orders_by_nodes.items()}
+        self.capacity_demands = self.setup_capacity_demands()
         self.movement_mode = movement_mode
 
         # Initialize the centralized DataManager
@@ -186,6 +189,15 @@ class GlobalState:
         # Assumes Order class has status attribute
         return order.status
 
+
+    def get_vehicle(self, p_vehicle_id):
+        if p_vehicle_id in self.trucks:
+            return self.trucks[p_vehicle_id]
+        elif p_vehicle_id in self.drones:
+            return self.drones[p_vehicle_id]
+        else:
+            raise ParamError("Vehicle does not exist in the keys of the global state.")
+
     def get_vehicle_status(self, vehicle_id: int) -> str:
         """Returns vehicle status (can be truck or drone)."""
         # This requires checking both truck and drone dictionaries or a unified vehicle type handling
@@ -288,21 +300,21 @@ class GlobalState:
             order_requests[node_pick_up,node_delivery].append(order)
         return order_requests
 
-    # def get_order_requests(self):
-        # order_requests = {}
-        # for ids, order in self.orders.items():
-        #     if order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_STATUS[0]) == order.C_STATUS_PLACED:
-        #         node_pick_up = order.get_pickup_node_id()
-        #         node_delivery = order.get_delivery_node_id()
-        #         if (node_pick_up, node_delivery) not in order_requests.keys():
-        #             order_requests[(node_pick_up, node_delivery)] = [order]
-        #         else:
-        #             order_requests[(node_pick_up, node_delivery)].append(order)
-        # return order_requests
-
     def get_order_requests(self):
-        req = {np_id: ords for np_id, ords in self.orders_by_nodes.items() if len(ords)}
-        return req
+        order_requests = {}
+        for ids, order in self.orders.items():
+            if order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_STATUS[0]) == order.C_STATUS_PLACED:
+                node_pick_up = order.get_pickup_node_id()
+                node_delivery = order.get_delivery_node_id()
+                if (node_pick_up, node_delivery) not in order_requests.keys():
+                    order_requests[(node_pick_up, node_delivery)] = [order]
+                else:
+                    order_requests[(node_pick_up, node_delivery)].append(order)
+        return order_requests
+
+    # def get_order_requests(self):
+    #     req = {np_id: ords for np_id, ords in self.orders_by_nodes.items() if len(ords)}
+    #     return req
 
     # def setup_type_dicts(self):
     #     self.entity_dicts = {"Node":self.nodes, "Edge", "Micro Hub", "Truck", "Drone", "Order", "Pseudo Order", "Node Pair"}
@@ -329,6 +341,8 @@ class GlobalState:
             # entities["orders"].pop(ps_order)
         # self.orders = entities["orders"]
         self.pseudo_orders = {}
+        # self.capacity_demands = self.setup_capacity_demands()
+        # self.orders_by_nodes = self.setup_order_by_node_pairs()
 
         # Clear logs at the start of a new run
         self.data_manager.reset()
@@ -341,4 +355,8 @@ class GlobalState:
 
     def get_pending_demands(self):
         caps = self.capacity_demands
+        return caps
+
+    def setup_capacity_demands(self):
+        caps = {key: [o.size for o in value] for key, value in self.orders_by_nodes.items()}
         return caps

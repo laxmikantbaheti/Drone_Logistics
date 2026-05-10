@@ -26,14 +26,14 @@ class MaskablePPOTraining(Training):
         print(f"Root: {self.project_root}")
         print(f"Saving to: {self.run_dir}\n")
 
-        try:
-            self.model.learn(
+
+        self.model.learn(
                 total_timesteps=total_timesteps,
                 callback=self.get_episode_callback(),
                 progress_bar=True
             )
-        except KeyboardInterrupt:
-            print("\nInterrupt detected. Cleaning up and finalizing logs...")
+        # except KeyboardInterrupt:
+        #     print("\nInterrupt detected. Cleaning up and finalizing logs...")
 
         # Run-wide Aggregation of Report Metrics
         if self.all_episodes_kpis:

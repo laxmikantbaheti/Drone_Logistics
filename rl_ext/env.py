@@ -102,7 +102,10 @@ class LogisticsEnv(gym.Env):
         }
 
     def action_masks(self) -> np.ndarray:
+
+        # TODO: shift to numpy. will make it faster
         return self._system.get_agent_mask().astype(bool)
+
 
     def _calculate_reward(self) -> float:
         # Kept for compatibility but not used in step() anymore per your request

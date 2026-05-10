@@ -35,7 +35,10 @@ class Constraint(ABC, EventManager):
         self.reverse_action_map = p_reverse_action_map
 
         # State tracking
-        self._entity_invalidation_map = defaultdict(set)
+        if not self.C_GLOBAL_CONSTRAINT:
+            self._entity_invalidation_map = defaultdict(set)
+        else:
+            self._entity_invalidation_map = set()
         self.action_index = p_action_index
         self.associated_action_index = None
         self.find_associated_actions()
@@ -699,8 +702,8 @@ class OrderSizeConstraint(Constraint):
 class CapacityConstraint(Constraint):
     C_NAME = "CapacityConstraint"
     C_GLOBAL_CONSTRAINT = True
-    C_ACTIVE = True
-    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "Order"]
+    C_ACTIVE = False
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "Node Pair"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
                           SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
@@ -711,46 +714,110 @@ class CapacityConstraint(Constraint):
 
         blocked_actions = []
         unblocked_actions = []
-        for vid,v in (p_entity.global_state.trucks|p_entity.global_state.drones).items():
-            cap = v.get_remaining_capacity()
+        for vid,v in (p_entity.global_state.trucks|p_entity.global_state.drones|p_entity.global_state.micro_hubs).items():
+            if isinstance(v, Drone) or isinstance(v, Truck):
+                cap = v.get_remaining_capacity()
             for nid, dem in p_entity.global_state.get_pending_demands().items():
                 n_pair = p_entity.global_state.node_pairs[nid]
                 if not len(dem):
                     overload = True
                 else:
                     demand = dem[0]
-                    overload = cap < demand
-                act = list(v.associated_action_indexes.intersection(n_pair.associated_action_indexes))[0]
+                    if isinstance(v, MicroHub):
+                        overload = False
+                    else:
+                        overload = cap < demand
+                act = list(v.associated_action_indexes.intersection(n_pair.associated_action_indexes))
+                # The actions assigning a trip to a micro-hub being assigned to the same micro-hub are disabled, thus there are no intersecting actions
+                if len(act):
+                    act = act[0]
+                else:
+                    continue
 
                 if overload:
-                    if act not in blocked_actions:
-                        blocked_actions.append(act)
-                    if vid in self._entity_invalidation_map.keys():
-                        self._entity_invalidation_map[vid].add(act)
-                    else:
-                        self._entity_invalidation_map[vid] = {act}
-                    if act in unblocked_actions:
-                        unblocked_actions.remove(act)
+                    # if act not in blocked_actions:
+                    #     blocked_actions.append(act)
+                    self._entity_invalidation_map.add(act)
+                    # if act in unblocked_actions:
+                    #     unblocked_actions.remove(act)
                     if not act in deck.keys():
                         raise ValueError("The constraint deck not initialized/updated correctly. All action ids shall always be present as keys in the constraint deck.")
-                    deck[act].add(f"{self.C_NAME} - {v.C_NAME} {v.get_id()} - {n_pair.C_NAME} {n_pair.get_id()}")
+                    deck[act].add(f"{self.C_NAME}")
                 else:
                     if act not in unblocked_actions:
                         unblocked_actions.append(act)
-                    if vid not in self._entity_invalidation_map.keys():
-                        self._entity_invalidation_map[vid] = set()
-                    if act in self._entity_invalidation_map[vid]:
-                        self._entity_invalidation_map[vid].remove(act)
-                    if act in blocked_actions:
-                        blocked_actions.remove(act)
+                    if act in self._entity_invalidation_map:
+                        self._entity_invalidation_map.remove(act)
+                    # if act in blocked_actions:
+                    #     blocked_actions.remove(act)
                     if not act in deck.keys():
                         raise ValueError("The constraint deck not initialized/updated correctly. All action ids shall always be present as keys in the constraint deck.")
-                    ident = f"{self.C_NAME} - {v.C_NAME} {v.get_id()} - {n_pair.C_NAME} {n_pair.get_id()}"
+                    ident = f"{self.C_NAME}"
                     if ident in deck[act]:
                         deck[act].remove(ident)
-
+        blocked_actions = list(self._entity_invalidation_map)
+        unblocked_actions = list(self.associated_action_index.difference(self._entity_invalidation_map))
 
         return blocked_actions, unblocked_actions
+
+class CapacityConstraint2(Constraint):
+    C_NAME = "CapacityConstraint"
+    C_GLOBAL_CONSTRAINT = True
+    C_ACTIVE = True
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "Node Pair"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
+                          SimulationActions.ASSIGN_ORDER_TO_DRONE,
+                          SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB]
+
+    def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
+        return [],[]
+
+    def evaluate_impact_global(self, p_entity, p_action_index, deck):
+
+        blocked_actions = []
+        unblocked_actions = []
+        # for v in (p_entity.global_state.trucks|p_entity.global_state.drones).values():
+        #     p_entity = v
+        if isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
+            av_cap = p_entity.get_remaining_capacity()
+            relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+            dems = p_entity.global_state.get_pending_demands()
+            n_pairs = [p_entity.global_state.node_pairs[key] for key,demands in dems.items() if (len(demands) and (demands[0] <= av_cap))]
+            actions_to_unblock = set(next(iter(n_pair.associated_action_indexes.intersection(relevant_actions))) for n_pair in n_pairs)
+            actions_to_block = relevant_actions.difference(actions_to_unblock)
+        elif isinstance(p_entity, NodePair):
+            relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
+            dem = p_entity.global_state.get_pending_demands()[p_entity.get_id()]
+            if not len(dem):
+                actions_to_unblock = set()
+                actions_to_block = relevant_actions
+            else:
+                av_caps = p_entity.global_state.get_available_capacities()
+                val_vs = [p_entity.global_state.get_vehicle(vid) for vid,caps in av_caps.items() if caps >= dem[0]]
+                actions_to_unblock = set(next(iter(v.associated_action_indexes.intersection(relevant_actions))) for v in val_vs)
+                actions_to_block = relevant_actions.difference(actions_to_unblock)
+                # Check also for micro-hubs
+            mh_actions = set()
+            for mh in p_entity.global_state.micro_hubs.values():
+                mh_actions.update(mh.associated_action_indexes.intersection(self.associated_action_index))
+            if len(dem):
+                actions_to_unblock.update(mh_actions)
+            else:
+                actions_to_block.update(mh_actions)
+        else:
+            raise TypeError(f"{self.C_NAME} only takes {self.C_ASSOCIATED_ENTITIES} as types for associated entities.")
+        dems = p_entity.global_state.get_pending_demands()
+        n_pairs = [p_entity.global_state.node_pairs[key] for key, demands in dems.items() if (len(demands))]
+        mh_acts = set()
+
+        for act in actions_to_block:
+            deck[act].add(f"{self.C_NAME}")
+        for act in actions_to_unblock:
+            if f"{self.C_NAME}" in deck[act]:
+                deck[act].remove(f"{self.C_NAME}")
+
+
+        return actions_to_block, actions_to_unblock
 
 
 class TripWithinRangeConstraint(Constraint):
@@ -2025,22 +2092,33 @@ class ConstraintManager(EventManager):
 
     def update_entity_invalidation_maps(self, action_map, reverse_action_map_old):
         for constraint in self.constraints:
-            for entity, action_set in constraint._entity_invalidation_map.items():
-                new_action_set = set()
-                for old_action in action_set:
-                    if not reverse_action_map_old[old_action] in action_map:
-                        print("Something is wrong. I am tired.")
-                        raise TypeError
-                    new_action_set.add(action_map[reverse_action_map_old[old_action]])
-                constraint._entity_invalidation_map[entity] = new_action_set
+            if not constraint.C_GLOBAL_CONSTRAINT:
+                for entity, action_set in constraint._entity_invalidation_map.items():
+                    new_action_set = set()
+                    for old_action in action_set:
+                        if not reverse_action_map_old[old_action] in action_map:
+                            print("Something is wrong. I am tired.")
+                            raise TypeError
+                        new_action_set.add(action_map[reverse_action_map_old[old_action]])
+                    constraint._entity_invalidation_map[entity] = new_action_set
+            else:
+                for idx, old_action in enumerate(constraint._entity_invalidation_map):
+                    # new_action_set = set()
+                    # for old_action in action_set:
+                    #     if not reverse_action_map_old[old_action] in action_map:
+                    #         print("Something is wrong. I am tired.")
+                    #         raise TypeError
+                    #     new_action_set.add(action_map[reverse_action_map_old[old_action]])
+                    new_action = action_map[reverse_action_map_old[old_action]]
+                    constraint._entity_invalidation_map.add(new_action)
 
     def update_masks(self):
-        self.masks = [False for i in range(len(self.constraint_deck.keys()))]
+        self.masks = [0 for i in range(len(self.constraint_deck.keys()))]
         for key, value in self.constraint_deck.items():
             if len(value):
-                self.masks[key] = False
+                self.masks[key] = 0
             else:
-                self.masks[key] = True
+                self.masks[key] = 1
 
     def get_masks(self):
         for key, value in self.constraint_deck.items():

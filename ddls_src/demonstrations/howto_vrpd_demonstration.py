@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from ddls_src.scenarios.scenario import LogisticsScenario
 
-def run_matrix_scenario_demo():
+def run_matrix_scenario_demo(instance:str= None, n_microhubs=2, n_drones=2):
     """
     Demonstrates and validates the distance matrix-based movement functionality
     by running the standard LogisticsScenario with a specific configuration.
@@ -26,7 +26,7 @@ def run_matrix_scenario_demo():
         "scenarios",
         "vrp_d_instances",
         "VRP-D",
-        "A-n32-k5.vrp"
+        instance,
     )
     vrp_instance_path = os.path.normpath(vrp_instance_path)
     sim_config = {
@@ -40,8 +40,8 @@ def run_matrix_scenario_demo():
                 "instance_path": vrp_instance_path,
 
                 # Keep these custom for your delivery model
-                "num_drones": 0,
-                "num_microhubs": 0,
+                "num_drones": n_drones,
+                "num_microhubs": n_microhubs,
                 "bbox": (0, 0, 100, 100),
                 "std_dev_scale": 4.0,
 
@@ -71,7 +71,7 @@ def run_matrix_scenario_demo():
                                  p_visualize=False,
                                  p_logging=False, # Set to True to see detailed logs
                                  config=sim_config,
-                                 custom_log = True)
+                                 custom_log = False)
 
     print("\n--- Starting Scenario Run ---")
     start = datetime.now()
@@ -89,4 +89,4 @@ def run_matrix_scenario_demo():
 
 
 if __name__ == "__main__":
-    run_matrix_scenario_demo()
+    run_matrix_scenario_demo("A-n32-k5.vrp", 0,0)
