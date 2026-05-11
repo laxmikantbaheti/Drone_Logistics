@@ -24,7 +24,7 @@ from ddls_src.core.global_state import GlobalState
 from ddls_src.core.time_manager import TimeManager
 from ddls_src.core.network import Network
 # Import mapping and constraint management classes.
-from ddls_src.core.state_action_mapper import StateActionMapper, ConstraintManager
+from ddls_src.core.constraint_manager import StateActionMapper, ConstraintManager
 # Import all entity classes (e.g., Truck, Drone, Hub).
 from ddls_src.entities import *
 # Import manager classes that handle different aspects of the simulation logic.
@@ -673,6 +673,8 @@ class LogisticsSystem(System, EventManager):
         drones = list(self.global_state.drones.values())
         for v in trucks + drones:
             if v.get_state_value_by_dim_name(v.C_DIM_TRIP_STATE[0]) in v.C_TRIP_STATE_IDLE:
+                if not len(v.d_tstamps):
+                    continue
                 current_node = v.current_node_id
                 v.current_node_id = v.start_node_id
                 ret_node = v.start_node_id

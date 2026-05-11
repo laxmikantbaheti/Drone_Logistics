@@ -766,8 +766,8 @@ class CapacityConstraint2(Constraint):
     C_ACTIVE = True
     C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "Node Pair"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_TRUCK,
-                          SimulationActions.ASSIGN_ORDER_TO_DRONE,
-                          SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB]
+                          SimulationActions.ASSIGN_ORDER_TO_DRONE]
+                          # SimulationActions.ASSIGN_ORDER_TO_MICRO_HUB]
 
     def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
         return [],[]
@@ -797,18 +797,18 @@ class CapacityConstraint2(Constraint):
                 actions_to_unblock = set(next(iter(v.associated_action_indexes.intersection(relevant_actions))) for v in val_vs)
                 actions_to_block = relevant_actions.difference(actions_to_unblock)
                 # Check also for micro-hubs
-            mh_actions = set()
-            for mh in p_entity.global_state.micro_hubs.values():
-                mh_actions.update(mh.associated_action_indexes.intersection(self.associated_action_index))
-            if len(dem):
-                actions_to_unblock.update(mh_actions)
-            else:
-                actions_to_block.update(mh_actions)
+            # mh_actions = set()
+            # for mh in p_entity.global_state.micro_hubs.values():
+            #     mh_actions.update(mh.associated_action_indexes.intersection(self.associated_action_index))
+            # if len(dem):
+            #     actions_to_unblock.update(mh_actions)
+            # else:
+            #     actions_to_block.update(mh_actions)
         else:
             raise TypeError(f"{self.C_NAME} only takes {self.C_ASSOCIATED_ENTITIES} as types for associated entities.")
-        dems = p_entity.global_state.get_pending_demands()
-        n_pairs = [p_entity.global_state.node_pairs[key] for key, demands in dems.items() if (len(demands))]
-        mh_acts = set()
+        # dems = p_entity.global_state.get_pending_demands()
+        # n_pairs = [p_entity.global_state.node_pairs[key] for key, demands in dems.items() if (len(demands))]
+        # mh_acts = set()
 
         for act in actions_to_block:
             deck[act].add(f"{self.C_NAME}")
