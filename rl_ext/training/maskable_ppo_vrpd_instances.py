@@ -60,7 +60,7 @@ if __name__ == "__main__":
         "scenarios",
         "vrp_d_instances",
         "VRP-D",
-        "A-n69-k9.vrp"
+        "A-n32-k5.vrp"
     )
     vrp_instance_path = os.path.normpath(vrp_instance_path)
     instance_name = os.path.splitext(os.path.basename(vrp_instance_path))[0].replace("-", "_")
@@ -75,8 +75,8 @@ if __name__ == "__main__":
                 "instance_path": vrp_instance_path,
 
                 # Keep these custom for your delivery model
-                "num_drones": 2,
-                "num_microhubs": 2,
+                "num_drones": 0,
+                "num_microhubs": 0,
                 "bbox": (0, 0, 100, 100),
                 "std_dev_scale": 4.0,
 
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Path is relative to Drone_Logistics/
     parser.add_argument("--config", type=str, default="ddls_src/config/large_instance.json")
-    parser.add_argument("--timesteps", type=int, default=500000)
+    parser.add_argument("--timesteps", type=int, default=5000000)
     args = parser.parse_args()
 
     # Pass command line arguments to the Training context

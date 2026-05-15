@@ -1937,6 +1937,57 @@ class DeadlockPreventionConstraint(Constraint):
         actions_to_unblock = relevant_actions.difference(actions_to_block)
         return list(actions_to_block), list(actions_to_unblock)
 
+
+class SingleTripConstraint(Constraint):
+
+    C_GLOBAL_CONSTRAINT = True
+    C_NAME = "SingeTripConstraint"
+    C_ACTIVE = False
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "Order"]
+    C_ACTIONS_AFFECTED = [SimulationActions.CONSOLIDATE_FOR_TRUCK,
+                          SimulationActions.CONSOLIDATE_FOR_DRONE]
+
+    def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+        return [], []
+
+    def evaluate_impact_global(self, p_entity, p_action_index, deck):
+        if not isinstance(p_entity, Vehicle) and not isinstance(p_entity, Order):
+
+            raise TypeError(f"{self.C_NAME} takes {self.C_ASSOCIATED_ENTITIES} as associated entity types")
+        actions_to_block =[]
+        actions_to_unblock =[]
+        all_assigned = True
+        relevant_actions = self.associated_action_index
+        for o in p_entity.global_state.orders.values():
+            if not isinstance(o, Order):
+                raise TypeError("Check your global state implementation, orders shall only consist order types.")
+            elif o.get_state_value_by_dim_name(o.C_DIM_DELIVERY_STATUS[0]) in [o.C_STATUS_PLACED]:
+                all_assigned = False
+                break
+            else:
+                all_assigned = True
+                continue
+
+        if all_assigned:
+            actions_to_unblock = relevant_actions
+
+        else:
+            actions_to_block = relevant_actions
+
+        self._entity_invalidation_map = set(actions_to_block)
+
+
+        token_str = f"{self.C_NAME}"
+        for act in actions_to_block:
+            deck[act].add(token_str)
+        for act in actions_to_unblock:
+            if token_str in deck[act]:
+                deck[act].remove(token_str)
+
+        return actions_to_block, actions_to_unblock
+
+
+
 # -------------------------------------------------------------------------------------------------
 # -- Part 3: Managers
 # -------------------------------------------------------------------------------------------------
@@ -2102,6 +2153,7 @@ class ConstraintManager(EventManager):
                         new_action_set.add(action_map[reverse_action_map_old[old_action]])
                     constraint._entity_invalidation_map[entity] = new_action_set
             else:
+                new_action_set = set()
                 for idx, old_action in enumerate(constraint._entity_invalidation_map):
                     # new_action_set = set()
                     # for old_action in action_set:
@@ -2109,8 +2161,8 @@ class ConstraintManager(EventManager):
                     #         print("Something is wrong. I am tired.")
                     #         raise TypeError
                     #     new_action_set.add(action_map[reverse_action_map_old[old_action]])
-                    new_action = action_map[reverse_action_map_old[old_action]]
-                    constraint._entity_invalidation_map.add(new_action)
+                    new_action_set.add(action_map[reverse_action_map_old[old_action]])
+                constraint._entity_invalidation_map= new_action_set
 
     def update_masks(self):
         self.masks = [0 for i in range(len(self.constraint_deck.keys()))]

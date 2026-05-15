@@ -682,6 +682,9 @@ class LogisticsSystem(System, EventManager):
                 v.ret_tstamp = v.d_tstamps[-1] + dist
                 max_return = max(max_return, v.ret_tstamp)
                 self.global_state.current_time = math.ceil(v.ret_tstamp)
+                v.distance_travelled+=dist
+                v.location_history.append(v.location_history[0])
+                v.current_location_coords = v.location_history[0]
                 v.update_state_value_by_dim_name(v.C_DIM_TRIP_STATE[0], v.C_TRIP_STATE_RETURNED)
             else:
                 raise ValueError("The simulation shall not succeed without all vehicles being idle.")

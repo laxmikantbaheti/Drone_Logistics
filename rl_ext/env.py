@@ -89,6 +89,7 @@ class LogisticsEnv(gym.Env):
     def _get_obs(self) -> np.ndarray:
         return self.obs_handler.get_observation(self._system.global_state)
 
+
     def _get_info(self) -> dict:
         return {
             "is_success": self._system.get_success(),
@@ -110,7 +111,7 @@ class LogisticsEnv(gym.Env):
     def _calculate_reward(self) -> float:
         # Kept for compatibility but not used in step() anymore per your request
         if self._system.get_success():
-            return -float(self._system.global_state.current_time)
+            return -float(self._system.global_state.get_total_distance())
         elif self._system.get_broken():
             return -float(1000000)
         else:

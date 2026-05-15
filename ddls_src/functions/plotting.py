@@ -23,10 +23,22 @@ class SimulationPlotter:
             except (ValueError, SyntaxError):
                 return []
 
+        def _safe_parse_coords(val):
+            if isinstance(val, (list, tuple)): return val
+            if pd.isna(val) or str(val).strip() == "" or str(val).lower() == 'none': return None
+            try:
+                return ast.literal_eval(str(val))
+            except (ValueError, SyntaxError):
+                return None
+
         v_path = f"{base_filepath}_vehicles.csv"
         if os.path.exists(v_path):
             self.df_vehicles = pd.read_csv(v_path)
             self.df_vehicles['cargo_manifest'] = self.df_vehicles['cargo_manifest'].apply(_safe_parse_manifest)
+
+            # MODIFICATION: Parse current_coords if the column exists
+            if 'current_coords' in self.df_vehicles.columns:
+                self.df_vehicles['current_coords'] = self.df_vehicles['current_coords'].apply(_safe_parse_coords)
         else:
             self.df_vehicles = None
             print(f"Warning: {v_path} not found.")
@@ -43,8 +55,68 @@ class SimulationPlotter:
             self._plot_cargo_gantt(save_to_disk, output_dir)
         elif plot_type == 'state_timeline':
             self._plot_state_timeline(save_to_disk, output_dir)
+        elif plot_type == "cargo_gantt_with_size_curve":
+            self._plot_cargo_gantt_with_size_curve(save_to_disk, output_dir)
+        elif plot_type == "2d_routes":
+            self._plot_2d_routes(save_to_disk, output_dir)
         else:
             print(f"Error: Unknown plot type '{plot_type}'.")
+
+    # --- NEW METHOD ADDED HERE ---
+    def _plot_2d_routes(self, save_to_disk: bool = False, output_dir: str = "."):
+        """
+        Plots the 2D spatial routes of all vehicles based on their current_coords over time.
+        Matches the visual style of a standard Vehicle Routing Problem (VRP) plot.
+        """
+        if self.df_vehicles is None or self.df_vehicles.empty or 'current_coords' not in self.df_vehicles.columns:
+            print("No vehicle coordinate data available to plot 2D routes.")
+            return
+
+        fig, ax = plt.subplots(figsize=(12, 10))
+        grouped = self.df_vehicles.groupby('vehicle_id')
+
+        # Use a diverse colormap for different vehicles
+        cmap = plt.get_cmap('tab10')
+        colors = cmap(np.linspace(0, 1, len(grouped)))
+
+        depot_plotted = False
+
+        for (vehicle_id, group_data), color in zip(grouped, colors):
+            # MODIFICATION: Added .reset_index() before .sort_values() to resolve the KeyError
+            group_data = group_data.reset_index().sort_values(by=['time', 'index'])
+
+            # Extract valid coordinates in order
+            coords = [
+                c for c in group_data['current_coords']
+                if isinstance(c, (list, tuple)) and len(c) >= 2
+            ]
+
+            if not coords:
+                continue
+
+            x, y = zip(*coords)
+
+            # Plot the route lines and individual node dots
+            ax.plot(x, y, color=color, linewidth=1.2, alpha=0.8)
+            ax.scatter(x, y, color=color, s=30, zorder=3)
+
+            # Mark the Depot (assumes the very first recorded coordinate is the depot)
+            if not depot_plotted and len(coords) > 0:
+                depot_x, depot_y = coords[0]
+                ax.scatter(depot_x, depot_y, color='firebrick', s=100, zorder=5)
+                # Offset the text slightly for readability
+                ax.text(depot_x + (max(x) - min(x)) * 0.02, depot_y, 'Depot',
+                        fontsize=12, va='center', ha='left', zorder=6)
+                depot_plotted = True
+
+        # Remove axes for a clean, map-like look
+        ax.axis('off')
+        plt.tight_layout()
+
+        if save_to_disk:
+            plt.savefig(os.path.join(output_dir, "2d_vehicle_routes.png"), bbox_inches="tight", dpi=300)
+        else:
+            plt.show()
 
     def _plot_state_timeline(self, save_to_disk: bool, output_dir: str):
         if self.df_vehicles is None or self.df_vehicles.empty:
@@ -100,7 +172,6 @@ class SimulationPlotter:
                 ax.barh(y=vehicle, width=duration, left=row['Start'], height=0.5,
                         color=color_map.get(row['Status'], '#9E9E9E'), edgecolor='black', linewidth=0.5)
 
-                # MODIFICATION: Added duration value in the center of the bar segment
                 ax.text(row['Start'] + (duration / 2), vehicle, f"{int(duration)}s",
                         ha='center', va='center', fontsize=8, color='black', fontweight='bold')
 
@@ -187,7 +258,6 @@ class SimulationPlotter:
                 color = '#FFA726' if row.get('IsReturn') else 'skyblue'
                 ax.barh(y=y_pos, width=row['Duration'], left=row['Start'], height=0.8, color=color, edgecolor='black')
 
-                # MODIFICATION: Updated text to include Order ID and Duration
                 label_text = f"{row['Order']} ({int(row['Duration'])}s)"
                 ax.text(row['Start'] + (row['Duration'] / 2), y_pos, label_text,
                         ha='center', va='center', fontsize=8, fontweight='bold')
@@ -211,5 +281,145 @@ class SimulationPlotter:
 
         if save_to_disk:
             plt.savefig(os.path.join(output_dir, "gantt_fleet_cargo_optimized.png"))
+        else:
+            plt.show()
+
+    def _plot_cargo_gantt_with_size_curve(self, save_to_disk: bool = False, output_dir: str = "."):
+        if self.df_vehicles is None or self.df_vehicles.empty:
+            print("No vehicle data available for cargo plotting.")
+            return
+
+        intervals = []
+        grouped = self.df_vehicles.groupby('vehicle_id')
+
+        for vehicle_id, group_data in grouped:
+            group_data = group_data.reset_index().sort_values(by=['time', 'index'])
+            active_orders = {}
+
+            for _, row in group_data.iterrows():
+                current_time = row['time']
+                current_manifest = set(str(item) for item in row['cargo_manifest'])
+
+                for o_id in current_manifest:
+                    if o_id not in active_orders:
+                        active_orders[o_id] = current_time
+
+                removed = []
+                for o_id, start_time in active_orders.items():
+                    if o_id not in current_manifest:
+                        intervals.append({
+                            'Vehicle': f"Vehicle {vehicle_id}",
+                            'Order': o_id,
+                            'Start': start_time,
+                            'End': current_time,
+                            'IsReturn': False
+                        })
+                        removed.append(o_id)
+                for o_id in removed:
+                    del active_orders[o_id]
+
+            returned_rows = group_data[group_data['status'].str.lower() == 'returned']
+            if not returned_rows.empty:
+                pos = group_data.index.get_loc(returned_rows.index[0])
+                if pos > 0:
+                    intervals.append({
+                        'Vehicle': f"Vehicle {vehicle_id}",
+                        'Order': 'Return Leg',
+                        'Start': group_data.iloc[pos - 1]['time'],
+                        'End': group_data.iloc[pos]['time'],
+                        'IsReturn': True
+                    })
+
+        if not intervals:
+            return
+
+        df_intervals = pd.DataFrame(intervals)
+        df_intervals['Duration'] = df_intervals['End'] - df_intervals['Start']
+        df_intervals = df_intervals[df_intervals['Duration'] > 0]
+        df_intervals = df_intervals.sort_values(by=['Vehicle', 'Start'])
+
+        optimized_intervals = []
+        for vehicle, group in df_intervals.groupby('Vehicle'):
+            ends = []
+            for _, row in group.iterrows():
+                lane = -1
+                for i, e in enumerate(ends):
+                    if e <= row['Start']:
+                        lane = i
+                        ends[i] = row['End']
+                        break
+                if lane == -1:
+                    lane = len(ends)
+                    ends.append(row['End'])
+
+                d = row.to_dict()
+                d['Lane'] = lane
+                optimized_intervals.append(d)
+
+        df_opt = pd.DataFrame(optimized_intervals)
+
+        fig, ax = plt.subplots(figsize=(14, 10))
+        unique_vehicles = sorted(df_opt['Vehicle'].unique(), reverse=True)
+        current_y_base, yticks, yticklabels = 0, [], []
+
+        for v in unique_vehicles:
+            v_data = df_opt[df_opt['Vehicle'] == v]
+            max_lane = v_data['Lane'].max()
+
+            for _, row in v_data.iterrows():
+                y_pos = current_y_base + row['Lane'] + 1
+                color = '#FFA726' if row.get('IsReturn') else 'skyblue'
+                ax.barh(y=y_pos, width=row['Duration'], left=row['Start'], height=0.8,
+                        color=color, edgecolor='black', alpha=0.9, zorder=3)
+
+                label_text = f"{row['Order']} ({int(row['Duration'])}s)"
+                ax.text(row['Start'] + (row['Duration'] / 2), y_pos, label_text,
+                        ha='center', va='center', fontsize=8, fontweight='bold', zorder=4)
+
+            v_id_numeric = (v.replace("Vehicle ", ""))
+            v_raw_logs = self.df_vehicles[self.df_vehicles['vehicle_id'] == v_id_numeric].sort_values('time')
+
+            if not v_raw_logs.empty:
+                load_y_pos = current_y_base
+
+                v_raw_logs['change'] = v_raw_logs['cargo_size'].diff().ne(0)
+                change_indices = v_raw_logs.index[v_raw_logs['change']].tolist()
+
+                for i in range(len(change_indices)):
+                    start_idx = change_indices[i]
+                    end_idx = change_indices[i + 1] if i + 1 < len(change_indices) else v_raw_logs.index[-1]
+
+                    start_t = v_raw_logs.loc[start_idx, 'time']
+                    end_t = v_raw_logs.loc[end_idx, 'time']
+                    current_load = v_raw_logs.loc[start_idx, 'cargo_size']
+                    duration = end_t - start_t
+
+                    if duration > 0:
+                        ax.barh(y=load_y_pos, width=duration, left=start_t, height=0.6,
+                                color='#CFD8DC', edgecolor='#546E7A', zorder=2)
+
+                        ax.text(start_t + (duration / 2), load_y_pos, f"Load: {current_load}",
+                                ha='center', va='center', fontsize=7, fontweight='bold', color='#37474F')
+
+            yticks.append(current_y_base + ((max_lane + 1) / 2.0))
+            yticklabels.append(v)
+            ax.axhline(y=current_y_base - 0.5, color='gray', linestyle='-', alpha=0.3)
+
+            current_y_base += max_lane + 3.0
+
+        max_x = df_opt['End'].max()
+        ax.set_xlim(0, max_x * 1.05)
+        ax.set_xticks(np.arange(0, max_x + 100, 100))
+        ax.grid(which='major', axis='x', linestyle='-', color='#757575', alpha=0.3)
+
+        ax.set_yticks(yticks)
+        ax.set_yticklabels(yticklabels)
+        ax.set_xlabel("Simulation Time (s)")
+        ax.set_title("Fleet Cargo Manifest Timeline (with Cargo Load Bars)")
+
+        plt.tight_layout()
+
+        if save_to_disk:
+            plt.savefig(os.path.join(output_dir, "gantt_fleet_cargo_bars.png"), bbox_inches="tight")
         else:
             plt.show()

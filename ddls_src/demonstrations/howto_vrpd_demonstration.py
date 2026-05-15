@@ -71,7 +71,7 @@ def run_matrix_scenario_demo(instance:str= None, n_microhubs=2, n_drones=2):
                                  p_visualize=False,
                                  p_logging=False, # Set to True to see detailed logs
                                  config=sim_config,
-                                 custom_log = False)
+                                 custom_log = True)
 
     print("\n--- Starting Scenario Run ---")
     start = datetime.now()
@@ -81,7 +81,7 @@ def run_matrix_scenario_demo(instance:str= None, n_microhubs=2, n_drones=2):
     end = datetime.now()
     print("end ---",end)
     print(end-start)
-    print(scenario._system.global_state.current_time)
+    print(scenario._system.global_state.get_total_distance())
     print("\n=============================================")
     print("=========   Validation Complete   =========")
     print("=============================================")

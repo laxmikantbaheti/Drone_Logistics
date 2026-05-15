@@ -14,7 +14,7 @@ class BaseObservations(ABC):
 
 
 class DefaultObservations(BaseObservations):
-    def __init__(self, max_vehicles=10, max_order_slots=20):
+    def __init__(self, max_vehicles=5, max_order_slots=20):
         self.max_vehicles = max_vehicles
         self.max_order_slots = max_order_slots
 

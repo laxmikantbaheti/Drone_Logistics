@@ -360,3 +360,7 @@ class GlobalState:
     def setup_capacity_demands(self):
         caps = {key: [o.size for o in value] for key, value in self.orders_by_nodes.items()}
         return caps
+
+    def get_total_distance(self):
+        tot_dist = sum([v.distance_travelled for v in (self.trucks|self.drones).values()])
+        return tot_dist

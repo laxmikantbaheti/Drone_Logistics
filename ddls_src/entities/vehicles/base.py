@@ -99,6 +99,8 @@ class Vehicle(LogisticEntity, ABC):
         self.pickup_node_ids = []
         self.cargo_stats = {}
         self.d_tstamps = []
+        self.location_history = []
+        self.distance_travelled = 0
         # --- NEW: Staging Area for the Batch Sequencer ---
         self.staged_pickup_orders = defaultdict()
         self.staged_delivery_orders = defaultdict()
@@ -167,6 +169,8 @@ class Vehicle(LogisticEntity, ABC):
         Resets the vehicle to its initial state at its starting node.
         """
         self.status = "idle"
+        self.location_history = []
+        self.distance_travelled = 0
         self.consolidation_confirmed = False
         self.set_current_node_id(self.start_node_id)
         self.cargo_manifest = []
@@ -723,7 +727,7 @@ class Vehicle(LogisticEntity, ABC):
         self.log_current_state()
 
     def get_current_location(self):
-        return self.get_state_value_by_dim_name("loc x"), self.get_state_value_by_dim_name("loc y")
+        return self.get_current_node().coords
 
     def get_delivery_orders(self):
         return self.delivery_orders
@@ -1024,6 +1028,9 @@ class Vehicle(LogisticEntity, ABC):
         # 3. START THE ENGINE
         distance = self.global_state.network.calculate_distance(self.current_node_id, target_node)
         self.en_route_timer = distance / self.get_speed()
+        # XXX - This is critical, update it when you upgrade to a dynamic setting, with in route event based changes.
+        self.distance_travelled += self.en_route_timer
+        self.location_history.append(self.current_location_coords)
 
         self.set_current_node_id(None)
         self.update_state_value_by_dim_name(

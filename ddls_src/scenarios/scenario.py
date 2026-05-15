@@ -171,6 +171,7 @@ class LogisticsScenario(Scenario):
         # --- MODIFIED: Export Reports using the new EventLogger ---
         if self._system.get_success():
             print(f"\nSimulation successful at cycle {self.get_cycle_id()}. Generating event reports...")
+            print(f"Total distance travelled: {self._system.global_state.get_total_distance()}")
 
             # The EventLogger lives inside the GlobalState
             if hasattr(self._system.global_state, 'event_logger'):
@@ -183,10 +184,14 @@ class LogisticsScenario(Scenario):
             plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
 
             # Generate the Gantt charts
-            plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+            # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+            plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
 
             # Generate the state timeline plot
             plotter.generate_plot('state_timeline', save_to_disk=False)
+
+            # Generate 2d routes
+            plotter.generate_plot("2d_routes", save_to_disk=False)
         # -----------------------------------------------------------
 
         new_state = self._system.get_state()
