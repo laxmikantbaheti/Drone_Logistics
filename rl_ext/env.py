@@ -7,7 +7,7 @@ import copy  # Added for deepcopying the logs
 # Core simulation imports
 from ddls_src.core.logistics_system import LogisticsSystem
 from ddls_src.core.basics import LogisticsAction
-from rl_ext.observations import DefaultObservations, BaseObservations
+from rl_ext.observations import DefaultObservations, BaseObservations, DemandCapacityObservations
 from rl_ext.rewards import DefaultRewards, BaseRewards
 
 
@@ -27,7 +27,7 @@ class LogisticsEnv(gym.Env):
         if observation_handler is not None:
             self.obs_handler = observation_handler
         else:
-            self.obs_handler = DefaultObservations()
+            self.obs_handler = DemandCapacityObservations()
 
         if rewards_handler is not None:
             self.rewards_handler = rewards_handler
@@ -35,7 +35,7 @@ class LogisticsEnv(gym.Env):
             self.rewards_handler = DefaultRewards()
 
         self.action_space = spaces.Discrete(self._system.agent_action_space_size)
-        self.observation_space = self.obs_handler.get_observation_space()
+        self.observation_space = self.obs_handler.get_observation_space(self._system.global_state)
         self.ret_trip = ret_trip
 
     def reset(self, seed=None, options=None) -> Tuple[np.ndarray, Dict]:

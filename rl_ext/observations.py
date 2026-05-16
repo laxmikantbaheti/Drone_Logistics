@@ -78,3 +78,97 @@ class DefaultObservations(BaseObservations):
             obs.extend([-1.0, -1.0, 0.0, -1.0])
 
         return np.array(obs, dtype=np.float32)
+
+
+import numpy as np
+from gymnasium import spaces
+from abc import ABC, abstractmethod
+from ddls_src.core.global_state import GlobalState
+
+
+class BaseObservations(ABC):
+    @abstractmethod
+    def get_observation(self, global_state: GlobalState) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def get_observation_space(self, global_state: GlobalState) -> spaces.Space:
+        pass
+
+
+class DemandCapacityObservations(BaseObservations):
+    def __init__(self, num_vehicles=5, num_nodes=32, max_capacity=100.0, max_time=4000.0):
+        self.num_vehicles = num_vehicles
+        self.num_nodes = num_nodes
+
+        # Scaling limits
+        self.max_capacity = max_capacity
+        self.max_time = max_time
+
+    def get_observation_space(self, global_state: GlobalState) -> spaces.Box:
+        # Dynamically check the length from the global state
+        num_node_pairs = len(global_state.orders_by_nodes)
+
+        # Exact Size: 1 (Time) + (Exact Vehicles * 2) + (Exact Node Pairs)
+        self._obs_size = 1 + (self.num_vehicles * 2) + num_node_pairs
+
+        low_bounds = [0.0]
+        high_bounds = [self.max_time]
+
+        # Vehicle Bounds: [Current Node ID, Remaining Cap]
+        for _ in range(self.num_vehicles):
+            low_bounds.extend([0.0, 0.0])
+            high_bounds.extend([float(self.num_nodes), self.max_capacity])
+
+        # Node Pair Bounds: [Total Capacity Demand for specific O-D Pair]
+        low_bounds.extend([0.0] * num_node_pairs)
+        high_bounds.extend([self.max_capacity * 5] * num_node_pairs)
+
+        return spaces.Box(
+            low=np.array(low_bounds, dtype=np.float32),
+            high=np.array(high_bounds, dtype=np.float32),
+            dtype=np.float32
+        )
+
+    def get_observation(self, global_state: GlobalState) -> np.ndarray:
+        obs = []
+        num_node_pairs = len(global_state.orders_by_nodes)
+
+        # --- 1. GLOBAL STATE ---
+        current_time = min(float(global_state.current_time), self.max_time)
+        obs.append(current_time)
+
+        # --- 2. VEHICLE STATE ---
+        trucks = list(global_state.trucks.values())
+        drones = list(global_state.drones.values())
+        all_vehicles = sorted(trucks + drones, key=lambda v: v.get_id())
+
+        assert len(
+            all_vehicles) == self.num_vehicles, f"Expected exactly {self.num_vehicles} vehicles, got {len(all_vehicles)}"
+
+        for v in all_vehicles:
+            curr_node = getattr(v, 'current_node_id', -1)
+            if curr_node is not None:
+                obs.append(float(curr_node))
+            else:
+                obs.append(-1.0)
+            obs.append(float(v.get_remaining_capacity()))
+
+        # --- 3. NODE PAIR STATE (O-D DEMAND MATRIX) ---
+        node_pair_dict = global_state.orders_by_nodes
+
+        # Deterministically sort the pair tuples
+        sorted_pairs = sorted(node_pair_dict.keys())
+
+        for pair_key in sorted_pairs:
+            orders_list = node_pair_dict[pair_key]
+
+            total_pair_demand = 0.0
+            for order in orders_list:
+                # Filter out delivered orders so the agent sees demand drop over time
+                if order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_STATUS[0]) != order.C_STATUS_DELIVERED:
+                    total_pair_demand += float(order.size)
+
+            obs.append(total_pair_demand)
+
+        return np.array(obs, dtype=np.float32)

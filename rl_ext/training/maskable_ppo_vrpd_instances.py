@@ -15,10 +15,21 @@ class MaskablePPOTraining(Training):
         # Tensorboard path setup
         tb_log = os.path.join(self.run_dir, "tb_logs") if self.save_summary else None
 
+        custom_policy_kwargs = dict(
+            net_arch=dict(pi=[512, 512, 512], vf=[512, 512])
+        )
+
         self.model = MaskablePPO(
             "MlpPolicy",
             self.env,
             verbose=1,
+            policy_kwargs=custom_policy_kwargs,
+            learning_rate=1e-3,
+            n_steps=2048,
+            n_epochs=15,
+            batch_size=256,
+            gamma=0.99,
+            ent_coef=0.02,
             tensorboard_log=tb_log
         )
 
@@ -109,4 +120,4 @@ if __name__ == "__main__":
         sim_config=sim_config,
         instance_name=instance_name,
     )
-    trainer.train(total_timesteps=300000)
+    trainer.train(total_timesteps=1000000)
