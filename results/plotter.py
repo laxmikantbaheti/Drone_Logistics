@@ -53,4 +53,4 @@ def plot_training_episode_routes(full_training_name, episode_num, root_dir=".", 
 
 
 # Usage:
-plot_training_episode_routes("MaskablePPO_A_n32_k5_20260515_200536", 138000)
+plot_training_episode_routes("MaskablePPO_A_n32_k5_20260517_105758", 13198)
