@@ -71,7 +71,7 @@ def run_matrix_scenario_demo(instance:str= None, n_microhubs=2, n_drones=2):
                                  p_visualize=False,
                                  p_logging=False, # Set to True to see detailed logs
                                  config=sim_config,
-                                 custom_log = True)
+                                 custom_log = False)
 
     print("\n--- Starting Scenario Run ---")
     start = datetime.now()
@@ -89,4 +89,4 @@ def run_matrix_scenario_demo(instance:str= None, n_microhubs=2, n_drones=2):
 
 
 if __name__ == "__main__":
-    run_matrix_scenario_demo("A-n32-k5.vrp", 0,0)
+    run_matrix_scenario_demo("A-n80-k10.vrp", 0,0)

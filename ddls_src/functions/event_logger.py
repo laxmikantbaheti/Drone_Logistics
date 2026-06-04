@@ -12,6 +12,7 @@ class EventLogger:
 
     def __init__(self):
         self.reset()
+        self.active = False
 
     def reset(self):
         """Clears all stored data. Called at the start of a new simulation."""

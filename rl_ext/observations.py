@@ -97,7 +97,7 @@ class BaseObservations(ABC):
 
 
 class DemandCapacityObservations(BaseObservations):
-    def __init__(self, num_vehicles=10, num_nodes=80, max_capacity=100.0, max_time=10000.0):
+    def __init__(self, num_vehicles=7, num_nodes=53, max_capacity=100.0, max_time=10000.0):
         self.num_vehicles = num_vehicles
         self.num_nodes = num_nodes
 

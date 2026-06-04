@@ -37,12 +37,14 @@ class Vehicle(LogisticEntity, ABC):
     C_TRIP_STATE_LOADING = "Loading"
     C_TRIP_STATE_UNLOADING = "Unloading"
     C_TRIP_STATE_RETURNED = "Returned"
+    C_LOCX = ['loc x']
+    C_LOCY = ["loc y"]
     C_VALID_TRIP_STATES = [C_TRIP_STATE_IDLE, C_TRIP_STATE_EN_ROUTE, C_TRIP_STATE_HALT, C_TRIP_STATE_RETURNED]
     C_DIM_TRIP_STATE = ["trip", "Trip Status", C_VALID_TRIP_STATES]
     C_DIM_AVAILABLE = ["ava", "Is Available", [True, False]]
     C_DIM_AT_NODE = ["node_bool", "At Node", [True, False]]
     C_DIM_CURRENT_CARGO = ["cargo", "Current Cargo", []]
-    C_DIS_DIMS = [C_DIM_TRIP_STATE, C_DIM_AVAILABLE, C_DIM_AT_NODE, C_DIM_CURRENT_CARGO]
+    C_DIS_DIMS = [C_DIM_TRIP_STATE, C_DIM_AVAILABLE, C_DIM_AT_NODE, C_DIM_CURRENT_CARGO, C_LOCX, C_LOCY]
 
     C_DATA_FRAME_VEH_TIMELINE = "Vehicle Timeline"
     C_DATA_FRAME_VEH_STATES = "Vehicle Trip States"

@@ -36,9 +36,9 @@ class SaveOnEpisodeCallback(BaseCallback):
             # self.logger.dump(step=self.num_timesteps)
 
             # Export reports to episode subfolder
-            report_name = f"{self.trainer.name}_ep_{self.episode_count}"
-            report_path = os.path.join(self.trainer.episodes_dir, report_name)
-            logger.export_reports(base_filepath=report_path, logs = logs)
+            # report_name = f"{self.trainer.name}_ep_{self.episode_count}"
+            # report_path = os.path.join(self.trainer.episodes_dir, report_name)
+            # logger.export_reports(base_filepath=report_path, logs = logs)
 
             # --- MODIFICATION: Determine the Termination Status (Plain Text) ---
             if info.get("is_success"):
@@ -69,8 +69,8 @@ class SaveOnEpisodeCallback(BaseCallback):
             print(f"   DELIVERED: {delivered} items", flush=True)
             print("-" * 50 + "\n", flush=True)
 
-            self.trainer.all_episodes_kpis.append(ep_kpis)
-            self.trainer.log_episode(ep_kpis)
+            # self.trainer.all_episodes_kpis.append(ep_kpis)
+            # self.trainer.log_episode(ep_kpis)
 
             if self.trainer.save_summary and self.episode_count % 10 == 0:
                 self.trainer.log_summary({

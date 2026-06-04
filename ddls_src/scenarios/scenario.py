@@ -2,7 +2,7 @@
 
 import numpy as np
 from agents.dummy_agent import DummyAgent
-from datetime import timedelta
+from datetime import timedelta, datetime
 from ddls_src.actions.base import SimulationActions
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.core.logistics_system import LogisticsSystem
@@ -114,6 +114,7 @@ class LogisticsScenario(Scenario):
     #     return False, self._system.get_broken(), self._system.get_success(), False
 
     def _run_cycle(self):
+        self.actual_sim_time = datetime.now()
         eof_data = False
         adapted = False
         self.log(self.C_LOG_TYPE_I, f"--- Starting Macro-Cycle {self.get_cycle_id()} ---")
@@ -170,9 +171,10 @@ class LogisticsScenario(Scenario):
 
         # --- MODIFIED: Export Reports using the new EventLogger ---
         if self._system.get_success():
+            self._actual_end_time = datetime.now()
             print(f"\nSimulation successful at cycle {self.get_cycle_id()}. Generating event reports...")
             print(f"Total distance travelled: {self._system.global_state.get_total_distance()}")
-
+            print(f"Time for simulation: {self._actual_end_time-self.actual_sim_time}")
             # The EventLogger lives inside the GlobalState
             if hasattr(self._system.global_state, 'event_logger'):
                 # Call export_reports. You can customize the base_filepath here if you want dynamically named folders.
@@ -181,17 +183,17 @@ class LogisticsScenario(Scenario):
                 self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
 
             # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
-            plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
-
-            # Generate the Gantt charts
-            # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
-            plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
-
-            # Generate the state timeline plot
-            plotter.generate_plot('state_timeline', save_to_disk=False)
-
-            # Generate 2d routes
-            plotter.generate_plot("2d_routes", save_to_disk=False)
+            # plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
+            #
+            # # Generate the Gantt charts
+            # # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+            # plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
+            #
+            # # Generate the state timeline plot
+            # plotter.generate_plot('state_timeline', save_to_disk=False)
+            #
+            # # Generate 2d routes
+            # plotter.generate_plot("2d_routes", save_to_disk=False)
         # -----------------------------------------------------------
 
         new_state = self._system.get_state()

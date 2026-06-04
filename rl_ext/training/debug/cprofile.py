@@ -3,7 +3,8 @@ import argparse
 import pandas as pd
 from sb3_contrib import MaskablePPO
 from rl_ext.training.base import Training
-
+import cProfile
+import pstats
 
 class MaskablePPOTraining(Training):
     """
@@ -16,7 +17,7 @@ class MaskablePPOTraining(Training):
         tb_log = os.path.join(self.run_dir, "tb_logs") if self.save_summary else None
 
         custom_policy_kwargs = dict(
-            net_arch=dict(pi=[1024, 1024], vf=[1024, 1024])
+            net_arch=dict(pi=[512, 1024], vf=[512, 1024])
         )
 
         self.model = MaskablePPO(
@@ -25,13 +26,12 @@ class MaskablePPOTraining(Training):
             verbose=1,
             policy_kwargs=custom_policy_kwargs,
             learning_rate=2e-3,
-            n_steps=1024,
-            n_epochs=10,
-            batch_size=64,
+            n_steps=100,
+            n_epochs=15,
+            batch_size=256,
             gamma=0.99,
             ent_coef=0.02,
-            tensorboard_log=tb_log,
-            device="cuda"
+            tensorboard_log=tb_log
         )
 
         print(f"\n--- SESSION STARTING: {self.name} ---")
@@ -68,11 +68,12 @@ if __name__ == "__main__":
         script_path,
         "..",
         "..",
+        "..",
         "ddls_src",
         "scenarios",
         "vrp_d_instances",
         "VRP-D",
-        "A-n53-k7.vrp"
+        "A-n80-k10.vrp"
     )
     vrp_instance_path = os.path.normpath(vrp_instance_path)
     instance_name = os.path.splitext(os.path.basename(vrp_instance_path))[0].replace("-", "_")
@@ -121,4 +122,13 @@ if __name__ == "__main__":
         sim_config=sim_config,
         instance_name=instance_name,
     )
-    trainer.train(total_timesteps=20000000)
+    pr = cProfile.Profile()
+    pr.enable()
+
+    trainer.train(total_timesteps=100)
+    pr.disable()
+    # Save to a readable text file
+    with open('profile_results.txt', 'w') as f:
+        ps = pstats.Stats(pr, stream=f)
+        ps.sort_stats('tottime')  # Sort by cumulative time
+        ps.print_stats()

@@ -41,6 +41,7 @@ class LogisticsEnv(gym.Env):
     def reset(self, seed=None, options=None) -> Tuple[np.ndarray, Dict]:
         super().reset(seed=seed)
         self._system.reset(p_seed=seed)
+
         self.rewards_handler.reset(self._system)
         self._proceed_simulation()
         return self._get_obs(), self._get_info()
@@ -111,8 +112,8 @@ class LogisticsEnv(gym.Env):
     def _calculate_reward(self) -> float:
         # Kept for compatibility but not used in step() anymore per your request
         if self._system.get_success():
-            return -float(self._system.global_state.get_total_distance())
+            return -float((self._system.global_state.get_total_distance()))
         elif self._system.get_broken():
-            return -float(1000000)
+            return -float(100000)
         else:
             return 0

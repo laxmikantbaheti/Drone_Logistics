@@ -2172,13 +2172,23 @@ class ConstraintManager(EventManager):
             else:
                 self.masks[key] = 1
 
-    def get_masks(self):
-        for key, value in self.constraint_deck.items():
-            if len(value):
-                self.masks[key] = 0
-            else:
-                self.masks[key] = 1
+    # def get_masks(self):
+    #     for key, value in self.constraint_deck.items():
+    #         if len(value):
+    #             self.masks[key] = 0
+    #         else:
+    #             self.masks[key] = 1
+    #
+    #     return self.masks
 
+    # def get_masks(self):
+    #     for key, value in self.constraint_deck.items():
+    #         self.masks[key] = 0 if value else 1
+    #
+    #     return self.masks
+
+    def get_masks(self):
+        self.masks = [0 if value else 1 for key, value in self.constraint_deck.items()]
         return self.masks
 
 class StateActionMapper:

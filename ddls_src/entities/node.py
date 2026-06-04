@@ -84,8 +84,8 @@ class Node(LogisticEntity):
         Resets the node's internal state (clears held packages) and updates the formal state object.
         """
         self.packages_held = []
-        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_NUM_PICKUP_PACKAGES[0]).get_id(), 0)
-        self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_NUM_DELIVERY_PACKAGES[0]).get_id(), 0)
+        # self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_NUM_PICKUP_PACKAGES[0]).get_id(), 0)
+        # self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_NUM_DELIVERY_PACKAGES[0]).get_id(), 0)
 
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """

@@ -665,6 +665,14 @@ class LogisticsSystem(System, EventManager):
         Returns:
             bool: Always False.
         """
+        # dems = [dem[0] for dem in self.global_state.get_pending_demands().values() if len(dem)]
+        # if len(dems):
+        #     dem = min(dems)
+        # else:
+        #     return False
+        # cap = max(list(self.global_state.get_available_capacities().values()))
+        # if cap<dem:
+        #     return True
         return False
 
     def compute_return_trips(self):
