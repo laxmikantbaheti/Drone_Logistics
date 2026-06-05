@@ -1,5 +1,7 @@
 # In file: ddls_src/core/logistics_system.py
 # Import NumPy for numerical operations, especially for handling arrays like action masks.
+import math
+
 import numpy as np
 # Import the 'os' module for interacting with the operating system, used for path manipulation.
 import os
@@ -8,6 +10,9 @@ import random
 from datetime import datetime
 # Import 'timedelta' for representing differences in time.
 from datetime import timedelta
+
+from sympy.plotting.intervalmath import ceil
+
 # Import action-related classes.
 from ddls_src.actions.base import SimulationActions, ActionType, ActionIndex
 from ddls_src.core.basics import LogisticsAction
@@ -16,10 +21,10 @@ from ddls_src.core.basics import LogisticsAction
 # Import core components of the logistics simulation.
 from ddls_src.core.global_state import GlobalState
 # Import simulation time management and action representation.
-from ddls_src.core.logistics_simulation import TimeManager
+from ddls_src.core.time_manager import TimeManager
 from ddls_src.core.network import Network
 # Import mapping and constraint management classes.
-from ddls_src.core.state_action_mapper import StateActionMapper, ConstraintManager
+from ddls_src.core.constraint_manager import StateActionMapper, ConstraintManager
 # Import all entity classes (e.g., Truck, Drone, Hub).
 from ddls_src.entities import *
 # Import manager classes that handle different aspects of the simulation logic.
@@ -62,6 +67,7 @@ class LogisticsSystem(System, EventManager):
                  p_visualize: bool = False,
                  p_logging=False,
                  custom_log = False,
+                 ret_trip = False,
                  **p_kwargs):
         """
         Initializes the LogisticsSystem.
@@ -74,6 +80,7 @@ class LogisticsSystem(System, EventManager):
             **p_kwargs: Additional keyword arguments, expected to contain 'config'.
         """
         # Retrieve the configuration dictionary from keyword arguments.
+        self.ret_computed:bool = False
         self.custom_log = custom_log
         self._config = p_kwargs.get('config', {})
 
@@ -127,6 +134,7 @@ class LogisticsSystem(System, EventManager):
         self.action_index = None
         # Call the reset method to perform the main setup.
         self.setup = False
+        self.ret_trip = ret_trip
         self.reset()
         # self.setup = True
 
@@ -228,6 +236,13 @@ class LogisticsSystem(System, EventManager):
                     entity.global_state = self.global_state
                     entity.reset()
 
+                    # [NEW MODIFICATION]: Wire the EventLogger to listen to this entity
+                    if hasattr(entity, 'register_event_handler_for_constraints'):
+                        entity.register_event_handler_for_constraints(
+                            entity.C_EVENT_ENTITY_STATE_CHANGE,
+                            self.global_state.event_logger.handle_entity_state_change
+                        )
+
             # Create a dictionary of managers for easy access.
             managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
                         'NetworkManager': self.network_manager}
@@ -256,6 +271,7 @@ class LogisticsSystem(System, EventManager):
             initial_sim_time = self.entities.get('initial_time', 0.0)
             self.time_manager.reset_time(new_initial_time=initial_sim_time)
             self.global_state.current_time = initial_sim_time
+            self.ret_computed = False
 
             # # Perform an initial update of the MLPro state object.
             # self._update_state()
@@ -281,6 +297,7 @@ class LogisticsSystem(System, EventManager):
             self.state_action_mapper.update_action_space(self.action_map, None)
             self.state_action_mapper.reverse_action_map = self._reverse_action_map
             self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
+            self.ret_computed = False
 
         # Perform an initial update of the MLPro state object.
         self._update_state()
@@ -364,8 +381,8 @@ class LogisticsSystem(System, EventManager):
             automatic_actions_to_take = self.get_automatic_actions()
             # If the list is empty, the system is stable.
             if not automatic_actions_to_take:
-                if self.custom_log:
-                    print(f"Auto-action loop stable after {i} iterations.")
+                # if self.custom_log:
+                    # print(f"Auto-action loop stable after {i} iterations.")
                 break
             # Select the first available automatic action to execute.
             auto_action_tuple = automatic_actions_to_take[0]
@@ -376,10 +393,10 @@ class LogisticsSystem(System, EventManager):
             # Increment the counter.
             i += 1
             # A safety break to prevent infinite loops.
-            if i > 20:
-                if self.custom_log:
-                    print("Auto-action loop exceeded safety limit of 20 iterations.")
-                break
+            # if i > 20:
+            #     if self.custom_log:
+            #         print("Auto-action loop exceeded safety limit of 20 iterations.")
+            #     break
 
     # --------------------------------------------------------------------------------------------------
 
@@ -420,36 +437,30 @@ class LogisticsSystem(System, EventManager):
 
     def advance_time(self, p_t_step: timedelta = None):
         """
-        Advances the simulation time by one timestep.
-
-        Parameters:
-            p_t_step (timedelta): The amount of time to advance. If None, uses the system's default latency.
+        Advances the simulation time by one timestep, then simulates all objects.
         """
         # Get the duration of a single timestep from the system's latency.
         timestep_duration = self.get_latency().total_seconds()
-        # Use the provided t_step or the default duration.
         t_step = p_t_step or timedelta(seconds=timestep_duration)
-        # Advance the time in the TimeManager.
-        self.time_manager.advance_time(timestep_duration)
-        # Update the current time in the GlobalState.
-        self.global_state.current_time = self.time_manager.get_current_time()
 
-        # Log the time advancement.
+        # --- 1. Step up the clock first ---
+        self.time_manager.advance_time(timestep_duration)
+        self.global_state.current_time = self.time_manager.get_current_time()
         self.log(self.C_LOG_TYPE_I, f"Time advanced to {self.global_state.current_time}s.")
-        # Trigger the OrderGenerator to see if any new orders should be created at this time.
+
+        # Trigger the OrderGenerator at the new time
         self.order_generator.generate(self.global_state.current_time)
 
-        # Collect all entities and managers that need to be updated with the time progression.
+        # --- 2. Simulate the objects for that step ---
         all_systems = (list(self.global_state.trucks.values()) +
                        list(self.global_state.drones.values()) +
                        list(self.global_state.micro_hubs.values()) +
                        [self.supply_chain_manager, self.resource_manager, self.network_manager])
 
-        # Call the simulate_reaction method on each component to process time-based events (e.g., vehicle movement).
         for system in all_systems:
             system.simulate_reaction(p_state=None, p_action=None, p_t_step=t_step)
 
-        # Update the MLPro state object after time has advanced.
+        # Update the MLPro state object after time has advanced and objects are simulated.
         self._update_state()
 
     # --------------------------------------------------------------------------------------------------
@@ -483,10 +494,12 @@ class LogisticsSystem(System, EventManager):
             np.ndarray: A boolean array where True indicates a valid action.
         """
         # If the StateActionMapper is initialized, use it to generate the mask.
-        if self.state_action_mapper:
-            return self.state_action_mapper.generate_masks()
+        # if self.state_action_mapper:
+        #     return self.state_action_mapper.generate_masks()
         # As a fallback, return a mask of all ones (all actions considered possible).
         # return np.ones(len(self.action_map), dtype=np.float64)
+        if self.constraint_manager:
+            return self.constraint_manager.get_masks()
 
     # --------------------------------------------------------------------------------------------------
 
@@ -574,6 +587,11 @@ class LogisticsSystem(System, EventManager):
             order.add_global_state(self.global_state)
             order.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
                                                       self.constraint_manager.handle_entity_state_change)
+            # [NEW MODIFICATION]: Wire dynamically generated orders to the EventLogger
+            order.register_event_handler_for_constraints(
+                LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
+                self.global_state.event_logger.handle_entity_state_change
+            )
             # order.raise_state_change_event()
         # print("End --", datetime.now())
         # Re-generate the masks to account for the new state and actions.
@@ -586,7 +604,7 @@ class LogisticsSystem(System, EventManager):
         A convenience method to get the current action masks.
         """
         # Calls the state-action mapper to generate the masks.
-        return self.state_action_mapper.generate_masks()
+        return self.constraint_manager.get_masks()
 
     # --------------------------------------------------------------------------------------------------
 
@@ -632,7 +650,9 @@ class LogisticsSystem(System, EventManager):
                 ords.C_DIM_DELIVERY_STATUS[0]) == ords.C_STATUS_DELIVERED) and success
         # If any order is not delivered, success will be false.
         if success:
-            return success
+            if (not self.ret_trip) and (not self.ret_computed):
+                self.ret_computed = self.compute_return_trips()
+                return success
         return success
 
     # --------------------------------------------------------------------------------------------------
@@ -645,8 +665,45 @@ class LogisticsSystem(System, EventManager):
         Returns:
             bool: Always False.
         """
+        # dems = [dem[0] for dem in self.global_state.get_pending_demands().values() if len(dem)]
+        # if len(dems):
+        #     dem = min(dems)
+        # else:
+        #     return False
+        # cap = max(list(self.global_state.get_available_capacities().values()))
+        # if cap<dem:
+        #     return True
         return False
 
+    def compute_return_trips(self):
+        max_return = self.global_state.current_time
+        trucks = list(self.global_state.trucks.values())
+        drones = list(self.global_state.drones.values())
+        for v in trucks + drones:
+            if v.get_state_value_by_dim_name(v.C_DIM_TRIP_STATE[0]) in v.C_TRIP_STATE_IDLE:
+                if not len(v.d_tstamps):
+                    continue
+                current_node = v.current_node_id
+                v.current_node_id = v.start_node_id
+                ret_node = v.start_node_id
+                dist = math.ceil(self.network.air_distance_matrix[str(current_node)][str(ret_node)])
+                v.ret_tstamp = v.d_tstamps[-1] + dist
+                max_return = max(max_return, v.ret_tstamp)
+                self.global_state.current_time = math.ceil(v.ret_tstamp)
+                v.distance_travelled+=dist
+                v.location_history.append(v.location_history[0])
+                v.current_location_coords = v.location_history[0]
+                v.update_state_value_by_dim_name(v.C_DIM_TRIP_STATE[0], v.C_TRIP_STATE_RETURNED)
+            else:
+                raise ValueError("The simulation shall not succeed without all vehicles being idle.")
+
+        self.time_manager.advance_to_time(max_return)
+        self.global_state.current_time = math.ceil(max_return)
+
+        # for v in trucks + drones:
+        #     v.update_state_value_by_dim_name_retro(v.C_DIM_TRIP_STATE[0], v.C_TRIP_STATE_RETURNED, time =)
+
+        return True
 
 
 # -------------------------------------------------------------------------

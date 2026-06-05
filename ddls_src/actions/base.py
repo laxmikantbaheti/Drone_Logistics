@@ -18,7 +18,8 @@ class GlobalState: pass
 
 
 class ActionIndex:
-    def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int]):
+    def __init__(self, global_state: 'GlobalState', action_map: Dict[Tuple, int], custom_log = False):
+        self.custom_log = custom_log
         self.actions_by_type: Dict['ActionType', Set[int]] = defaultdict(set)
         self.actions_involving_entity: Dict[Tuple, Set[int]] = defaultdict(set)
         self.global_state = global_state
@@ -38,7 +39,8 @@ class ActionIndex:
                 self.actions_involving_entity[(entity_type, entity_id)].add(action_index)
                 if entity_type == "Truck" or entity_type == "Drone":
                     self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
-        print("indexes updated")
+        if self.custom_log:
+            print("indexes updated")
 
 
         # for entity in self.global_state.get_all_entities():
@@ -48,7 +50,8 @@ class ActionIndex:
         #     # if type == "Truck" or entity_type == "Drone":
         #     #     self.actions_involving_entity[("Vehicle", entity_id)].add(action_index)
 
-        print("actions_indexes_updated")
+        if self.custom_log:
+            print("actions_indexes_updated")
 
     def update_indexes(self, global_state, action_map, old_action_map, state_action_mapper):
         self.actions_by_type = defaultdict(set)

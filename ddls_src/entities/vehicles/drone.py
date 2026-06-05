@@ -93,9 +93,32 @@ class Drone(Vehicle):
         self.battery_level = self.initial_battery
         # self._update_state()
 
+    # def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
+    #     """
+    #     Simulates the drone's state, including automatic loading/unloading and continuous processes.
+    #     """
+    #     if p_action is not None:
+    #         self._process_action(p_action, p_t_step)
+    #
+    #     # --- Automatic Logic ---
+    #     # self._check_and_perform_node_actions()
+    #
+    #     # --- Continuous Processes ---
+    #     time_seconds = p_t_step.total_seconds()
+    #     # if self.status == "charging":
+    #     #     self.charge(time_seconds)
+    #     if self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0]) == self.C_TRIP_STATE_EN_ROUTE:
+    #         # Call the parent's movement logic, which also handles energy drain
+    #         super()._simulate_reaction(p_state, None, p_t_step)
+    #     # else:  # Idle, loading, unloading, etc.
+    #     #     # Just drain idle battery
+    #     #     self.update_energy(-time_seconds)
+
+        # self._update_state()
+        # return self._state
     def _simulate_reaction(self, p_state: State, p_action: Action, p_t_step: timedelta = None) -> State:
         """
-        Simulates the drone's state, including automatic loading/unloading and continuous processes.
+        Simulates the truck's state, including automatic loading/unloading logic.
         """
         if p_action is not None:
             self._process_action(p_action, p_t_step)
@@ -103,20 +126,11 @@ class Drone(Vehicle):
         # --- Automatic Logic ---
         # self._check_and_perform_node_actions()
 
-        # --- Continuous Processes ---
-        time_seconds = p_t_step.total_seconds()
-        if self.status == "charging":
-            self.charge(time_seconds)
-        elif self.status == "en_route":
-            # Call the parent's movement logic, which also handles energy drain
-            super()._simulate_reaction(p_state, None, p_t_step)
-        else:  # Idle, loading, unloading, etc.
-            # Just drain idle battery
-            self.update_energy(-time_seconds)
+        # Call parent's simulation for movement
+        super()._simulate_reaction(p_state, None, p_t_step)
 
-        self._update_state()
+        # self._update_state()
         return self._state
-
     # def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
         # if self.global_state is None: return False
         #

@@ -2,12 +2,11 @@
 
 import numpy as np
 from agents.dummy_agent import DummyAgent
-from datetime import timedelta
+from datetime import timedelta, datetime
 from ddls_src.actions.base import SimulationActions
 from ddls_src.core.basics import LogisticsAction
 from ddls_src.core.logistics_system import LogisticsSystem
-from ddls_src.functions.plotting import plot_vehicle_gantt_chart, plot_vehicle_states, plot_vehicle_cargo_history, \
-    plot_invalid_delivery_gantt_chart
+from ddls_src.functions.plotting import SimulationPlotter
 from mlpro.bf.ml import Scenario
 from mlpro.bf.ops import Mode
 
@@ -15,14 +14,21 @@ from mlpro.bf.ops import Mode
 class LogisticsScenario(Scenario):
     C_NAME = 'LogisticsScenario'
 
-    def __init__(self, p_mode=Mode.C_MODE_SIM, p_cycle_limit=100, p_visualize: bool = False, p_logging=False, p_system = None,
-                 custom_log = False, **p_kwargs):
+    def __init__(self, p_mode=Mode.C_MODE_SIM,
+                 p_cycle_limit=100,
+                 p_visualize: bool = False,
+                 p_logging=False,
+                 p_system = None,
+                 ret_trip:bool = False,
+                 custom_log = False,
+                 **p_kwargs):
         self._config = p_kwargs.pop('config', {})
         self._system: LogisticsSystem = p_system
         self._logging = p_logging
         # Store the visualization flag
         self._visualize = p_visualize
         self.custom_log = custom_log
+        self.ret_trip = ret_trip
 
         super().__init__(p_mode=p_mode, p_cycle_limit=p_cycle_limit, p_visualize=p_visualize, p_logging=p_logging,
                          **p_kwargs)
@@ -31,7 +37,7 @@ class LogisticsScenario(Scenario):
         self.log(self.C_LOG_TYPE_I, "Setting up scenario...")
         if self._system == None:
             self._system = LogisticsSystem(p_id='logsys_001', p_visualize=p_visualize, p_logging=p_logging,
-                                       config=self._config, custom_log = self.custom_log)
+                                       config=self._config, custom_log = self.custom_log, ret_trip=self.ret_trip)
 
         # --- NEW: Setup visualization if enabled ---
         if self._visualize:
@@ -107,77 +113,88 @@ class LogisticsScenario(Scenario):
     #     new_state = self._system.get_state()
     #     return False, self._system.get_broken(), self._system.get_success(), False
 
-
     def _run_cycle(self):
-        """
-        Runs a single macro-cycle, with the decision loop now correctly using the agent-specific mask.
-        """
+        self.actual_sim_time = datetime.now()
         eof_data = False
         adapted = False
         self.log(self.C_LOG_TYPE_I, f"--- Starting Macro-Cycle {self.get_cycle_id()} ---")
 
-        # 1. Decision Phase
+        # --- 1. DECISION & CASCADE PHASE ---
         self.log(self.C_LOG_TYPE_I, "Entering Decision Phase...")
 
-        while True:#not all(self._system.get_masks()):
-            if not len(self._system.get_automatic_actions()):
+        while True:
+            # Step A: Settle the system.
+            # Resolve ALL automatic actions until exhaustion before the agent even looks at the state.
+            self._system.run_automatic_action_loop()
 
-                current_state = self._system.get_state()
-                # --- MODIFIED: Get the mask for the agent ---
-                agent_mask = self._system.get_agent_mask()
-                # --------------------------------------------
-                # System No Op Index
-                no_op_idx = list(self._system.action_map.values())[-1]
-                # Agent No Op Index
-                no_op_idx = self._system.agent_to_system_map.index(no_op_idx)
+            # Step B: Observe stable state and valid agent actions.
+            current_state = self._system.get_state()
+            agent_mask = self._system.get_agent_mask()
+            system_mask = self._system.get_masks()[:-1]
+            if not any(system_mask):
+                break
+            system_no_op_idx = list(self._system.action_map.values())[-1]
+            agent_no_op_idx = self._system.agent_to_system_map.index(system_no_op_idx)
 
-                # Condition 1: Are there any valid actions left for the agent?
-                agent_has_moves = np.any(agent_mask)
-                if not agent_has_moves:
-                    self.log(self.C_LOG_TYPE_I, "No valid agent actions available. Ending Decision Phase.")
-                    break
+            # Step C: Check Exit Condition 1 -> Are all agent actions masked?
+            if not np.any(agent_mask):
+                self.log(self.C_LOG_TYPE_I,
+                         "No valid agent actions available. System deadlocked. Ending Decision Phase.")
+                continue
 
-                # Agent selects an action based on its specific mask
-                action = self._model.compute_action(p_state=current_state, p_action_mask=agent_mask)
-                action_idx = action.get_sorted_values()[0]
-                sys_action_id = self._system.agent_to_system_map[int(action_idx)]
+            # Step D: Agent selects an action
+            action = self._model.compute_action(p_state=current_state, p_action_mask=agent_mask)
+            action_idx = action.get_sorted_values()[0]
 
-                # Condition 2: Did the agent choose NO_OPERATION?
-                if action_idx == no_op_idx:
-                    self.log(self.C_LOG_TYPE_I, "Agent chose NO_OPERATION. Ending Decision Phase.")
-                    break
+            # Step E: Check Exit Condition 2 -> Did the agent explicitly yield?
+            if action_idx == agent_no_op_idx:
+                self.log(self.C_LOG_TYPE_I, "Agent chose NO_OPERATION. Ending Decision Phase.")
+                break
 
-                action = LogisticsAction(p_action_space=self._system._action_space, p_values=[sys_action_id])
+            # Step F: Process the agent's action
+            sys_action_id = self._system.agent_to_system_map[int(action_idx)]
+            action_obj = LogisticsAction(p_action_space=self._system._action_space, p_values=[sys_action_id])
 
-            # Process the agent's chosen action
-                self._system.process_action(action)
-            else:
-                self._system.run_automatic_action_loop()
+            self._system.process_action(action_obj)
 
             if self._visualize:
                 self._system.network.update_plot()
 
-        # 2. Progression Phase
+            # The loop now restarts at Step A to immediately resolve any new
+            # automatic actions triggered by the agent's choice in Step F.
+
+        # --- 2. PROGRESSION PHASE ---
         self.log(self.C_LOG_TYPE_I, "Entering Progression Phase...")
+
+        # Time and physics only advance once the cascade is broken
         self._system.advance_time()
 
-        # if self._visualize and self._system.movement_mode == "network":
-            # self._system.network.update_plot()
-
-        # if self._system.get_success() and self._visualize:
+        # --- MODIFIED: Export Reports using the new EventLogger ---
         if self._system.get_success():
-            # plot_vehicle_gantt_chart(self._system.global_state)
-            # plot_vehicle_states(self._system.global_state)
-            # plot_vehicle_cargo_history(self._system.global_state)
-            # plot_invalid_delivery_gantt_chart(self._system.global_state)
+            self._actual_end_time = datetime.now()
+            print(f"\nSimulation successful at cycle {self.get_cycle_id()}. Generating event reports...")
+            print(f"Total distance travelled: {self._system.global_state.get_total_distance()}")
+            print(f"Time for simulation: {self._actual_end_time-self.actual_sim_time}")
+            # The EventLogger lives inside the GlobalState
+            if hasattr(self._system.global_state, 'event_logger'):
+                # Call export_reports. You can customize the base_filepath here if you want dynamically named folders.
+                self._system.global_state.event_logger.export_reports(base_filepath='scenario_report')
+            else:
+                self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
 
-            # --- MODIFICATION: Added Export Call ---
-            from ddls_src.functions.reports import export_simulation_reports
-
-            print("\nGenerating final simulation reports...")
-            # Set to 'csv' to generate two files (scenario_report_nodes.csv & scenario_report_orders.csv)
-            # Set to 'json' to generate one file (scenario_report.json)
-            export_simulation_reports(self._system.global_state, output_format='csv', base_filepath='scenario_report')# ---------------------------------------
+            # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
+            # plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
+            #
+            # # Generate the Gantt charts
+            # # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+            # plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
+            #
+            # # Generate the state timeline plot
+            # plotter.generate_plot('state_timeline', save_to_disk=False)
+            #
+            # # Generate 2d routes
+            # plotter.generate_plot("2d_routes", save_to_disk=False)
+        # -----------------------------------------------------------
 
         new_state = self._system.get_state()
         return self._system.get_success(), self._system.get_broken(), adapted, eof_data

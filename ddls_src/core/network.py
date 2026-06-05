@@ -144,8 +144,34 @@ class Network:
                 current = previous_nodes.get(current)
             return path if path and path[0] == start_node_id else []
 
-    def calculate_distance(self, p_node_1, p_node_2):
-        return 10
+    # def calculate_distance(self, p_node_1, p_node_2):
+    #     return 10
+
+    def calculate_distance(self, p_node_1, p_node_2, network_type=None):
+        """
+        Calculates the distance between two nodes strictly using the pre-computed
+        air or ground distance matrices from the scenario JSON.
+        """
+        # JSON dictionary keys are always strings
+        node1_str = str(p_node_1)
+        node2_str = str(p_node_2)
+
+        # Route to the Ground Matrix for Trucks
+        if network_type == self.C_NETWORK_GROUND:
+            try:
+                # Note: Adjust 'self.ground_distance_matrix' if your variable name differs slightly
+                return float(self.ground_distance_matrix[node1_str][node2_str])
+            except KeyError:
+                self.log(self.C_LOG_TYPE_E, f"Ground distance missing for {node1_str} -> {node2_str}")
+                return float('inf')
+
+        # Default to the Air Matrix for Drones
+        else:
+            try:
+                return float(self.air_distance_matrix[node1_str][node2_str])
+            except KeyError:
+                self.log(self.C_LOG_TYPE_E, f"Air distance missing for {node1_str} -> {node2_str}")
+                return float('inf')
 
     # --- Plotting Methods ---
     def setup_visualization(self):

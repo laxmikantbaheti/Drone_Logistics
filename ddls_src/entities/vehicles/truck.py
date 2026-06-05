@@ -82,7 +82,7 @@ class Truck(Vehicle):
             self._process_action(p_action, p_t_step)
 
         # --- Automatic Logic ---
-        self._check_and_perform_node_actions()
+        # self._check_and_perform_node_actions()
 
         # Call parent's simulation for movement
         super()._simulate_reaction(p_state, None, p_t_step)

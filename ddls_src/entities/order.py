@@ -49,6 +49,7 @@ class Order(LogisticEntity):
                  p_delivery_node_id,
                  p_id,
                  p_name: str = '',
+                 size:float = 1,
                  p_visualize: bool = False,
                  p_logging=False,
                  **p_kwargs):
@@ -68,6 +69,10 @@ class Order(LogisticEntity):
         self.customer_node_id: int = p_kwargs.get('customer_node_id')
         self.time_received: float = p_kwargs.get('time_received', 0.0)
         self.SLA_deadline: float = p_kwargs.get('SLA_deadline', 0.0)
+        if size is not None:
+            self.size: float = size
+        else:
+            self.size = 1.0
         self.priority: int = p_kwargs.get('priority', 1)
         self.pickup_node_id = p_pickup_node_id
         self.delivery_node_id = p_delivery_node_id
@@ -178,9 +183,16 @@ class Order(LogisticEntity):
         self.assigned_vehicle_id = vehicle_id
         self.assigned_vehicle = vehicle
         self.status = "assigned"
+        # self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
+        #                                     [vehicle_id, self.C_STATUS_ASSIGNED])
+        o = self.global_state.orders_by_nodes[(self.pickup_node_id, self.delivery_node_id)].pop(0)
+        if o != self:
+            raise ValueError("Something is wrong in handling orders in the node pair containers.")
+        c = self.global_state.capacity_demands[self.pickup_node_id, self.delivery_node_id].pop(0)
+        if c!=self.size:
+            raise ValueError("Something is wrong in handling capacity demands in global state. The assigned order does not match with the token sequence.")
         self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
                                             [vehicle_id, self.C_STATUS_ASSIGNED])
-
         self.log_current_state()
         return True
 
@@ -190,7 +202,13 @@ class Order(LogisticEntity):
         self.status = "at_micro_hub"
         self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
                                             [micro_hub_id, self.C_STATUS_ASSIGNED])
-
+        o = self.global_state.orders_by_nodes[(self.pickup_node_id, self.delivery_node_id)].pop(0)
+        if o != self:
+            raise ValueError("Something is wrong in handling orders in the node pair containers.")
+        c = self.global_state.capacity_demands[self.pickup_node_id, self.delivery_node_id].pop(0)
+        if c != self.size:
+            raise ValueError(
+                "Something is wrong in handling capacity demands in global state. The assigned order does not match with the token sequence.")
         self._update_state()
         self.log_current_state()
         return True
@@ -250,7 +268,7 @@ class Order(LogisticEntity):
         return f"Order {self.get_id()} - ({self.pickup_node_id},{self.delivery_node_id}) - {self.get_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0])} - {self.assigned_vehicle_id} - {self.assigned_micro_hub_id}"
 
     def __str__(self):
-        return f"Order {self.get_id()} - {self.pickup_node_id, self.delivery_node_id}"
+        return self.__repr__()
 
     def change_delivery_status(self, status):
         if status not in self.C_VALID_DELIVERY_STATES:
@@ -328,8 +346,8 @@ class Order(LogisticEntity):
             if succ.node_pair is not None:
                 succ.node_pair.raise_state_change_event()
 
-        self.predecessor_orders = []
-        self.successor_orders = []
+        # self.predecessor_orders = []
+        # self.successor_orders = []
 
         return [pseudo_order_1, pseudo_order_2]
 
@@ -370,7 +388,8 @@ class Order(LogisticEntity):
     def add_global_state(self, global_state):
         self.global_state = global_state
         self.node_pair = global_state.node_pairs[(self.pickup_node_id, self.delivery_node_id)]
-        print("Check here")
+        if self.custom_log:
+            print("Check here")
 
 
 class PseudoOrder(Order):
@@ -394,10 +413,11 @@ class PseudoOrder(Order):
                        p_id=p_id,
                        p_name=p_name,
                        p_visualize=p_visualize,
+                       size = p_parent_order.size,
                        p_logging=p_logging,
                        **p_kwargs)
         if p_leg is None:
-            raise ParamError("Please provide the number of leg this pseudo order represents.")
+            raise ValueError("Please provide the number of leg this pseudo order represents.")
         self.p_leg = p_leg
         self.parent_order = p_parent_order
 

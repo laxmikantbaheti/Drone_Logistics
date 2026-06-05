@@ -10,7 +10,7 @@ class JsonFileDataGenerator(BaseDataGenerator):
     A concrete data generator that loads initial simulation data from a specified JSON file.
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], custom_log = False):
         """
         Initializes the JsonFileDataGenerator.
 
@@ -19,6 +19,7 @@ class JsonFileDataGenerator(BaseDataGenerator):
                                      'file_path': str (path to the JSON file containing entity data).
         """
         super().__init__(config)
+        self.custom_log = custom_log
         self.file_path = config.get('file_path')
         if not self.file_path:
             raise ValueError("JsonFileDataGenerator: 'file_path' must be provided in config.")
@@ -29,7 +30,8 @@ class JsonFileDataGenerator(BaseDataGenerator):
             # For this example, we assume file_path is correctly relative to main.py or absolute.
             pass
 
-        print(f"JsonFileDataGenerator initialized for file: {self.file_path}")
+        if self.custom_log:
+            print(f"JsonFileDataGenerator initialized for file: {self.file_path}")
 
     def generate_data(self) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -42,7 +44,8 @@ class JsonFileDataGenerator(BaseDataGenerator):
         try:
             with open(self.file_path, 'r') as f:
                 data = json.load(f)
-            print(f"JsonFileDataGenerator: Successfully loaded data from {self.file_path}.")
+            if self.custom_log:
+                print(f"JsonFileDataGenerator: Successfully loaded data from {self.file_path}.")
         except FileNotFoundError:
             print(f"JsonFileDataGenerator Error: File not found at {self.file_path}.")
             raise  # Re-raise to indicate a critical failure in data loading
@@ -54,7 +57,8 @@ class JsonFileDataGenerator(BaseDataGenerator):
         expected_keys = ["nodes", "edges", "trucks", "drones", "micro_hubs", "orders"]
         for key in expected_keys:
             if key not in data or not isinstance(data[key], list):
-                print(
+                if self.custom_log:
+                    print(
                     f"JsonFileDataGenerator Warning: Missing or invalid '{key}' in loaded data. Providing empty list.")
                 data[key] = []
 
@@ -64,7 +68,8 @@ class JsonFileDataGenerator(BaseDataGenerator):
 
         # Add this to load the distance matrix
         if 'distance_matrix' not in data:
-            print("JsonFileDataGenerator Warning: 'distance_matrix' not found. Matrix-based movement will not work.")
+            if self.custom_log:
+                print("JsonFileDataGenerator Warning: 'distance_matrix' not found. Matrix-based movement will not work.")
             data['distance_matrix'] = {}
 
         return data

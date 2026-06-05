@@ -26,9 +26,7 @@ class DummyAgent(Model):
             # action_to_take_idx = valid_actions[0]
             action_to_take_idx = random.choice(valid_actions)
         else:
-            # Fallback to NO_OPERATION if no other actions are valid
-            # This requires access to the action map, which we'll pass during scenario setup
-            action_to_take_idx = self._no_op_idx
+            raise ValueError("There are no agent actions available. The loop shall be broken")
 
         return LogisticsAction(p_action_space=self._action_space, p_values=[action_to_take_idx])
 
