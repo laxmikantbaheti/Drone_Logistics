@@ -3,6 +3,7 @@ from datetime import timedelta
 from scipy.constants import value
 
 from ddls_src.actions.base import ActionIndex
+# from ddls_src.core.global_state import GlobalState
 from mlpro.bf.events import EventManager, Event
 from mlpro.bf.exceptions import ParamError
 from mlpro.bf.math import Set, Dimension, MSpace, ESpace
@@ -37,7 +38,7 @@ class LogisticEntity(System):
         self.data_storage = {}
 
         # [NEW] Added an attribute for global state reference
-        self.global_state = None
+        self.global_state:GlobalState = None
 
         # [NEW] Set to store actions involved with this entity
         self.associated_actions = set()

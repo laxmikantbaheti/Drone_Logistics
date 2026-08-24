@@ -1,6 +1,7 @@
 import numpy as np
 from gymnasium import spaces
 from abc import ABC, abstractmethod
+from ddls_src.entities import Truck, Drone, MicroHub, Vehicle
 
 
 class BaseObservations(ABC):
@@ -97,7 +98,7 @@ class BaseObservations(ABC):
 
 
 class DemandCapacityObservations(BaseObservations):
-    def __init__(self, num_vehicles=7, num_nodes=53, max_capacity=100.0, max_time=10000.0):
+    def __init__(self, num_vehicles=9, num_nodes=69, max_capacity=100.0, max_time=10000.0):
         self.num_vehicles = num_vehicles
         self.num_nodes = num_nodes
 
@@ -172,3 +173,103 @@ class DemandCapacityObservations(BaseObservations):
             obs.append(total_pair_demand)
 
         return np.array(obs, dtype=np.float32)
+
+
+class ObservationSpaceActiveResource(BaseObservations):
+    def __init__(self, num_vehicles=7, num_nodes=53, max_capacity=100.0, max_time=10000.0):
+        self.num_vehicles = num_vehicles
+        self.num_nodes = num_nodes
+
+        # Scaling limits
+        self.max_capacity = max_capacity
+        self.max_time = max_time
+
+    def get_observation_space(self, global_state: GlobalState) -> spaces.Space:
+        # Dynamically check the length from the global state
+        num_node_pairs = len(global_state.node_pairs)
+
+        # Exact Size: 1 (Active Resource) + 1 (Current Cargo Size) + 1 (Last assigned node) + num of nodes
+        self._obs_size = 3 + num_node_pairs
+
+        low_bounds = [0.0]
+        high_bounds = [len(global_state.trucks|global_state.drones|global_state.micro_hubs)]
+
+        low_bounds.extend([0.0])
+        high_bounds.extend([float(self.max_capacity)])
+
+        low_bounds.extend([0.0])
+        high_bounds.extend([num_node_pairs])
+
+        # Node Pair Bounds: [Total Capacity Demand for specific O-D Pair]
+        low_bounds.extend([0.0] * num_node_pairs)
+        high_bounds.extend([self.max_capacity] * num_node_pairs)
+
+        return spaces.Box(
+            low=np.array(low_bounds, dtype=np.float32),
+            high=np.array(high_bounds, dtype=np.float32),
+            dtype=np.float32
+        )
+
+    def get_observation(self, global_state: GlobalState) -> np.ndarray:
+        obs = []
+        num_node_pairs = len(global_state.orders_by_nodes)
+
+        # --- 1. ACTIVE RESOURCE ---
+        active_resource = global_state.active_resource
+        if active_resource is not None:
+            active_resource_id = active_resource.get_id()
+        else:
+            active_resource_id = -1
+
+        # --- 2. Current Cargo Size ---
+        if isinstance(active_resource, MicroHub) or (active_resource is None):
+            current_cargo_size = -1
+        elif isinstance(active_resource, Vehicle):
+            current_cargo_size = active_resource.get_committed_cargo_size()
+        else:
+            raise ValueError("The active resource shall either be a vehicle or a MicroHub.")
+
+        # --- 3. Last assigned node ---
+        if isinstance(active_resource, MicroHub) or (active_resource is None):
+            last_assigned_node = -1
+        elif isinstance(active_resource, Vehicle):
+            delivery_nodes = active_resource.delivery_node_ids
+            if len(delivery_nodes):
+                last_assigned_node = delivery_nodes[-1]
+            else:
+                last_assigned_node = -1
+
+        else:
+            raise ValueError("The active resource shall either be a vehicle or a MicroHub.")
+
+        # --- 3. Demand at each delivery node (including the micro_hub nodes) ---
+        demands = [d[0] if len(d) else 0 for d in global_state.get_pending_demands(all_node_pairs=True).values()]
+
+        obs.append(active_resource_id)
+        obs.append(current_cargo_size)
+        obs.append(last_assigned_node)
+        obs.extend(demands)
+
+        return np.array(obs, dtype=np.float32)
+
+
+class ActiveResourceObservation(BaseObservations):
+
+    def __init__(self, num_vehicles=7, num_nodes=53, max_capacity=100.0, max_time=10000.0):
+        self.num_vehicles = num_vehicles
+        self.num_nodes = num_nodes
+
+        # Scaling limits
+        self.max_capacity = max_capacity
+        self.max_time = max_time
+
+    def get_observation_space(self, global_state: GlobalState) -> spaces.Space:
+        return spaces.Box(low= -1, high = self.num_vehicles)
+
+
+    def get_observation(self, global_state):
+        active_resource = global_state.active_resource
+        if active_resource is None:
+            return 0
+        else:
+            return int(active_resource.get_id())+1

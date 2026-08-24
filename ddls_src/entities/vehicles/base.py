@@ -652,6 +652,46 @@ class Vehicle(LogisticEntity, ABC):
 
         self._evaluate_route_state()
 
+    def load_orders_at_node(self):
+        orders_loaded = []
+        cargo_updated = False
+        current_node = self.current_node_id
+        if current_node is None:
+            raise ValueError("The vehicle is not at any node. Load actions shall be masked when the vehicle is not at "
+                             "any node or is in transit.")
+        for order in self.pickup_orders:
+            if order.get_pickup_node_id() == current_node:
+                self.add_cargo(order)
+                order.set_enroute()
+                orders_loaded.extend([orders_loaded])
+                if self.custom_log:
+                    print(f"Order {order.get_id()} is loaded in the vehicle {self.get_id()}.")
+                cargo_updated = True
+        if not cargo_updated:
+            if self.custom_log:
+                print(f"No orders to be picked up at {current_node}")
+        return orders_loaded
+
+    def unload_orders_at_node(self):
+        delivered_orders = []
+        cargo_updated = False
+        current_node = self.current_node_id
+        if current_node is None:
+            raise ValueError("The unload/load actions shall be masked if the vehicle is not at any node"
+                             "or the vehicle is in transit.")
+        for order in self.get_current_cargo():
+            if order.get_delivery_node_id() == current_node:
+                self.remove_cargo(order.get_id())
+                order.set_delivered()
+                delivered_orders.extend([order])
+                if self.custom_log:
+                    print(f"Order {order.get_id()} is delivered by vehicle {self.get_id()}.")
+                cargo_updated = True
+        if not cargo_updated:
+            if self.custom_log:
+                print(f"No orders to be delivered at {current_node}.")
+        return delivered_orders
+
     # def remove_cargo(self, order_id: int):
     #     """Removes a package from the manifest by ID and safely mutates the MLPro state."""
     #     # Find the order by ID since the manifest holds Order objects

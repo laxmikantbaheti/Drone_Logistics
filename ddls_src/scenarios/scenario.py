@@ -186,7 +186,7 @@ class LogisticsScenario(Scenario):
             # plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
             #
             # # Generate the Gantt charts
-            # # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+            # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
             # plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
             #
             # # Generate the state timeline plot

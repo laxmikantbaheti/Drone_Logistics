@@ -104,6 +104,7 @@ class Constraint(ABC, EventManager):
             # current_block_set = set(current_actions_to_block) if current_actions_to_block else set()
             # to_block, to_unblock = self.examine_global_cache(current_block_set)
             # self.update_constraint_deck(to_block, to_unblock, deck, p_entity)
+            self.update_constraint_deck_global(to_block, to_unblock, deck)
 
         return to_block, to_unblock
 
@@ -117,6 +118,13 @@ class Constraint(ABC, EventManager):
             deck[action].add(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
         for action in to_unblock:
             deck[action].remove(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
+
+    def update_constraint_deck_global(self, to_block, to_unblock, deck):
+        for action in to_block:
+            deck[action].add(f"{self.C_NAME}")
+        for action in to_unblock:
+            if f"{self.C_NAME}" in deck[action]:
+                deck[action].remove(f"{self.C_NAME}")
 
     def clear_cache(self):
         self._entity_invalidation_map.clear()

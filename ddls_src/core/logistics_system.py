@@ -15,6 +15,7 @@ from sympy.plotting.intervalmath import ceil
 
 # Import action-related classes.
 from ddls_src.actions.base import SimulationActions, ActionType, ActionIndex
+from ddls_src.actions.conditional_actions import SimulationActions
 from ddls_src.core.basics import LogisticsAction
 # from ddls_src.actions.action_map_generator import generate_action_map
 # Local Imports
@@ -24,15 +25,17 @@ from ddls_src.core.global_state import GlobalState
 from ddls_src.core.time_manager import TimeManager
 from ddls_src.core.network import Network
 # Import mapping and constraint management classes.
-from ddls_src.core.constraint_manager import StateActionMapper, ConstraintManager
+# from ddls_src.core.constraint_manager import StateActionMapper, ConstraintManager
+from ddls_src.core.constraint_manager_reduced import ConstraintManager, StateActionMapper
 # Import all entity classes (e.g., Truck, Drone, Hub).
 from ddls_src.entities import *
 # Import manager classes that handle different aspects of the simulation logic.
 from ddls_src.managers.action_manager import ActionManager
 from ddls_src.managers.network_manager import NetworkManager
 from ddls_src.managers.resource_manager.base import ResourceManager
-from ddls_src.managers.supply_chain_manager import SupplyChainManager
+# from ddls_src.managers.supply_chain_manager import SupplyChainManager
 # Import scenario and data generation utilities.
+from ddls_src.managers_reduced.logistic_manager import LogisticManager
 from ddls_src.scenarios.generators.data_loader import DataLoader
 from ddls_src.scenarios.generators.order_generator import OrderGenerator
 from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
@@ -66,7 +69,7 @@ class LogisticsSystem(System, EventManager):
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,
-                 custom_log = False,
+                 custom_log = True,
                  ret_trip = False,
                  **p_kwargs):
         """
@@ -115,9 +118,9 @@ class LogisticsSystem(System, EventManager):
         # Manages the execution of actions.
         self.action_manager: ActionManager = None
         # Manages orders, products, and supply chain logic.
-        self.supply_chain_manager: SupplyChainManager = None
+        self.logistic_manager: LogisticManager = None
         # Manages resources like vehicles and hubs.
-        self.resource_manager: ResourceManager = None
+        # self.resource_manager: ResourceManager = None
         # Manages vehicle movements and network-related logic.
         self.network_manager: NetworkManager = None
         # Generates new orders during the simulation.
@@ -135,6 +138,7 @@ class LogisticsSystem(System, EventManager):
         # Call the reset method to perform the main setup.
         self.setup = False
         self.ret_trip = ret_trip
+        self.decision_phase = 1
         self.reset()
         # self.setup = True
 
@@ -219,10 +223,10 @@ class LogisticsSystem(System, EventManager):
             self.constraint_manager = ConstraintManager(action_index=self.action_index,
                                                         reverse_action_map=self._reverse_action_map)
             # Initialize the SupplyChainManager.
-            self.supply_chain_manager = SupplyChainManager(p_id='scm', global_state=self.global_state,
+            self.logistic_manager = LogisticManager(p_id='scm', global_state=self.global_state,
                                                            p_automatic_logic_config=self.automatic_logic_config)
-            # Initialize the ResourceManager.
-            self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
+            # # Initialize the ResourceManager.
+            # self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
             # Initialize the NetworkManager.
             self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
                                                   p_automatic_logic_config=self.automatic_logic_config)
@@ -244,7 +248,7 @@ class LogisticsSystem(System, EventManager):
                         )
 
             # Create a dictionary of managers for easy access.
-            managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
+            managers = {'Logistic': self.logistic_manager,
                         'NetworkManager': self.network_manager}
 
             # Give each manager a reference to the parent system.
@@ -283,7 +287,9 @@ class LogisticsSystem(System, EventManager):
         initial_sim_time = self.entities.get('initial_time', 0.0)
         self.time_manager.reset_time(new_initial_time=initial_sim_time)
         self.global_state.current_time = initial_sim_time
+        self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
         if self.setup:
+            old_action_map = self.action_map
             self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
             # Update the reverse action map.
             self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
@@ -294,13 +300,14 @@ class LogisticsSystem(System, EventManager):
             # Link the updated action index to the constraint manager.
             self.constraint_manager.action_index = self.action_index
             # Update the state-action mapper with the new action space.
-            self.state_action_mapper.update_action_space(self.action_map, None)
+            self.state_action_mapper.update_action_space(self.action_map, old_action_map)
             self.state_action_mapper.reverse_action_map = self._reverse_action_map
             self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
             self.ret_computed = False
 
         # Perform an initial update of the MLPro state object.
         self._update_state()
+        # self.setup = True
 
         return True
 
@@ -410,6 +417,10 @@ class LogisticsSystem(System, EventManager):
         Returns:
             bool: True if an action was successfully processed, False otherwise.
         """
+        if self.global_state.active_resource is None:
+            self.decision_phase = 1
+        else:
+            self.decision_phase = 2
         # print("Process Started--", datetime.now())
         # Flag to track if the action was processed.
         action_processed = False
@@ -423,7 +434,7 @@ class LogisticsSystem(System, EventManager):
         # Check if the action is valid and is not the "No Operation" action.
         if action_tuple and action_tuple[0] != SimulationActions.NO_OPERATION:
             if self.custom_log:
-                    print(f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
+                    print(f"  - Agent Action: {action_index} - {action_tuple[0].name}{action_tuple[1:]}")
             # Execute the action via the ActionManager.
             action_processed = self.action_manager.execute_action(action_tuple)
 
@@ -431,6 +442,7 @@ class LogisticsSystem(System, EventManager):
         # Update the MLPro state object after the action.
         self._update_state()
         # Return whether an action was processed.
+        # print(f"Masked: {[i for i,a in enumerate(self.constraint_manager.get_masks()) if a == 0]}, Unmasked: {[i for i,a in enumerate(self.constraint_manager.get_masks()) if a == 1]}")
         return action_processed
 
     # --------------------------------------------------------------------------------------------------
@@ -455,7 +467,7 @@ class LogisticsSystem(System, EventManager):
         all_systems = (list(self.global_state.trucks.values()) +
                        list(self.global_state.drones.values()) +
                        list(self.global_state.micro_hubs.values()) +
-                       [self.supply_chain_manager, self.resource_manager, self.network_manager])
+                       [self.logistic_manager, self.network_manager])
 
         for system in all_systems:
             system.simulate_reaction(p_state=None, p_action=None, p_t_step=t_step)
@@ -626,7 +638,7 @@ class LogisticsSystem(System, EventManager):
                                                                       self.constraint_manager.handle_entity_state_change)
 
         # When the SupplyChainManager requests a new order, it triggers an event.
-        self.supply_chain_manager.register_event_handler(SupplyChainManager.C_EVENT_NEW_ORDER_REQUEST,
+        self.logistic_manager.register_event_handler(LogisticManager.C_EVENT_NEW_ORDER_REQUEST,
                                                          # This event is handled by the system's own method to add the order.
                                                          self._handle_new_order_request)
 

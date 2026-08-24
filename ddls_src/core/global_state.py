@@ -33,6 +33,9 @@ class Network: pass
 class OrderRequests: pass
 
 
+# class PseudoOrder: pass
+
+
 class GlobalState:
     """
     A single source of truth for all simulation data, providing controlled access.
@@ -40,6 +43,7 @@ class GlobalState:
     """
 
     def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode, custom_log = False):
+        self.active_resource = None
         self.custom_log = custom_log
         self.entity_dicts = {}
         self.nodes: Dict[int, Node] = initial_entities.get('nodes', {})
@@ -368,14 +372,49 @@ class GlobalState:
         caps = {v.get_id():v.get_remaining_capacity() for v in (self.trucks | self.drones).values()}
         return caps
 
-    def get_pending_demands(self):
+    def get_pending_demands(self, all_node_pairs=False):
+        if all_node_pairs:
+            return {self.node_pairs[key].get_id(): [o.size for o in value] for key, value in self.orders_by_nodes.items()}
         caps = self.setup_capacity_demands()
         return caps
 
     def setup_capacity_demands(self):
-        caps = {key: [o.size for o in value] for key, value in self.orders_by_nodes.items()}
+        caps = {self.node_pairs[key].get_id(): [o.size for o in value] for key, value in self.get_order_requests().items()}
         return caps
 
     def get_total_distance(self):
         tot_dist = sum([v.distance_travelled for v in (self.trucks|self.drones).values()])
         return tot_dist
+
+    def get_vehicles(self):
+
+        trucks = list(self.trucks.values())
+        drones = list(self.drones.values())
+        vehicles = trucks + drones
+
+        return vehicles
+
+    def get_resources(self):
+
+        vehicles = self.get_vehicles()
+        micro_hubs = list(self.micro_hubs.values())
+        resources = vehicles + micro_hubs
+
+        return resources
+
+    def get_microhub_orders(self):
+
+        micro_hubs = self.micro_hubs
+
+        requests = self.get_order_requests()
+        pickups = {key:value for key,value in requests.items() if key[1] in micro_hubs.keys()}
+        deliveries = {key:value for key, value in requests.items() if key[0] in micro_hubs.keys()}
+
+        return deliveries, pickups
+
+    def get_microhub_routes(self):
+        micro_hubs = self.micro_hubs
+        node_pairs = self.node_pairs
+        routes = {key:value for key,value in node_pairs.items() if key in micro_hubs.keys()}
+        return routes
+

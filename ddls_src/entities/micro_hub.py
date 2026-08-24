@@ -179,6 +179,7 @@ class MicroHub(Node):
     def assign_order(self, p_order):
         self.add_cargo(p_order)
         self.assigned_order.append(p_order)
+
         return True
 
     def add_cargo(self, p_order):

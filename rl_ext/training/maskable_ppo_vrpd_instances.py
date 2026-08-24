@@ -16,7 +16,7 @@ class MaskablePPOTraining(Training):
         tb_log = os.path.join(self.run_dir, "tb_logs") if self.save_summary else None
 
         custom_policy_kwargs = dict(
-            net_arch=dict(pi=[1024, 1024], vf=[1024, 1024])
+            net_arch=dict(pi=[1024, 512], vf=[1024, 512])
         )
 
         self.model = MaskablePPO(
@@ -24,10 +24,10 @@ class MaskablePPOTraining(Training):
             self.env,
             verbose=1,
             policy_kwargs=custom_policy_kwargs,
-            learning_rate=2e-3,
+            learning_rate=1e-3,
             n_steps=1024,
-            n_epochs=10,
-            batch_size=64,
+            n_epochs=50,
+            batch_size=124,
             gamma=0.99,
             ent_coef=0.02,
             tensorboard_log=tb_log,
@@ -72,7 +72,7 @@ if __name__ == "__main__":
         "scenarios",
         "vrp_d_instances",
         "VRP-D",
-        "A-n53-k7.vrp"
+        "A-n69-k9.vrp"
     )
     vrp_instance_path = os.path.normpath(vrp_instance_path)
     instance_name = os.path.splitext(os.path.basename(vrp_instance_path))[0].replace("-", "_")

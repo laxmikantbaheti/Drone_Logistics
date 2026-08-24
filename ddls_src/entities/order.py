@@ -200,8 +200,6 @@ class Order(LogisticEntity):
         self.assigned_micro_hub_id = micro_hub_id
         self.assigned_micro_hub = self.global_state.micro_hubs[micro_hub_id]
         self.status = "at_micro_hub"
-        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
-                                            [micro_hub_id, self.C_STATUS_ASSIGNED])
         o = self.global_state.orders_by_nodes[(self.pickup_node_id, self.delivery_node_id)].pop(0)
         if o != self:
             raise ValueError("Something is wrong in handling orders in the node pair containers.")
@@ -209,6 +207,9 @@ class Order(LogisticEntity):
         if c != self.size:
             raise ValueError(
                 "Something is wrong in handling capacity demands in global state. The assigned order does not match with the token sequence.")
+
+        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
+                                            [micro_hub_id, self.C_STATUS_ASSIGNED])
         self._update_state()
         self.log_current_state()
         return True
@@ -365,6 +366,20 @@ class Order(LogisticEntity):
                     else:
                         precedence_satisfied = False
             return precedence_satisfied
+
+    def check_assignment_precedence(self):
+        predecessor_orders:[Order] = self.predecessor_orders
+        if not len(predecessor_orders):
+            return True
+        precedence_satisfied = True
+        for ordr in predecessor_orders:
+            if isinstance(ordr, Order):
+                if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_ASSIGNED:
+                    precedence_satisfied = True and precedence_satisfied
+                else:
+                    precedence_satisfied = False
+        return precedence_satisfied
+
 
     def register_event_handler_for_constraints(self, p_event_id: str, p_event_handler):
         super().register_event_handler_for_constraints(p_event_id, p_event_handler)
