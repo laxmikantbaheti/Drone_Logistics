@@ -111,7 +111,7 @@ class MicroHub(Node):
         self.is_package_transfer_unavailable = False
         self.assigned_oder = []
         self.cargo = {}
-        self._update_state()
+        # self._update_state()
 
     def _process_action(self, p_action: Action, p_t_step: timedelta = None) -> bool:
         """
@@ -144,14 +144,14 @@ class MicroHub(Node):
         if p_action is not None:
             self._process_action(p_action, p_t_step)
 
-        self._update_state()
+        # self._update_state()
         return self._state
 
     def _update_state(self):
         """
         Helper method to synchronize all internal attributes with the formal MLPro state object.
         """
-        super()._update_state()
+        # super()._update_state()
         self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_AVAILABILITY[0]).get_id(),
                               1 if self.operational_status == 'active' else 0)
         self._state.set_value(self._state.get_related_set().get_dim_by_name(self.C_DIM_AVAILABLE_CHARGING_SLOTS[0]).get_id(),

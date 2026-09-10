@@ -112,7 +112,8 @@ class LogisticsEnv(gym.Env):
     def _calculate_reward(self) -> float:
         # Kept for compatibility but not used in step() anymore per your request
         if self._system.get_success():
-            return -float((self._system.global_state.get_total_distance()))
+            reward = float((self._system.global_state.get_total_distance()))
+            return 1.0 - (reward/10000.0)
         elif self._system.get_broken():
             return -float(100000)
         else:
