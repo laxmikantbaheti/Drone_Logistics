@@ -223,15 +223,24 @@ class ActiveResourceConstraint(Constraint):
     def evaluate_impact_global(self, p_entity:LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         active_resource = p_entity.global_state.active_resource
         relevant_actions = self.associated_action_index
-
+        mask = set()
         if (isinstance(active_resource, Truck)
                 or isinstance(active_resource, Drone)
                 or isinstance(active_resource, MicroHub)):
 
-            return [], list(relevant_actions)
+            return list(), list(relevant_actions)
 
         elif active_resource is None:
-            return list(relevant_actions), []
+
+            for drone in p_entity.global_state.drones.values():
+                rem_cap = drone.get_remaining_capacity()
+                dems = [s[0] for s in p_entity.global_state.get_pending_demands().values()]
+                if len(dems):
+                    if rem_cap < min(dems):
+                        mask.update(drone.associated_action_indexes.intersection(self.associated_action_index))
+
+            unmask = relevant_actions.difference(mask)
+            return list(unmask), list(unmask)
 
         else:
             raise TypeError("Invalid resource type for the selected/active resource for the decision epoch.")

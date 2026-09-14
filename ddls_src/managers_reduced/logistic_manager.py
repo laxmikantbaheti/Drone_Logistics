@@ -141,7 +141,7 @@ class LogisticManager(System):
 
         elif action_type == SimulationActions.SELECT_MICROHUB:
             if "micro_hub_id" in action_kwargs.keys():
-                mh = self.global_state.get_vehicle(action_kwargs["micro_hub_id"])
+                mh = self.global_state.get_microhub(action_kwargs["micro_hub_id"])
             else:
                 raise ValueError("Select micro_hub action shall have keywords either"
                                  "micro_hub_id respectively in the action kwargs.")

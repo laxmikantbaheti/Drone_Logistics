@@ -418,3 +418,7 @@ class GlobalState:
         routes = {key:value for key,value in node_pairs.items() if key in micro_hubs.keys()}
         return routes
 
+    def get_microhub(self, param):
+        mh = self.micro_hubs[param]
+        return mh
+

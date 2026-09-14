@@ -34,15 +34,15 @@ class SimulationActions:
                                           handler = "Logistic")
     SELECT_TRUCK = ActionType(name = "SELECT_TRUCK",
                                  params = [{"name" : "truck_id", "type":"Truck"}],
-                                 is_automatic=True,
+                                 is_automatic=False,
                                  handler = "Logistic")
     SELECT_DRONE = ActionType(name = "SELECT_DRONE",
                                  params = [{"name" : "drone_id", "type":"Drone"}],
-                                 is_automatic=True,
+                                 is_automatic=False,
                                  handler = "Logistic")
     SELECT_MICROHUB = ActionType(name = "SELECT_MICROHUB",
                                  params = [{"name" : "micro_hub_id", "type":"MicroHub"}],
-                                 is_automatic=True,
+                                 is_automatic=False,
                                  handler = "Logistic")
     CONSOLIDATE = ActionType(name="CONSOLIDATE_FOR_VEHICLE",
                              params=[],

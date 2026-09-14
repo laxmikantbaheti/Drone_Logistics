@@ -35,7 +35,7 @@ def run_matrix_scenario_demo(instance:str= None, n_microhubs=2, n_drones=2):
         "main_timestep_duration": 1.0,
         "data_loader_config": {
             # IMPORTANT: must match your generator factory registry name
-            "generator_type": "vrpd",
+            "generator_type": "f2evrpd",
             "generator_config": {
                 "instance_path": vrp_instance_path,
 
@@ -89,4 +89,4 @@ def run_matrix_scenario_demo(instance:str= None, n_microhubs=2, n_drones=2):
 
 
 if __name__ == "__main__":
-    run_matrix_scenario_demo("A-n80-k10.vrp", 2,1)
+    run_matrix_scenario_demo("A-n32-k5", 2,1)

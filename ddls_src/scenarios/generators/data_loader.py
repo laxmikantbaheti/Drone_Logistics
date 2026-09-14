@@ -1,5 +1,6 @@
 import os  # Import os for path manipulation
 from ddls_src.scenarios.vrp_d_instances.vrpd_instance_generator import VRPDBenchmarkDataGenerator
+from ddls_src.scenarios.vrp_d_instances.f2evrpd import F2EVRPDGenerator
 from typing import Dict, Any, List, Type
 
 # Import the base data generator and its concrete implementations
@@ -61,6 +62,8 @@ class DataLoader:
             raise NotImplementedError("Custom paper data generator not yet implemented.")
         elif self.generator_type == "vrpd":
             return VRPDBenchmarkDataGenerator(self.generator_config)
+        elif self.generator_type == "f2evrpd":
+            return F2EVRPDGenerator(self.generator_config)
         else:
             raise ValueError(f"Unsupported data generator type: {self.generator_type}")
 
