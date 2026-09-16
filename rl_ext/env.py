@@ -8,6 +8,7 @@ import copy  # Added for deepcopying the logs
 from ddls_src.core.logistics_system import LogisticsSystem
 from ddls_src.core.basics import LogisticsAction
 from rl_ext.observations import DefaultObservations, BaseObservations, DemandCapacityObservations, ObservationSpaceActiveResource, ActiveResourceObservation
+from rl_ext.observations import MaskState
 from rl_ext.rewards import DefaultRewards, BaseRewards
 
 
@@ -27,7 +28,7 @@ class LogisticsEnv(gym.Env):
         if observation_handler is not None:
             self.obs_handler = observation_handler
         else:
-            self.obs_handler = DemandCapacityObservations()
+            self.obs_handler = MaskState()
 
         if rewards_handler is not None:
             self.rewards_handler = rewards_handler

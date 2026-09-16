@@ -43,6 +43,7 @@ class GlobalState:
     """
 
     def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode, custom_log = False):
+        self.micro_hub_phase = True
         self.active_resource = None
         self.custom_log = custom_log
         self.entity_dicts = {}
@@ -68,6 +69,8 @@ class GlobalState:
         self.orders_by_nodes = self.setup_order_by_node_pairs()
         self.capacity_demands = self.setup_capacity_demands()
         self.movement_mode = movement_mode
+        self.microhub_routes = self.get_microhub_routes()
+        self.agent_masks = []
 
         # Initialize the centralized DataManager
         self.data_manager = DataManager()
@@ -345,10 +348,13 @@ class GlobalState:
         for ordr in p_orders:
             self.orders[ordr.get_id()] = ordr
             self.orders_by_nodes[ordr.get_pickup_node_id(), ordr.get_delivery_node_id()].append(ordr)
-            self.capacity_demands[ordr.get_pickup_node_id(), ordr.get_delivery_node_id()].append(ordr.size)
+            p_id, d_id = ordr.get_pickup_node_id(), ordr.get_delivery_node_id()
+            if (p_id, d_id) not in self.capacity_demands:
+                self.capacity_demands[p_id, d_id] = [ordr.size]
+            else:
+                self.capacity_demands[ordr.get_pickup_node_id(), ordr.get_delivery_node_id()].append(ordr.size)
             if isinstance(ordr, PseudoOrder):
                 self.pseudo_orders[ordr.get_id()] = ordr
-
 
     def get_all_entities(self):
         return [self.node_pairs, self.orders, self.trucks, self.drones, self.micro_hubs, self.nodes]
@@ -377,6 +383,12 @@ class GlobalState:
             return {self.node_pairs[key].get_id(): [o.size for o in value] for key, value in self.orders_by_nodes.items()}
         caps = self.setup_capacity_demands()
         return caps
+
+    def get_next_demands(self, except_micro_hubs=True):
+        if except_micro_hubs:
+            return [o[0].size for np,o in self.get_order_requests().items() if len(o) and np not in self.microhub_routes.keys()]
+        else:
+            return [o[0].size for np,o in self.get_order_requests().items() if len(o) and np[0] not in self.micro_hubs.keys()]
 
     def setup_capacity_demands(self):
         caps = {self.node_pairs[key].get_id(): [o.size for o in value] for key, value in self.get_order_requests().items()}
@@ -407,18 +419,20 @@ class GlobalState:
         micro_hubs = self.micro_hubs
 
         requests = self.get_order_requests()
-        pickups = {key:value for key,value in requests.items() if key[1] in micro_hubs.keys()}
-        deliveries = {key:value for key, value in requests.items() if key[0] in micro_hubs.keys()}
+        pickups = {key:value for key,value in requests.items() if key[0] in micro_hubs.keys()}
+        deliveries = {key:value for key, value in requests.items() if key[1] in micro_hubs.keys()}
 
         return deliveries, pickups
 
     def get_microhub_routes(self):
         micro_hubs = self.micro_hubs
         node_pairs = self.node_pairs
-        routes = {key:value for key,value in node_pairs.items() if key in micro_hubs.keys()}
+        routes = {key:value for key,value in node_pairs.items() if key[0] in micro_hubs.keys() or key[1] in micro_hubs.keys()}
         return routes
 
     def get_microhub(self, param):
         mh = self.micro_hubs[param]
         return mh
+
+
 

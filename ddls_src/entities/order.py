@@ -102,6 +102,7 @@ class Order(LogisticEntity):
 
         # Will be instantiated properly in reset()
         self.state_history = []
+        self.leg = 1
         self.reset()
 
     @staticmethod
@@ -242,12 +243,14 @@ class Order(LogisticEntity):
         if self.assigned_vehicle_id:
             return self.assigned_vehicle_id
 
-    def set_enroute(self):
+    def set_enroute(self, vehicle):
         """Triggered when the order is picked up."""
-        self.carrying_vehicle = self.assigned_vehicle
-        self.assigned_vehicle_id = None
-        self.assigned_vehicle = None
+        if self.assigned_vehicle is None:
+            raise ValueError(f"The order {self.get_id()} cannot be set without an assigned vehicle")
+        if vehicle.get_id() != self.assigned_vehicle.get_id():
+            raise ValueError("Order can only be loaded to its assgined vehicle")
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)
+        self.carrying_vehicle = self.assigned_vehicle
         self.status = "En Route"
 
         # Capture the actual node at the moment of pickup
@@ -431,10 +434,10 @@ class PseudoOrder(Order):
                        size = p_parent_order.size,
                        p_logging=p_logging,
                        **p_kwargs)
+        self.parent_order = p_parent_order
         if p_leg is None:
             raise ValueError("Please provide the number of leg this pseudo order represents.")
-        self.p_leg = p_leg
-        self.parent_order = p_parent_order
+        self.leg = max(p_leg, self.parent_order.leg)
 
         self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
                                     self.parent_order.handle_pseudo_delivery)

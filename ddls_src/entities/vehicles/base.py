@@ -158,7 +158,7 @@ class Vehicle(LogisticEntity, ABC):
             self.state_history.append({
                 'time': current_time,
                 'vehicle_id': self.get_id(),
-                'node_id': self.get_current_node(),
+                'node_id': self.get_current_node_id(),
                 'status': status,'num_pickup_tasks': len(pickup_list),
                 'pickup_orders': str(pickup_list),
                 'num_delivery_tasks': len(delivery_list),
@@ -662,7 +662,7 @@ class Vehicle(LogisticEntity, ABC):
         for order in self.pickup_orders:
             if order.get_pickup_node_id() == current_node:
                 self.add_cargo(order)
-                order.set_enroute()
+                order.set_enroute(self)
                 orders_loaded.extend([orders_loaded])
                 if self.custom_log:
                     print(f"Order {order.get_id()} is loaded in the vehicle {self.get_id()}.")
@@ -742,7 +742,7 @@ class Vehicle(LogisticEntity, ABC):
 
             self.log_current_state()
 
-            if self.get_current_node() is None:
+            if self.get_current_node_id() is None:
                 self.set_current_node_id(self.start_node_id)
             return
 
@@ -769,7 +769,7 @@ class Vehicle(LogisticEntity, ABC):
         self.log_current_state()
 
     def get_current_location(self):
-        return self.get_current_node().coords
+        return self.get_current_node_id().coords
 
     def get_delivery_orders(self):
         return self.delivery_orders
@@ -1068,7 +1068,7 @@ class Vehicle(LogisticEntity, ABC):
             target_node = self.planned_node_sequence[self.current_sequence_index]
 
         # 3. START THE ENGINE
-        distance = self.global_state.network.calculate_distance(self.current_node_id, target_node)
+        distance = self.global_state.network.calculate_distance(self.current_node_id, target_node, self.C_NAME)
         self.en_route_timer = distance / self.get_speed()
         # XXX - This is critical, update it when you upgrade to a dynamic setting, with in route event based changes.
         self.distance_travelled += self.en_route_timer
@@ -1085,7 +1085,7 @@ class Vehicle(LogisticEntity, ABC):
             self.delivery_orders.remove(p_order)
             self.cargo_manifest.remove(p_order)
 
-    def get_current_node(self):
+    def get_current_node_id(self):
         return self.current_node_id
 
     def set_current_node_id(self, current_node_id):

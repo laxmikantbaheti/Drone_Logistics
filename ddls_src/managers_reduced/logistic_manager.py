@@ -125,6 +125,8 @@ class LogisticManager(System):
                                  "check your masking logic/constraints.")
             if isinstance(active_resource, Truck) or isinstance(active_resource, Drone):
                 self.assign_order(o, active_resource)
+            elif isinstance(active_resource, MicroHub):
+                self.assign_order(o, active_resource)
             event_stack.extend([n_pair, o])
 
         elif action_type == SimulationActions.SELECT_TRUCK or action_type == SimulationActions.SELECT_DRONE:
@@ -157,7 +159,12 @@ class LogisticManager(System):
             else:
                 raise ValueError("Load truck or load drone action shall have keywords either"
                                  "truck_id or drone_id respectively in the action kwargs.")
+
             orders_loaded = vehicle.load_orders_at_node()
+            # for o in orders_loaded:
+            #     n_id = vehicle.get_current_node_id()
+            #     if n_id in vehicle.global_state.micro_hubs.keys():
+            #         vehicle.global_state.micro_hubs[n_id].load_order(o)
             event_stack.extend(orders_loaded)
             event_stack.append(vehicle)
 
@@ -194,18 +201,28 @@ class LogisticManager(System):
             active_resource.consolidate_route()
             if self.custom_log:
                 print(f"Consolidation completed for vehicle {active_resource.get_id()}.")
+        if isinstance(active_resource, MicroHub):
+            active_resource.consolidated = True
+            if all([mh.consolidated for mh in active_resource.global_state.micro_hubs.values()]):
+                active_resource.global_state.micro_hub_phase = False
+            active_resource.raise_state_change_event()
+            if active_resource.assigned_drone_id is None:
+                raise ValueError("No drone assigned to microhub. Non conformant with the problem type f2evrp")
+            else:
+                drone = active_resource.global_state.drones[active_resource.assigned_drone_id]
+                drone.consolidate_route()
+
         return True
 
     def assign_order(self, p_order: Order, p_entity):
         assigned = True
         if isinstance(p_entity, MicroHub):
+            pseudo_order1, pseudo_order2 = p_order.create_pseudo_orders(p_entity.get_id())
+            self.create_order_requests([pseudo_order1, pseudo_order2])
+            if self.custom_log:
+                print(f"Order {p_order.get_id()} assigned to micro_hub {p_entity.get_id()}.")
             assigned = p_order.assign_micro_hub(p_entity.id) and assigned
-            assigned = p_entity.assign_order(p_order) and assigned
-            if assigned:
-                pseudo_order1, pseudo_order2 = p_order.create_pseudo_orders(p_entity.get_id())
-                self.create_order_requests([pseudo_order1, pseudo_order2])
-                if self.custom_log:
-                    print(f"Order {p_order.get_id()} assigned to micro_hub {p_entity.get_id()}.")
+            assigned = p_entity.assign_order(p_order, pseudo_order1, pseudo_order2) and assigned
         elif isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
             assigned = p_order.assign_vehicle(p_entity._id, p_entity)
             assigned = p_entity.assign_orders([p_order]) and assigned

@@ -290,25 +290,17 @@ class F2EVRPDGenerator(BaseDataGenerator):
         } for i in range(n)]
 
     def _build_drones(self, n, depot_id, drone_config, mh_list):
-        return [{
+        drones = [{
             "id": 20000 + i,
             "max_payload_capacity": drone_config["max_payload_capacity"],
             "max_speed": drone_config["max_speed"],
-            "start_node_id": mh_list[0]["id"],
+            "start_node_id": mh_list[i]["id"],
         } for i in range(n)]
 
-    # def _build_orders_from_demand(self, parsed, depot_id):
-    #     orders = []
-    #     oid = 1000
-    #     for tsplib_id in range(2, parsed["dimension"] + 1):
-    #         for _ in range(parsed["demands"].get(tsplib_id, 0)):
-    #             orders.append({
-    #                 "id": oid,
-    #                 "p_pickup_node_id": depot_id,
-    #                 "p_delivery_node_id": tsplib_id - 1,
-    #             })
-    #             oid += 1
-    #     return orders
+        for i,drone in enumerate(drones):
+            mh_list[i]["assigned_drone_id"] = drone["id"]
+
+        return drones
 
     def _build_orders_from_demand(self, parsed, depot_id):
         orders = []

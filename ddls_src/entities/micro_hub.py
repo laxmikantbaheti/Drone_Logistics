@@ -15,8 +15,8 @@ class MicroHub(Node):
     It now defines its own action space to handle its state changes directly.
     """
 
-    C_TYPE = 'Micro-Hub'
-    C_NAME = 'Micro-Hub'
+    C_TYPE = 'MicroHub'
+    C_NAME = 'MicroHub'
     C_DIM_OPERATIONAL_AVAILABILITY = ["ava","Operational Availability", []]
     C_DIM_CHARGING_SLOTS = ["ch_slots","Charging Slots", []]
     C_DIM_AVAILABLE_CHARGING_SLOTS = ["available_slots","Available Charging Slots", []]
@@ -71,8 +71,15 @@ class MicroHub(Node):
         # FIX: Make global_state optional during initialization, defaulting to None
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self._state = State(self._state_space)
-        self.cargo = {}
+        self.cargo = set()
         self.assigned_order = []
+        self.total_capacity = p_kwargs.get("total_capacity", None)
+        self.available_capacity = self.total_capacity
+        self.assigned_capacity = 0
+        self.occupied_capacity = 0
+        self.assigned_drone_id = p_kwargs.get("assigned_drone_id", None)
+        self.assigned_drone = None
+        self.consolidated = False
         self.reset()
 
     @staticmethod
@@ -176,12 +183,38 @@ class MicroHub(Node):
     def get_available_charging_slots(self) -> List[int]:
         return [slot_id for slot_id, drone_id in self.charging_slots.items() if drone_id is None]
 
-    def assign_order(self, p_order):
-        self.add_cargo(p_order)
-        self.assigned_order.append(p_order)
-
+    def assign_order(self, p_order, pseudo_order1, pseudo_order2):
+        if self.assigned_drone is None:
+            if self.assigned_drone_id is not None:
+                self.assigned_drone = self.global_state.drones[self.assigned_drone_id]
+            else:
+                raise ValueError("No assigned drone found")
+        if self.assigned_drone is not None:
+            self.assigned_drone.assign_orders([pseudo_order2])
+            pseudo_order2.assign_vehicle(self.assigned_drone.get_id(), self.assigned_drone)
+        self.raise_state_change_event()
         return True
 
-    def add_cargo(self, p_order):
-        self.cargo[p_order.id] = p_order
+    def get_current_cargo(self):
+        if self.assigned_drone_id is not None:
+            return self.assigned_drone_id.current_cargo
+
+    def get_remaining_capacity(self):
+        if self.assigned_drone is None:
+            if self.assigned_drone_id is not None:
+                self.assigned_drone = self.global_state.drones[self.assigned_drone_id]
+            else:
+                raise ValueError("No assigned drone found. Please check the current problem type.")
+        if self.assigned_drone is not None:
+            return self.assigned_drone.get_remaining_capacity()
+
+        else:
+            raise ValueError("MicroHub does not have an assigned drone. Non conformant the problem definition.")
+
+    def get_assigned_orders(self):
+        if self.assigned_drone_id is not None:
+            return self.assigned_drone_id.assigned_orders
+
+    def get_total_capacity(self):
+        return self.total_capacity
 

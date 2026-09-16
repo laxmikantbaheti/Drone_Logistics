@@ -538,6 +538,8 @@ class LogisticsSystem(System, EventManager):
         no_op_idx = self.action_map.get((SimulationActions.NO_OPERATION,))
         # if no_op_idx is not None:
         agent_mask[self.agent_to_system_map.index(no_op_idx)] = False
+        # Save the mask in the global_state
+        self.global_state.agent_masks = agent_mask
         # Return the final agent-specific mask.
         return agent_mask
 

@@ -16,7 +16,7 @@ class MaskablePPOTraining(Training):
         tb_log = os.path.join(self.run_dir, "tb_logs") if self.save_summary else None
 
         custom_policy_kwargs = dict(
-            net_arch=dict(pi=[64, 128, 64], vf=[64, 128, 64])
+            net_arch=dict(pi=[128, 128], vf=[128, 128])
         )
 
         self.model = MaskablePPO(
@@ -29,7 +29,7 @@ class MaskablePPOTraining(Training):
             n_epochs=15,
             batch_size=64,
             gamma=0.99,
-            ent_coef=0.04,
+            ent_coef=0.02,
             tensorboard_log=tb_log,
             device="cuda"
         )

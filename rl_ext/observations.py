@@ -273,3 +273,28 @@ class ActiveResourceObservation(BaseObservations):
             return 0
         else:
             return int(active_resource.get_id())+1
+
+class MaskState(BaseObservations):
+
+    def __init__(self, num_trucks=7, num_drones=5, num_nodes=53, num_microhubs=2, max_capacity=100.0, max_time=10000.0):
+        self.num_vehicles = num_trucks + num_microhubs
+        self.num_nodes = num_nodes
+        self.num_microhubs = num_microhubs
+        # Scaling limits
+        self.max_capacity = max_capacity
+        self.max_time = max_time
+
+
+    def get_observation_space(self, global_state: GlobalState) -> spaces.Space:
+
+        # Dimensions = all masks
+        # num_masks = num_actions
+        # num_actions = ASSIGN_ACTIONS
+        node_pairs = len(global_state.node_pairs)
+
+        return spaces.Box(low= 0, high = 1, shape=(node_pairs,), dtype=np.float32)
+
+
+    def get_observation(self, global_state):
+
+        return global_state.agent_masks[:-1]

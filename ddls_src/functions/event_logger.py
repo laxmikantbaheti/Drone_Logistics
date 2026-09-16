@@ -47,7 +47,7 @@ class EventLogger:
                 'vehicle_id': f"{entity.get_id()}-{entity.max_payload_capacity}",
                 'vehicle_type': entity.C_NAME,
                 'status': entity.get_state_value_by_dim_name(entity.C_DIM_TRIP_STATE[0]),
-                'current_node': entity.get_current_node(),
+                'current_node_id': entity.get_current_node_id(),
                 "current_coords": entity.current_location_coords,
                 'energy_level': energy,
                 "cargo_capacity": entity.get_cargo_capacity(),
