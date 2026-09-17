@@ -73,6 +73,8 @@ class LogisticsEnv(gym.Env):
             info["terminal_event_count"] = logger.recorded_events_count
             info["reward"] = self._calculate_reward()
             info["makespan"] = self._system.global_state.current_time
+            info["Truck Distance"] = self._system.total_truck_distance
+            info["Drone Distance"] = self._system.total_drone_distance
 
         return observation, reward, terminated, truncated, info
 

@@ -83,6 +83,8 @@ class LogisticsSystem(System, EventManager):
             **p_kwargs: Additional keyword arguments, expected to contain 'config'.
         """
         # Retrieve the configuration dictionary from keyword arguments.
+        self.total_truck_distance = 0
+        self.total_drone_distance = 0
         self.ret_computed:bool = False
         self.custom_log = custom_log
         self._config = p_kwargs.get('config', {})
@@ -658,6 +660,9 @@ class LogisticsSystem(System, EventManager):
         # Assume success is true initially.
         success = True
         # Check each order's status.
+        self.calculate_total_distances_travelled()
+        if self.custom_log:
+            print(f"Truck Distance: {self.total_truck_distance}, Drone Distance: {self.total_drone_distance}")
         for ords in orders.values():
             # The overall success is only true if every single order is delivered.
             success = (ords.get_state_value_by_dim_name(
@@ -718,6 +723,10 @@ class LogisticsSystem(System, EventManager):
         #     v.update_state_value_by_dim_name_retro(v.C_DIM_TRIP_STATE[0], v.C_TRIP_STATE_RETURNED, time =)
 
         return True
+
+    def calculate_total_distances_travelled(self):
+        self.total_truck_distance = sum([truck.distance_travelled for truck in self.global_state.trucks.values()])
+        self.total_drone_distance = sum([drone.distance_travelled for drone in self.global_state.drones.values()])
 
 
 # -------------------------------------------------------------------------
