@@ -26,7 +26,7 @@ class Training(ABC):
 
         # 2. Resolve Absolute Config Path
         clean_path = config_path.replace("Drone_Logistics/", "").replace("\\", "/")
-        self.config_full_path = (self.project_root / (clean_path+".vrp")).resolve()
+        self.config_full_path = (self.project_root / (clean_path)).resolve()
         if not self.config_full_path.exists():
             raise FileNotFoundError(f"Config not found at: {self.config_full_path}")
 

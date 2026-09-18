@@ -43,7 +43,7 @@ class GlobalState:
     """
 
     def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode, custom_log = False):
-        self.micro_hub_phase = True
+        self.micro_hub_phase = False
         self.active_resource = None
         self.custom_log = custom_log
         self.entity_dicts = {}
