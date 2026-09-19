@@ -1,112 +1,143 @@
-import time
+import os
 import argparse
-import inspect
-import numpy.random as rnd
-from alns import ALNS
-from alns.accept import SimulatedAnnealing
-from alns.select import RouletteWheel
-from alns.stop import MaxIterations
-
-from rl_ext.env import LogisticsEnv
-from alns_benchmark.state import PriorityPlanState
-from alns_benchmark.evaluator import EnvironmentEvaluator
-from alns_benchmark.operators.destroy import destroy_random, destroy_toggle_truck_mode
-from alns_benchmark.operators.repair import repair_greedy
-from alns_benchmark.config import ALNSConfig
+import copy
+import random
+import numpy as np
+import pandas as pd
+from rl_ext.training.base import Training
 
 
-def run_benchmark(instance_path: str, seed: int = 42):
-    print("=" * 60)
-    print(f"Running ALNS Benchmark on: {instance_path}")
-    print("=" * 60)
+# ----------------------------------------------------------------------
+# 1. Base Environment Factory / Resolver
+# ----------------------------------------------------------------------
+class _EnvLoader(Training):
+    """
+    Minimal concrete subclass to bypass the abstract method check
+    and extract self.env initialized via the base Training harness.
+    """
+    def train(self, *args, **kwargs):
+        pass
 
-    env = LogisticsEnv()
-    evaluator = EnvironmentEvaluator(env)
 
-    # Initialize environment once to extract customer order IDs[cite: 1]
-    try:
-        obs, info = env.reset(options={"instance_file": instance_path})
-    except TypeError:
-        obs, info = env.reset()
-
-    if hasattr(env.unwrapped, "supply_chain_manager"):
-        order_ids = [o.id for o in env.unwrapped.supply_chain_manager.get_all_orders()][cite: 1]
-    else:
-        order_ids = list(range(1, env.action_space.n))
-
-    # Evaluate initial natural priority sequence
-    init_state = PriorityPlanState(order_priority=order_ids)
-    start_init_eval = time.time()
-    init_cost = evaluator.evaluate(init_state, instance_path)
-    print(f"Initial Feasible Cost: {init_cost:.2f} (Computed in {time.time() - start_init_eval:.2f}s)")
-
-    # Setup ALNS
-    rng = rnd.default_rng(seed)
-    alns = ALNS(rng)
-
-    # Register operators FIRST
-    alns.add_destroy_operator(destroy_random)
-    alns.add_destroy_operator(destroy_toggle_truck_mode)
-    alns.add_repair_operator(lambda s, r: repair_greedy(s, r, evaluator, instance_path))
-
-    # Dynamic RouletteWheel configuration based on installed signature
-    num_destroy = len(alns.destroy_operators)
-    num_repair = len(alns.repair_operators)
-    rw_params = inspect.signature(RouletteWheel.__init__).parameters
-
-    rw_kwargs = {"scores": ALNSConfig.SCORES, "decay": ALNSConfig.DECAY}
-    if "num_destroy" in rw_params:
-        rw_kwargs["num_destroy"] = num_destroy
-    if "num_repair" in rw_params:
-        rw_kwargs["num_repair"] = num_repair
-    if "seg_length" in rw_params:
-        rw_kwargs["seg_length"] = ALNSConfig.UPDATE_INTERVAL
-
-    select = RouletteWheel(**rw_kwargs)
-
-    # Acceptance and dynamic stopping criteria
-    node_count = len(order_ids)
-    if node_count <= 25:
-        max_iters = ALNSConfig.ITERATIONS_SMALL
-    elif node_count <= 45:
-        max_iters = ALNSConfig.ITERATIONS_MEDIUM
-    else:
-        max_iters = ALNSConfig.ITERATIONS_LARGE
-
-    accept = SimulatedAnnealing(
-        start_temperature=ALNSConfig.START_TEMPERATURE,
-        end_temperature=ALNSConfig.END_TEMPERATURE,
-        step=ALNSConfig.STEP_DECAY,
+def make_env(vrp_instance_path: str, sim_config: dict, instance_name: str):
+    """
+    Creates and returns the RL environment initialized with the identical
+    sim_config dictionary used in your MaskablePPO setup.
+    """
+    loader = _EnvLoader(
+        config_path=vrp_instance_path,
+        sim_config=sim_config,
+        instance_name=instance_name,
+        save_models=False,
+        save_episode_data=False,
     )
-    stop = MaxIterations(max_iters)
+    return loader.env
 
-    # Run optimization
-    start_time = time.time()
-    result = alns.iterate(init_state, select, accept, stop)
-    total_time = time.time() - start_time
+# ----------------------------------------------------------------------
+# 2. Heuristic Action-Mask Compliant Rollout Evaluator
+# ----------------------------------------------------------------------
+def evaluate_sequence(env, action_sequence: list, seed: int = 42):
+    """
+    Executes a high-level action/node sequence in the environment while
+    strictly respecting action_masks at each time step.
+    """
+    obs, info = env.reset(seed=seed)
+    done = False
+    truncated = False
+    total_reward = 0.0
+    step_idx = 0
+    infeasible_attempts = 0
 
-    best_state = result.best_state
-    improvement = ((init_cost - best_state.cost) / init_cost) * 100 if init_cost != 0 else 0.0
+    for target_action in action_sequence:
+        if done or truncated:
+            break
 
-    print("-" * 60)
-    print(f"Optimization finished in: {total_time:.2f}s")
-    print(f"Best ALNS Objective Cost: {best_state.cost:.2f}")
-    print(f"Improvement over baseline: {improvement:.2f}%")
-    print(f"Solution Metrics: {best_state.metrics}")
-    print("-" * 60)
+        mask = env.action_masks()
 
-    return best_state, total_time
+        # Capacity & Transition Mask Validation
+        if mask[target_action] == 1:
+            chosen_action = target_action
+        else:
+            # Mask violation (e.g. capacity exhausted, node invalid for current vehicle state)
+            infeasible_attempts += 1
+            valid_indices = np.where(mask == 1)[0]
+            if len(valid_indices) == 0:
+                break  # Deadlock
+            # Fallback: Pick first valid action (or return-to-depot action)
+            chosen_action = int(valid_indices[0])
+
+        obs, reward, done, truncated, info = env.step(chosen_action)
+        total_reward += reward
+        step_idx += 1
+
+    # Fitness: reward (negative cost) minus penalty for mask breaches
+    fitness = total_reward
+    return fitness, info
 
 
+# ----------------------------------------------------------------------
+# 3. Main Runner with sim_config
+# ----------------------------------------------------------------------
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run ALNS benchmark on VRP-D instances.")
-    parser.add_argument(
-        "--instance",
-        type=str,
-        default="ddls_src/scenarios/vrp_d_instances/VRP-D/A-n32-k5.vrp",
-        help="Path to .vrp benchmark instance",
+    script_path = os.path.dirname(os.path.realpath(__file__))
+
+    # VRP-D Instance Path
+    vrp_instance_path = os.path.join(
+        script_path,
+        "..",
+        "ddls_src",
+        "scenarios",
+        "vrp_d_instances",
+        "VRP-D",
+        "A-n32-k5"
     )
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    vrp_instance_path = os.path.normpath(vrp_instance_path)
+    instance_name = os.path.splitext(os.path.basename(vrp_instance_path))[0].replace("-", "_")
+
+    # Complete Simulation Configuration matching MaskablePPO setup
+    sim_config = {
+        "movement_mode": "matrix",
+        "initial_time": 0.0,
+        "main_timestep_duration": 1.0,
+        "data_loader_config": {
+            "generator_type": "f2evrpd",
+            "generator_config": {
+                "instance_path": vrp_instance_path,
+                "num_drones": 0,
+                "num_microhubs": 0,
+                "bbox": (0, 0, 100, 100),
+                "std_dev_scale": 4.0,
+                "drone_capacity_ratio": 0.2,
+                "truck_speed": 1.0,
+                "drone_speed": 1.0,
+                "seed": 42,
+            }
+        },
+    }
+
+    parser = argparse.ArgumentParser(description="Heuristic Evaluation with sim_config")
+    parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument("--eval_seed", type=int, default=42)
     args = parser.parse_args()
 
-    run_benchmark(args.instance, args.seed)
+    print(f"\n--- INITIALIZING HEURISTIC RUNNER ---")
+    print(f"Instance Name : {instance_name}")
+    print(f"Instance Path : {vrp_instance_path}")
+    print(f"Generator Type: {sim_config['data_loader_config']['generator_type']}\n")
+
+    # Build environment using sim_config
+    env = make_env(
+        vrp_instance_path=vrp_instance_path,
+        sim_config=sim_config,
+        instance_name=instance_name
+    )
+
+    # Example baseline evaluation
+    obs, info = env.reset(seed=args.eval_seed)
+    num_actions = env.action_space.n if hasattr(env.action_space, "n") else len(env.action_masks())
+
+    # Generate test candidate sequence
+    sample_candidate = [random.randint(0, num_actions - 1) for _ in range(50)]
+
+    score, run_info = evaluate_sequence(env, sample_candidate, seed=args.eval_seed)
+    print(f"Evaluation Complete | Fitness Score: {score:.2f}")
