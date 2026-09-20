@@ -44,6 +44,7 @@ def run_scenario_demo():
     print("start---",start)
     scenario.run()
     print("\n--- Scenario Finished ---")
+    print(f"Truck Distance: {scenario._system.total_truck_distance}, Drone Distance: {scenario._system.total_drone_distance}")
     end = datetime.now()
     print("end ---",end)
     print(end-start)

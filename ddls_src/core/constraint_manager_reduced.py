@@ -396,7 +396,10 @@ class FullCapacityConsolidationConstraint(Constraint):
             else:
                 return [], list(self.associated_action_index)
         elif isinstance(active_resource, MicroHub):
-            if active_resource.get_remaining_capacity() >= min(p_entity.global_state.get_next_demands()):
+            dems = p_entity.global_state.get_next_demands()
+            if not len(dems):
+                return list(self.associated_action_index), []
+            if active_resource.get_remaining_capacity() >= min(dems):
                 return [], list(self.associated_action_index)
             else:
                 return list(self.associated_action_index), []
@@ -466,8 +469,10 @@ class MicroHubConsolidation(Constraint):
         if isinstance(p_entity.global_state.active_resource, MicroHub):
             relevant_actions = self.associated_action_index
             available_cap = p_entity.get_remaining_capacity()
-
-            if available_cap >= min(p_entity.global_state.get_next_demands()):
+            dems = p_entity.global_state.get_next_demands()
+            if not len(dems):
+                return list(relevant_actions), []
+            if available_cap >= min(dems):
                 return [], list(relevant_actions)
             else:
                 return list(relevant_actions), []

@@ -661,8 +661,8 @@ class LogisticsSystem(System, EventManager):
         success = True
         # Check each order's status.
         self.calculate_total_distances_travelled()
-        if self.custom_log:
-            print(f"Truck Distance: {self.total_truck_distance}, Drone Distance: {self.total_drone_distance}")
+        # if self.custom_log:
+        #     print(f"Truck Distance: {self.total_truck_distance}, Drone Distance: {self.total_drone_distance}")
         for ords in orders.values():
             # The overall success is only true if every single order is delivered.
             success = (ords.get_state_value_by_dim_name(
