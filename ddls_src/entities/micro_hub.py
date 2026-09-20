@@ -79,6 +79,7 @@ class MicroHub(Node):
         self.occupied_capacity = 0
         self.assigned_drone_id = p_kwargs.get("assigned_drone_id", None)
         self.assigned_drone = None
+        self.is_drone_assigned = p_kwargs.get("is_drone_assigned", True)
         self.consolidated = False
         self.reset()
 

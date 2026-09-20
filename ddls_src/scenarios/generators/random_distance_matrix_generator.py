@@ -1,3 +1,4 @@
+import math
 import random
 from typing import Dict, Any, List, Tuple
 
@@ -6,9 +7,12 @@ from .data_generator import BaseDataGenerator  # Import the base class
 
 class DistanceMatrixDataGenerator(BaseDataGenerator):
     """
-    Generates simulation data based on a predefined or randomly generated distance matrix,
-    without using explicit node coordinates. Edges are not generated as travel times
-    are derived directly from the matrix.
+    Generates simulation data with uniformly distributed node coordinates,
+    micro-hub placement using K-Means clustering on customer locations,
+    1:1 pairing between micro-hubs and drones (with 'assigned_drone_id'),
+    and two distance matrices:
+      - 'ground_distance_matrix': Manhattan distance (|dx| + |dy|)
+      - 'air_distance_matrix': Euclidean distance (sqrt(dx^2 + dy^2))
     """
 
     def __init__(self, config: Dict[str, Any]):
@@ -19,14 +23,13 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
             config (Dict[str, Any]): Configuration for data generation. Expected keys:
                                      'base_scale_factor': int
                                      'num_nodes': int (Total number of nodes)
-                                     'distance_matrix': Dict[str, Dict[str, float]] (Optional, pre-defined matrix)
-                                     'max_travel_time': float (Optional, if generating matrix)
-                                     # Other keys similar to RandomDataGenerator for scaling, vehicles, orders
+                                     'area_x_range': Tuple[float, float] (Default: (0.0, 100.0))
+                                     'area_y_range': Tuple[float, float] (Default: (0.0, 100.0))
                                      'scaling_factors': Dict[str, float]
                                      'truck_payload_range': Tuple[int, int]
                                      'drone_payload_range': Tuple[int, int]
-                                     'truck_speed_range': Tuple[float, float] # Speed might be less relevant here
-                                     'drone_speed_range': Tuple[float, float] # Speed might be less relevant here
+                                     'truck_speed_range': Tuple[float, float]
+                                     'drone_speed_range': Tuple[float, float]
                                      'initial_fuel_range': Tuple[float, float]
                                      'initial_battery_range': Tuple[float, float]
                                      'sla_min_hours': float
@@ -41,48 +44,47 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
 
         self.base_scale_factor = config.get('base_scale_factor', 5)
 
-        # Scaling factors (similar to RandomDataGenerator)
+        # Coordinate bounding box for uniform distribution
+        self.area_x_range: Tuple[float, float] = tuple(config.get('area_x_range', (0.0, 100.0)))
+        self.area_y_range: Tuple[float, float] = tuple(config.get('area_y_range', (0.0, 100.0)))
+
+        # Scaling factors
         default_scaling_factors = {
-            'nodes': 2.0, # Used if num_nodes is not directly provided
+            'nodes': 2.0,
             'depots': 0.1,
             'customers': 1.5,
             'micro_hubs': 0.2,
             'trucks': 0.1,
-            'drones': 0.4,
             'initial_orders': 1.0
         }
         self.scaling_factors = config.get('scaling_factors', default_scaling_factors)
 
-        # Use num_nodes if provided, otherwise derive from scale factor
+        # Node counts
         self.num_nodes = config.get('num_nodes',
                                     max(10, int(self.base_scale_factor * self.scaling_factors.get('nodes', 2.0))))
 
-        # Derived counts
         self.num_depots = max(1, int(self.base_scale_factor * self.scaling_factors.get('depots', 0.1)))
         self.num_customers = max(1, int(self.base_scale_factor * self.scaling_factors.get('customers', 1.5)))
         self.num_micro_hubs = max(0, int(self.base_scale_factor * self.scaling_factors.get('micro_hubs', 0.2)))
         self.num_trucks = max(1, int(self.base_scale_factor * self.scaling_factors.get('trucks', 0.1)))
-        self.num_drones = max(0, int(self.base_scale_factor * self.scaling_factors.get('drones', 0.4)))
         self.num_initial_orders = max(1, int(self.base_scale_factor * self.scaling_factors.get('initial_orders', 1.0)))
 
-        # Ensure we don't try to create more special nodes than total nodes
+        # Constrain special nodes count to num_nodes
         total_special_nodes = self.num_depots + self.num_customers + self.num_micro_hubs
         if total_special_nodes > self.num_nodes:
-            # Adjust counts proportionally or prioritize depots/customers if needed
-            print(f"Warning: Requested special nodes ({total_special_nodes}) exceed total nodes ({self.num_nodes}). Adjusting...")
+            print(
+                f"Warning: Requested special nodes ({total_special_nodes}) exceed total nodes ({self.num_nodes}). Adjusting...")
             scale_down = self.num_nodes / total_special_nodes
             self.num_customers = max(1, int(self.num_customers * scale_down))
             self.num_micro_hubs = int(self.num_micro_hubs * scale_down)
-            self.num_depots = max(1, self.num_nodes - self.num_customers - self.num_micro_hubs) # Ensure depot gets priority
+            self.num_depots = max(1, self.num_nodes - self.num_customers - self.num_micro_hubs)
 
-        # Distance Matrix
-        self.distance_matrix = config.get('distance_matrix', None)
-        self.max_travel_time = config.get('max_travel_time', 3600.0) # Max seconds between any two nodes if generating
+        # Ensure the number of drones strictly equals the number of micro-hubs
+        self.num_drones = self.num_micro_hubs
 
-        # Vehicle/Order parameters (similar to RandomDataGenerator)
+        # Vehicle and order configurations
         self.truck_payload_range = tuple(config.get('truck_payload_range', [3, 10]))
         self.drone_payload_range = tuple(config.get('drone_payload_range', [1, 2]))
-        # Speed ranges might be less critical if times come directly from the matrix
         self.truck_speed_range = tuple(config.get('truck_speed_range', [40.0, 80.0]))
         self.drone_speed_range = tuple(config.get('drone_speed_range', [20.0, 40.0]))
         self.initial_fuel_range = tuple(config.get('initial_fuel_range', [80.0, 120.0]))
@@ -96,46 +98,113 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
         self.drone_battery_charge_rate = config.get('drone_battery_charge_rate', 0.01)
 
         print(f"DistanceMatrixDataGenerator initialized.")
-        print(f"  Node counts: Total={self.num_nodes}, Depots={self.num_depots}, Customers={self.num_customers}, MicroHubs={self.num_micro_hubs}")
-        print(f"  Vehicle/Order counts: Trucks={self.num_trucks}, Drones={self.num_drones}, Orders={self.num_initial_orders}")
-        if self.distance_matrix:
-             print("  Using pre-defined distance matrix.")
-        else:
-             print("  Will generate a random distance matrix.")
+        print(
+            f"  Node counts: Total={self.num_nodes}, Depots={self.num_depots}, Customers={self.num_customers}, MicroHubs={self.num_micro_hubs}")
+        print(
+            f"  Vehicle/Order counts: Trucks={self.num_trucks}, Drones={self.num_drones} (1:1 with MicroHubs), Orders={self.num_initial_orders}")
 
+    def _sample_uniform_coords(self) -> Tuple[float, float]:
+        """Samples uniform 2D coordinates within the configured bounding area."""
+        x = random.uniform(self.area_x_range[0], self.area_x_range[1])
+        y = random.uniform(self.area_y_range[0], self.area_y_range[1])
+        return round(x, 2), round(y, 2)
 
-    def _generate_random_distance_matrix(self) -> Dict[str, Dict[str, float]]:
-        """Generates a symmetrical distance matrix with random travel times."""
-        matrix = {}
-        node_ids = list(range(self.num_nodes))
-        for i in node_ids:
-            matrix[str(i)] = {}
-            for j in node_ids:
-                if i == j:
-                    matrix[str(i)][str(j)] = 0.0
-                elif str(j) in matrix and str(i) in matrix[str(j)]:
-                    # Ensure symmetry
-                    matrix[str(i)][str(j)] = matrix[str(j)][str(i)]
+    def _kmeans_centroids(self, points: List[Tuple[float, float]], k: int, max_iter: int = 50) -> List[
+        Tuple[float, float]]:
+        """
+        K-Means clustering algorithm to compute k centroids from a list of 2D points.
+        Used to position micro-hubs optimally near customer clusters.
+        """
+        if not points or k <= 0:
+            return []
+
+        if len(points) <= k:
+            centroids = list(points)
+            while len(centroids) < k:
+                centroids.append(self._sample_uniform_coords())
+            return centroids
+
+        centroids = random.sample(points, k)
+
+        for _ in range(max_iter):
+            clusters: Dict[int, List[Tuple[float, float]]] = {i: [] for i in range(k)}
+            for px, py in points:
+                closest_idx = min(
+                    range(k),
+                    key=lambda idx: math.hypot(px - centroids[idx][0], py - centroids[idx][1])
+                )
+                clusters[closest_idx].append((px, py))
+
+            new_centroids = []
+            shifted = False
+            for i in range(k):
+                cluster_pts = clusters[i]
+                if cluster_pts:
+                    mean_x = sum(p[0] for p in cluster_pts) / len(cluster_pts)
+                    mean_y = sum(p[1] for p in cluster_pts) / len(cluster_pts)
+                    new_centroid = (round(mean_x, 2), round(mean_y, 2))
                 else:
-                    # Random travel time (in seconds)
-                    matrix[str(i)][str(j)] = random.uniform(60.0, self.max_travel_time)
-        return matrix
+                    new_centroid = self._sample_uniform_coords()
+
+                if new_centroid != centroids[i]:
+                    shifted = True
+                new_centroids.append(new_centroid)
+
+            centroids = new_centroids
+            if not shifted:
+                break
+
+        return centroids
+
+    def _compute_distance_matrices(self, nodes: List[Dict[str, Any]]) -> Tuple[
+        Dict[str, Dict[str, float]], Dict[str, Dict[str, float]]]:
+        """
+        Computes two distance matrices from node coordinates:
+          1. ground_distance_matrix: Manhattan distance (|dx| + |dy|)
+          2. air_distance_matrix: Euclidean distance (sqrt(dx^2 + dy^2))
+        """
+        ground_matrix: Dict[str, Dict[str, float]] = {}
+        air_matrix: Dict[str, Dict[str, float]] = {}
+
+        for n1 in nodes:
+            id1_str = str(n1["id"])
+            ground_matrix[id1_str] = {}
+            air_matrix[id1_str] = {}
+            x1, y1 = n1["coords"]
+
+            for n2 in nodes:
+                id2_str = str(n2["id"])
+                x2, y2 = n2["coords"]
+
+                if id1_str == id2_str:
+                    ground_matrix[id1_str][id2_str] = 0.0
+                    air_matrix[id1_str][id2_str] = 0.0
+                else:
+                    manhattan_dist = abs(x1 - x2) + abs(y1 - y2)
+                    ground_matrix[id1_str][id2_str] = round(manhattan_dist, 2)
+
+                    euclidean_dist = math.hypot(x1 - x2, y1 - y2)
+                    air_matrix[id1_str][id2_str] = round(euclidean_dist, 2)
+
+        return ground_matrix, air_matrix
 
     def generate_data(self) -> Dict[str, Any]:
         """
-        Generates initial simulation data including nodes, vehicles, orders,
-        and a distance matrix.
+        Generates initial simulation data with uniform coordinates,
+        K-Means micro-hub placement, paired micro-hub/drone entities,
+        orders, and dual distance matrices.
         """
         print("DistanceMatrixDataGenerator: Generating data...")
         data = {
             "nodes": [],
-            "edges": [], # No edges needed for matrix mode
+            "edges": [],
             "trucks": [],
             "drones": [],
-            "micro_hubs": [], # Still generate microhub entities, they are nodes
+            "micro_hubs": [],
             "orders": [],
             "initial_time": 0.0,
-            "distance_matrix": {}
+            "ground_distance_matrix": {},
+            "air_distance_matrix": {}
         }
 
         all_node_ids = list(range(self.num_nodes))
@@ -143,127 +212,136 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
         customer_ids = []
         micro_hub_ids = []
 
-        # --- Generate Nodes (without coordinates) ---
         node_ids_pool = list(all_node_ids)
         random.shuffle(node_ids_pool)
 
-        # Generate Depots
+        # 1. Generate Depots (Uniformly Distributed)
         for _ in range(self.num_depots):
             if not node_ids_pool: break
             node_id = node_ids_pool.pop()
-            data["nodes"].append({"id": node_id, "coords": [], "type": "depot", # Coords empty
-                                  "is_loadable": True, "is_unloadable": True, "is_charging_station": True})
+            coords = list(self._sample_uniform_coords())
+            data["nodes"].append({
+                "id": node_id,
+                "coords": coords,
+                "type": "depot",
+                "is_loadable": True,
+                "is_unloadable": True,
+                "is_charging_station": True
+            })
             depot_ids.append(node_id)
 
-        # Generate Customers
+        # 2. Generate Customers (Uniformly Distributed)
+        customer_coords: List[Tuple[float, float]] = []
         for _ in range(self.num_customers):
             if not node_ids_pool: break
             node_id = node_ids_pool.pop()
-            data["nodes"].append({"id": node_id, "coords": [], "type": "customer", # Coords empty
-                                  "is_loadable": False, "is_unloadable": True, "is_charging_station": False})
+            cx, cy = self._sample_uniform_coords()
+            customer_coords.append((cx, cy))
+            data["nodes"].append({
+                "id": node_id,
+                "coords": [cx, cy],
+                "type": "customer",
+                "is_loadable": False,
+                "is_unloadable": True,
+                "is_charging_station": False
+            })
             customer_ids.append(node_id)
 
-        # Generate Micro-hubs
-        for _ in range(self.num_micro_hubs):
+        # 3. Generate Micro-Hubs (Placed via K-Means & assigned unique drone ID)
+        micro_hub_centroids = self._kmeans_centroids(customer_coords, self.num_micro_hubs)
+        drone_id_base = 200
+        micro_hub_to_drone_map: Dict[int, int] = {}
+
+        for i in range(self.num_micro_hubs):
             if not node_ids_pool: break
             node_id = node_ids_pool.pop()
+            coords = list(micro_hub_centroids[i]) if i < len(micro_hub_centroids) else list(
+                self._sample_uniform_coords())
             num_slots = random.randint(1, 3)
-            data["nodes"].append({"id": node_id, "coords": [], "type": "micro_hub", # Coords empty
-                                  "is_loadable": True, "is_unloadable": True, "is_charging_station": True,
-                                  "num_charging_slots": num_slots})
+
+            assigned_drone_id = drone_id_base + i
+            micro_hub_to_drone_map[node_id] = assigned_drone_id
+
+            data["nodes"].append({
+                "id": node_id,
+                "coords": coords,
+                "type": "micro_hub",
+                "is_loadable": True,
+                "is_unloadable": True,
+                "is_charging_station": True,
+                "num_charging_slots": num_slots,
+                "assigned_drone_id": assigned_drone_id
+            })
             micro_hub_ids.append(node_id)
-            # Add microhub object separately if needed by older parts of code, though it's redundant
-            # data["micro_hubs"].append({"id": node_id, "num_charging_slots": num_slots})
 
-
-        # Generate generic nodes for the remainder
+        # 4. Generate Remaining Junction Nodes (Uniformly Distributed)
         for node_id in node_ids_pool:
-            data["nodes"].append({"id": node_id, "coords": [], "type": "junction", # Coords empty
-                                  "is_loadable": False, "is_unloadable": False, "is_charging_station": False})
+            coords = list(self._sample_uniform_coords())
+            data["nodes"].append({
+                "id": node_id,
+                "coords": coords,
+                "type": "junction",
+                "is_loadable": False,
+                "is_unloadable": False,
+                "is_charging_station": False
+            })
 
-        # Sort nodes by ID for consistency (optional)
         data["nodes"].sort(key=lambda x: x['id'])
 
-        # --- Generate Distance Matrix ---
-        if self.distance_matrix:
-            # Validate provided matrix (basic check)
-            if not all(str(i) in self.distance_matrix for i in all_node_ids):
-                 raise ValueError("Provided distance_matrix is missing node IDs or has incorrect format.")
-            data["distance_matrix"] = self.distance_matrix
-            print("  Using provided distance matrix.")
-        else:
-            data["distance_matrix"] = self._generate_random_distance_matrix()
-            print("  Generated random distance matrix.")
+        # 5. Build Distance Matrices: Manhattan (Ground) & Euclidean (Air)
+        ground_matrix, air_matrix = self._compute_distance_matrices(data["nodes"])
+        data["ground_distance_matrix"] = ground_matrix
+        data["air_distance_matrix"] = air_matrix
 
-
-        # --- Generate Trucks ---
-        if not depot_ids:
-             print("Warning: No depots generated. Trucks will start at a random node.")
-             truck_start_nodes = all_node_ids
-        else:
-             truck_start_nodes = depot_ids
-
+        # 6. Generate Trucks
+        truck_start_nodes = depot_ids if depot_ids else all_node_ids
         for i in range(self.num_trucks):
-             start_node = random.choice(truck_start_nodes)
-             data["trucks"].append({
-                 "id": 100 + i,
-                 "start_node_id": start_node,
-                 "max_payload_capacity": random.randint(*self.truck_payload_range),
-                 "max_speed": random.uniform(*self.truck_speed_range), # Speed less critical now
-                 "initial_fuel": random.uniform(*self.initial_fuel_range),
-                 "fuel_consumption_rate": self.truck_fuel_consumption_rate
-             })
+            start_node = random.choice(truck_start_nodes)
+            data["trucks"].append({
+                "id": 100 + i,
+                "start_node_id": start_node,
+                "max_payload_capacity": random.randint(*self.truck_payload_range),
+                "max_speed": random.uniform(*self.truck_speed_range),
+                "initial_fuel": random.uniform(*self.initial_fuel_range),
+                "fuel_consumption_rate": self.truck_fuel_consumption_rate
+            })
 
-        # --- Generate Drones ---
-        drone_start_nodes = []
-        if depot_ids: drone_start_nodes.extend(depot_ids)
-        if micro_hub_ids: drone_start_nodes.extend(micro_hub_ids)
-        if not drone_start_nodes:
-             print("Warning: No depots or micro-hubs. Drones will start at random node.")
-             drone_start_nodes = all_node_ids
+        # 7. Generate Drones (1:1 Paired with Micro-Hubs, start_node_id = micro_hub node_id)
+        for hub_node_id, drone_id in micro_hub_to_drone_map.items():
+            data["drones"].append({
+                "id": drone_id,
+                "start_node_id": hub_node_id,
+                "max_payload_capacity": random.randint(*self.drone_payload_range),
+                "max_speed": random.uniform(*self.drone_speed_range),
+                "initial_battery": random.uniform(*self.initial_battery_range),
+                "battery_drain_rate_flying": self.drone_battery_drain_rate_flying,
+                "battery_drain_rate_idle": self.drone_battery_drain_rate_idle,
+                "battery_charge_rate": self.drone_battery_charge_rate
+            })
 
-        for i in range(self.num_drones):
-             start_node = random.choice(drone_start_nodes)
-             data["drones"].append({
-                 "id": 200 + i,
-                 "start_node_id": start_node,
-                 "max_payload_capacity": random.randint(*self.drone_payload_range),
-                 "max_speed": random.uniform(*self.drone_speed_range), # Speed less critical now
-                 "initial_battery": random.uniform(*self.initial_battery_range),
-                 "battery_drain_rate_flying": self.drone_battery_drain_rate_flying,
-                 "battery_drain_rate_idle": self.drone_battery_drain_rate_idle,
-                 "battery_charge_rate": self.drone_battery_charge_rate
-             })
-
-        # --- Generate Initial Orders ---
+        # 8. Generate Initial Orders
         order_id_counter = 1000
-        possible_pickup_nodes = depot_ids # Where orders might originate
-        possible_delivery_nodes = customer_ids # Where orders might go
+        possible_pickup_nodes = depot_ids
+        possible_delivery_nodes = customer_ids
 
-        if not possible_pickup_nodes or not possible_delivery_nodes:
-            print("Warning: Not enough nodes (depots/customers/hubs) to generate orders.")
-        else:
+        if possible_pickup_nodes and possible_delivery_nodes:
             for i in range(self.num_initial_orders):
-                 # Ensure pickup and delivery nodes are different
-                 pickup_node_id = random.choice(possible_pickup_nodes)
-                 delivery_node_id = random.choice(possible_delivery_nodes)
-                 # if not delivery_node_id: # Fallback if only one possible node type exists
-                 #      delivery_node_id = pickup_node_id # Allow self-delivery if needed, though unlikely
+                pickup_node_id = random.choice(possible_pickup_nodes)
+                delivery_node_id = random.choice(possible_delivery_nodes)
+                time_received = 0.0
+                sla_deadline = time_received + random.uniform(self.sla_min_seconds, self.sla_max_seconds)
 
-                 time_received = 0.0
-                 sla_deadline = time_received + random.uniform(self.sla_min_seconds, self.sla_max_seconds)
+                priorities, weights = zip(*self.priority_distribution.items())
+                priority = random.choices(priorities, weights=weights, k=1)[0]
 
-                 priorities, weights = zip(*self.priority_distribution.items())
-                 priority = random.choices(priorities, weights=weights, k=1)[0]
-
-                 data["orders"].append({
-                     "id": order_id_counter + i,
-                     "p_pickup_node_id": pickup_node_id,   # Assign pickup node
-                     "p_delivery_node_id": delivery_node_id, # Assign delivery node
-                     "time_received": time_received,
-                     "SLA_deadline": sla_deadline,
-                     "priority": priority
-                 })
+                data["orders"].append({
+                    "id": order_id_counter + i,
+                    "p_pickup_node_id": pickup_node_id,
+                    "p_delivery_node_id": delivery_node_id,
+                    "time_received": time_received,
+                    "SLA_deadline": sla_deadline,
+                    "priority": priority
+                })
 
         print(f"DistanceMatrixDataGenerator: Generated {len(data['nodes'])} nodes, {len(data['trucks'])} trucks, "
               f"{len(data['drones'])} drones, {len(data['orders'])} orders.")

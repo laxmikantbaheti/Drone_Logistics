@@ -25,7 +25,7 @@ def run_scenario_demo():
         "initial_time": 0.0,
         "main_timestep_duration": 1.0,  # 1-second steps for clear validation
         "data_loader_config": {
-            "generator_type": "json_file",
+            "generator_type": "distance_matrix",
             "generator_config": {"file_path": config_file_path}
         }
     }
