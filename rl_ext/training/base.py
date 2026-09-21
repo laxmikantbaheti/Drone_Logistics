@@ -25,11 +25,12 @@ class Training(ABC):
         self.project_root = Path(__file__).resolve().parents[2]
 
         # 2. Resolve Absolute Config Path
-        clean_path = config_path.replace("Drone_Logistics/", "").replace("\\", "/")
+        if not self.C_RANDOM:
+            clean_path = config_path.replace("Drone_Logistics/", "").replace("\\", "/")
 
-        self.config_full_path = (self.project_root / (f"{clean_path}.vrp")).resolve()
-        if not self.config_full_path.exists():
-            raise FileNotFoundError(f"Config not found at: {self.config_full_path}")
+            self.config_full_path = (self.project_root / (f"{clean_path}.vrp")).resolve()
+            if not self.config_full_path.exists():
+                raise FileNotFoundError(f"Config not found at: {self.config_full_path}")
 
         # 3. Movement Config Wrapper
         if sim_config is None:
@@ -63,7 +64,17 @@ class Training(ABC):
         if self.save_metadata:
             self.metadata_dir = self.run_dir / "metadata"
             os.makedirs(self.metadata_dir, exist_ok=True)
-            shutil.copy(self.config_full_path, self.run_dir / f"{self.name}_data.json")
+            target_config_path = self.run_dir / f"{self.name}_data.json"
+
+            # Check if an actual file exists on disk to copy
+            if hasattr(self, "config_full_path") and self.config_full_path and os.path.exists(self.config_full_path):
+                shutil.copy(self.config_full_path, target_config_path)
+            else:
+                # In-memory / procedural instance: save the generated configuration directly
+                import json
+                cfg_to_save = getattr(self, "sim_wrapper_config", getattr(self, "sim_config", {}))
+                with open(target_config_path, "w", encoding="utf-8") as f:
+                    json.dump(cfg_to_save, f, indent=2, default=str)
 
         self.summary_csv = self.run_dir / f"{self.name}_summary.csv"
         self.episode_log_csv = self.run_dir / f"{self.name}_episode_log.csv"

@@ -9,10 +9,11 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
     """
     Generates simulation data with uniformly distributed node coordinates,
     micro-hub placement using K-Means clustering on customer locations,
-    1:1 pairing between micro-hubs and drones (with 'assigned_drone_id'),
-    and two distance matrices:
-      - 'ground_distance_matrix': Manhattan distance (|dx| + |dy|)
-      - 'air_distance_matrix': Euclidean distance (sqrt(dx^2 + dy^2))
+    1:1 pairing between micro-hubs and drones, dual distance matrices (ground and air),
+    and randomized order sizes satisfying:
+      1. Each order size < minimum truck capacity.
+      2. A portion of orders <= drone capacity (drone-eligible).
+      3. Sum of all order sizes < sum of total truck capacities.
     """
 
     def __init__(self, config: Dict[str, Any]):
@@ -20,25 +21,7 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
         Initializes the DistanceMatrixDataGenerator.
 
         Args:
-            config (Dict[str, Any]): Configuration for data generation. Expected keys:
-                                     'base_scale_factor': int
-                                     'num_nodes': int (Total number of nodes)
-                                     'area_x_range': Tuple[float, float] (Default: (0.0, 100.0))
-                                     'area_y_range': Tuple[float, float] (Default: (0.0, 100.0))
-                                     'scaling_factors': Dict[str, float]
-                                     'truck_payload_range': Tuple[int, int]
-                                     'drone_payload_range': Tuple[int, int]
-                                     'truck_speed_range': Tuple[float, float]
-                                     'drone_speed_range': Tuple[float, float]
-                                     'initial_fuel_range': Tuple[float, float]
-                                     'initial_battery_range': Tuple[float, float]
-                                     'sla_min_hours': float
-                                     'sla_max_hours': float
-                                     'priority_distribution': Dict[int, float]
-                                     'truck_fuel_consumption_rate': float
-                                     'drone_battery_drain_rate_flying': float
-                                     'drone_battery_drain_rate_idle': float
-                                     'drone_battery_charge_rate': float
+            config (Dict[str, Any]): Configuration for data generation.
         """
         super().__init__(config)
 
@@ -79,7 +62,7 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
             self.num_micro_hubs = int(self.num_micro_hubs * scale_down)
             self.num_depots = max(1, self.num_nodes - self.num_customers - self.num_micro_hubs)
 
-        # Ensure the number of drones strictly equals the number of micro-hubs
+        # 1:1 pairing: number of drones matches number of micro-hubs
         self.num_drones = self.num_micro_hubs
 
         # Vehicle and order configurations
@@ -97,6 +80,12 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
         self.drone_battery_drain_rate_idle = config.get('drone_battery_drain_rate_idle', 0.001)
         self.drone_battery_charge_rate = config.get('drone_battery_charge_rate', 0.01)
 
+        # Proportion of generated orders that must be drone-eligible
+        self.drone_eligible_order_ratio = config.get('drone_eligible_order_ratio', 0.4)
+        self.seed = config.get("seed", 20)
+        if self.seed is not None:
+            random.seed(self.seed)
+
         print(f"DistanceMatrixDataGenerator initialized.")
         print(
             f"  Node counts: Total={self.num_nodes}, Depots={self.num_depots}, Customers={self.num_customers}, MicroHubs={self.num_micro_hubs}")
@@ -113,7 +102,7 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
         Tuple[float, float]]:
         """
         K-Means clustering algorithm to compute k centroids from a list of 2D points.
-        Used to position micro-hubs optimally near customer clusters.
+        Used to position micro-hubs near customer clusters.
         """
         if not points or k <= 0:
             return []
@@ -188,11 +177,64 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
 
         return ground_matrix, air_matrix
 
+    def _generate_order_sizes(self, num_orders: int, truck_capacities: List[int], drone_capacities: List[int]) -> List[
+        int]:
+        """
+        Generates order sizes such that:
+          1. Every order size < minimum truck capacity.
+          2. A defined fraction of orders <= drone capacity (eligible for drone delivery).
+          3. Sum of all order sizes < sum of all truck capacities.
+        """
+        min_truck_cap = min(truck_capacities) if truck_capacities else self.truck_payload_range[0]
+        max_drone_cap = max(drone_capacities) if drone_capacities else self.drone_payload_range[1]
+        total_truck_capacity = sum(truck_capacities) if truck_capacities else self.num_trucks * \
+                                                                              self.truck_payload_range[0]
+
+        # Upper bound: order size strictly less than min_truck_cap (at least 1)
+        max_allowed_order_size = max(1, min_truck_cap - 1)
+
+        # Number of orders guaranteed to be within drone capacity
+        num_drone_eligible = max(1, int(num_orders * self.drone_eligible_order_ratio))
+
+        sizes: List[int] = []
+        for i in range(num_orders):
+            if i < num_drone_eligible:
+                # Strictly within drone limits
+                drone_upper = min(max_drone_cap, max_allowed_order_size)
+                size = random.randint(1, max(1, drone_upper))
+            else:
+                # General order size strictly less than truck capacity
+                size = random.randint(1, max_allowed_order_size)
+            sizes.append(size)
+
+        # Enforce sum(order_sizes) < total_truck_capacity
+        # Reserve a safety gap of at least 1 unit
+        target_max_total = total_truck_capacity - 1
+
+        if target_max_total < num_orders:
+            # If total truck capacity is too small for 1 unit per order, clamp to 1
+            sizes = [1] * num_orders
+        elif sum(sizes) > target_max_total:
+            # Proportional scale-down
+            scale = target_max_total / sum(sizes)
+            sizes = [max(1, int(s * scale)) for s in sizes]
+
+            # Fine adjustment if sum still violates the strict inequality
+            while sum(sizes) > target_max_total:
+                reducible = [idx for idx, s in enumerate(sizes) if s > 1]
+                if not reducible:
+                    break
+                idx_to_reduce = random.choice(reducible)
+                sizes[idx_to_reduce] -= 1
+
+        random.shuffle(sizes)
+        return sizes
+
     def generate_data(self) -> Dict[str, Any]:
         """
         Generates initial simulation data with uniform coordinates,
         K-Means micro-hub placement, paired micro-hub/drone entities,
-        orders, and dual distance matrices.
+        dual distance matrices, and constrained randomized order sizes.
         """
         print("DistanceMatrixDataGenerator: Generating data...")
         data = {
@@ -293,25 +335,31 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
         data["ground_distance_matrix"] = ground_matrix
         data["air_distance_matrix"] = air_matrix
 
-        # 6. Generate Trucks
+        # 6. Generate Trucks (Needed prior to Orders to obtain capacities)
         truck_start_nodes = depot_ids if depot_ids else all_node_ids
+        truck_capacities: List[int] = []
         for i in range(self.num_trucks):
             start_node = random.choice(truck_start_nodes)
+            payload_cap = random.randint(*self.truck_payload_range)
+            truck_capacities.append(payload_cap)
             data["trucks"].append({
                 "id": 100 + i,
                 "start_node_id": start_node,
-                "max_payload_capacity": random.randint(*self.truck_payload_range),
+                "max_payload_capacity": payload_cap,
                 "max_speed": random.uniform(*self.truck_speed_range),
                 "initial_fuel": random.uniform(*self.initial_fuel_range),
                 "fuel_consumption_rate": self.truck_fuel_consumption_rate
             })
 
-        # 7. Generate Drones (1:1 Paired with Micro-Hubs, start_node_id = micro_hub node_id)
+        # 7. Generate Drones (1:1 Paired with Micro-Hubs)
+        drone_capacities: List[int] = []
         for hub_node_id, drone_id in micro_hub_to_drone_map.items():
+            payload_cap = random.randint(*self.drone_payload_range)
+            drone_capacities.append(payload_cap)
             data["drones"].append({
                 "id": drone_id,
                 "start_node_id": hub_node_id,
-                "max_payload_capacity": random.randint(*self.drone_payload_range),
+                "max_payload_capacity": payload_cap,
                 "max_speed": random.uniform(*self.drone_speed_range),
                 "initial_battery": random.uniform(*self.initial_battery_range),
                 "battery_drain_rate_flying": self.drone_battery_drain_rate_flying,
@@ -319,12 +367,18 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
                 "battery_charge_rate": self.drone_battery_charge_rate
             })
 
-        # 8. Generate Initial Orders
+        # 8. Generate Initial Orders with Constrained Sizes
         order_id_counter = 1000
         possible_pickup_nodes = depot_ids
         possible_delivery_nodes = customer_ids
 
         if possible_pickup_nodes and possible_delivery_nodes:
+            order_sizes = self._generate_order_sizes(
+                num_orders=self.num_initial_orders,
+                truck_capacities=truck_capacities,
+                drone_capacities=drone_capacities
+            )
+
             for i in range(self.num_initial_orders):
                 pickup_node_id = random.choice(possible_pickup_nodes)
                 delivery_node_id = random.choice(possible_delivery_nodes)
@@ -336,6 +390,7 @@ class DistanceMatrixDataGenerator(BaseDataGenerator):
 
                 data["orders"].append({
                     "id": order_id_counter + i,
+                    "size": order_sizes[i],
                     "p_pickup_node_id": pickup_node_id,
                     "p_delivery_node_id": delivery_node_id,
                     "time_received": time_received,
