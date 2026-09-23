@@ -705,7 +705,10 @@ class LogisticsSystem(System, EventManager):
                 current_node = v.current_node_id
                 v.current_node_id = v.start_node_id
                 ret_node = v.start_node_id
-                dist = math.ceil(self.network.air_distance_matrix[str(current_node)][str(ret_node)])
+                if v.C_NAME == "Drone":
+                    dist = math.ceil(self.network.air_distance_matrix[str(current_node)][str(ret_node)])
+                elif v.C_NAME:
+                    dist = math.ceil(self.network.land_distance_matrix[str(current_node)][str(ret_node)])
                 v.ret_tstamp = v.d_tstamps[-1] + dist
                 max_return = max(max_return, v.ret_tstamp)
                 self.global_state.current_time = math.ceil(v.ret_tstamp)
