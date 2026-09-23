@@ -141,6 +141,7 @@ class LogisticsSystem(System, EventManager):
         self.setup = False
         self.ret_trip = ret_trip
         self.decision_phase = 1
+        self.raw_entity_data = self.data_loader.load_initial_simulation_data()
         self.reset()
         # self.setup = True
 
@@ -187,9 +188,9 @@ class LogisticsSystem(System, EventManager):
             self.automatic_logic_config = {action: action.is_automatic for action in self.actions.get_all_actions()}
 
             # Load the initial simulation data (e.g., from a JSON file).
-            raw_entity_data = self.data_loader.load_initial_simulation_data()
+            # self.raw_entity_data = self.data_loader.load_initial_simulation_data()
             # Use a ScenarioGenerator to create entity objects from the raw data.
-            scenario_generator = ScenarioGenerator(raw_entity_data)
+            scenario_generator = ScenarioGenerator(self.raw_entity_data)
             self.entities = scenario_generator.build_entities(p_logging=self.get_log_level(),
                                                               p_movement_mode=self.movement_mode)
 
@@ -208,7 +209,7 @@ class LogisticsSystem(System, EventManager):
             # Create Agent actions and agent to system map
             self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
             # Initialize the network graph using the distance matrix from the loaded data.
-            self.network = Network(self.global_state, self.movement_mode, raw_entity_data['ground_distance_matrix'], raw_entity_data["air_distance_matrix"])
+            self.network = Network(self.global_state, self.movement_mode, self.raw_entity_data['ground_distance_matrix'], self.raw_entity_data["air_distance_matrix"])
             # Link the network to the global state.
             self.global_state.network = self.network
             # Initialize the mapper that determines valid actions based on the state.
