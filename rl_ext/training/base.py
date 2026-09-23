@@ -11,15 +11,19 @@ from rl_ext.env import LogisticsEnv
 
 
 class Training(ABC):
-    name = "BaseTraining"
+    C_NAME = "BaseTraining"
+    C_RANDOM = False
+    name = None
 
     def __init__(self, config_path: str, sim_config = None, instance_name:str = None, **kwargs):
 
         # Setting up names for later use for saving files
         if instance_name is None:
             pass
-        else:
+        elif self.name is not None:
             self.name = self.name + "_" + instance_name
+        else:
+            self.C_NAME = self.C_NAME + "_" + instance_name
 
         # 1. Resolve Project Root (Drone_Logistics)
         self.project_root = Path(__file__).resolve().parents[2]
