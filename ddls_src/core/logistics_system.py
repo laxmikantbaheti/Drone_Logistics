@@ -26,7 +26,7 @@ from ddls_src.core.time_manager import TimeManager
 from ddls_src.core.network import Network
 # Import mapping and constraint management classes.
 # from ddls_src.core.constraint_manager import StateActionMapper, ConstraintManager
-from ddls_src.core.constraint_manager_reduced import ConstraintManager, StateActionMapper
+from ddls_src.core.constraint_manager_reduced_obs import ConstraintManager, StateActionMapper
 # Import all entity classes (e.g., Truck, Drone, Hub).
 from ddls_src.entities import *
 # Import manager classes that handle different aspects of the simulation logic.
