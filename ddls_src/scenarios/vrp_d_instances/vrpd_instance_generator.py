@@ -24,12 +24,12 @@ class VRPDBenchmarkDataGenerator(BaseDataGenerator):
         self.instance_path = config.get("instance_path")
         if not self.instance_path:
             raise ValueError("VRPDBenchmarkDataGenerator: 'instance_path' must be provided.")
-
+        self.instance_path = self.instance_path+".vrp"
         # Resolve relative paths robustly relative to THIS file (not CWD)
         if not os.path.isabs(self.instance_path):
             here = os.path.dirname(os.path.abspath(__file__))
             self.instance_path = os.path.abspath(os.path.join(here, self.instance_path))
-
+            
         if not os.path.isfile(self.instance_path):
             raise FileNotFoundError(f"VRPDBenchmarkDataGenerator: instance file not found: {self.instance_path}")
 
