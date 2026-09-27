@@ -153,6 +153,8 @@ class Network:
         air or ground distance matrices from the scenario JSON.
         """
         # JSON dictionary keys are always strings
+        if p_node_1 is None or p_node_2 is None:
+            raise ValueError("Calculation of distance needs the current node to not be none.")
         node1_str = str(p_node_1)
         node2_str = str(p_node_2)
 

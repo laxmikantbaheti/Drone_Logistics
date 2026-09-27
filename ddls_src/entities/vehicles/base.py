@@ -1068,17 +1068,18 @@ class Vehicle(LogisticEntity, ABC):
             target_node = self.planned_node_sequence[self.current_sequence_index]
 
         # 3. START THE ENGINE
-        distance = self.global_state.network.calculate_distance(self.current_node_id, target_node, self.C_NAME)
-        self.en_route_timer = distance / self.get_speed()
-        # XXX - This is critical, update it when you upgrade to a dynamic setting, with in route event based changes.
-        self.distance_travelled += self.en_route_timer
-        self.location_history.append(self.current_location_coords)
-
-        self.set_current_node_id(None)
-        self.update_state_value_by_dim_name(
-            p_dim_name=[self.C_DIM_AT_NODE[0], self.C_DIM_TRIP_STATE[0]],
-            p_value=[False, self.C_TRIP_STATE_EN_ROUTE]
-        )
+        if self.current_node_id is not None:
+            distance = self.global_state.network.calculate_distance(self.current_node_id, target_node, self.C_NAME)
+            self.en_route_timer = distance / self.get_speed()
+            # XXX - This is critical, update it when you upgrade to a dynamic setting, with in route event based changes.
+            self.distance_travelled += self.en_route_timer
+            self.location_history.append(self.current_location_coords)
+    
+            self.set_current_node_id(None)
+            self.update_state_value_by_dim_name(
+                p_dim_name=[self.C_DIM_AT_NODE[0], self.C_DIM_TRIP_STATE[0]],
+                p_value=[False, self.C_TRIP_STATE_EN_ROUTE]
+            )
 
     def unload_order(self, p_order):
         if p_order:
