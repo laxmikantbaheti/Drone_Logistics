@@ -190,6 +190,8 @@ class LogisticsSystem(System, EventManager):
 
             # Load the initial simulation data (e.g., from a JSON file).
             # raw_entity_data = self.data_loader.load_initial_simulation_data()
+            if self.data_loader.data_generator.dynamic == True:
+                self.raw_entity_data = self.data_loader.data_generator.generate_data()
             # Use a ScenarioGenerator to create entity objects from the raw data.
             scenario_generator = ScenarioGenerator(self.raw_entity_data)
             self.entities = scenario_generator.build_entities(p_logging=self.get_log_level(),

@@ -16,6 +16,8 @@ class BaseDataGenerator(ABC):
         """
         self.config = config
         print(f"BaseDataGenerator initialized with config: {config}")
+        self.data = None
+        self.dynamic = False
 
     @abstractmethod
     def generate_data(self) -> Dict[str, List[Dict[str, Any]]]:

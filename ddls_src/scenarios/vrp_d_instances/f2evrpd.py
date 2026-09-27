@@ -115,7 +115,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
         # Distance matrices
         ground_dmt, air_dmt = self._build_distance_matrices(all_nodes_list)
 
-        data: Dict[str, Any] = {
+        self.data: Dict[str, Any] = {
             "nodes": all_nodes_list,
             "edges": [],
             "trucks": trucks_list,
@@ -135,7 +135,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
             },
         }
 
-        return data
+        return self.data
 
     # ------------------------------------------------------------------
     # Internal helpers

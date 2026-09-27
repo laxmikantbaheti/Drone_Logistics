@@ -131,7 +131,7 @@ class RandomInstanceMaskablePPOTraining(Training):
 
         # Seed passed explicitly to SB3 algorithm
         custom_policy_kwargs = dict(
-            net_arch=dict(pi=[64, 128, 64], vf=[64, 128, 64])
+            net_arch=dict(pi=[64, 64, 64], vf=[64, 64, 64])
         )
 
         self.model = MaskablePPO(
