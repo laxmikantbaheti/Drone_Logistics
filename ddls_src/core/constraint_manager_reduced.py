@@ -685,7 +685,7 @@ class ConstraintManager(EventManager):
         else:
             raise ValueError(f"Please provide either p_event_id and p_event_object or provide only p_entity.")
 
-        print(f"Constraint evaluation started for {entity}")
+        # print(f"Constraint evaluation started for {entity}")
         total_to_block = []
         total_to_unblock = []
 
@@ -733,7 +733,7 @@ class ConstraintManager(EventManager):
             if self.custom_log:
                 print("[ConstraintManager] No net change in masks. Event skipped.")
 
-        print(f"Constraint evaluation finished for {entity}")
+        # print(f"Constraint evaluation finished for {entity}")
 
     def update_constraints(self, global_state, reverse_action_map):
         """

@@ -454,6 +454,7 @@ class LogisticsSystem(System, EventManager):
         self._update_state()
         # Return whether an action was processed.
         # print(f"Masked: {[i for i,a in enumerate(self.constraint_manager.get_masks()) if a == 0]}, Unmasked: {[i for i,a in enumerate(self.constraint_manager.get_masks()) if a == 1]}")
+        self.constraint_manager.evaluate_batch(self.global_state.evaluation_deck)
         return action_processed
 
     # --------------------------------------------------------------------------------------------------
