@@ -139,6 +139,8 @@ class LogisticManager(System):
                                  "truck_id or drone_id respectively in the action kwargs.")
             self.global_state.active_resource = vehicle
             vehicle.raise_state_change_event()
+            if vehicle not in self.global_state.evaluation_deck:
+                self.global_state.evaluation_deck.append(vehicle)
             event_stack.extend([vehicle])
 
         elif action_type == SimulationActions.SELECT_MICROHUB:
@@ -148,6 +150,8 @@ class LogisticManager(System):
                 raise ValueError("Select micro_hub action shall have keywords either"
                                  "micro_hub_id respectively in the action kwargs.")
             self.global_state.active_resource = mh
+            if mh not in self.global_state.evaluation_deck:
+                self.global_state.evaluation_deck.append(mh)
             mh.raise_state_change_event()
             event_stack.extend([mh])
 

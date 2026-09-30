@@ -43,7 +43,7 @@ class GlobalState:
     """
 
     def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode, custom_log = False):
-        self.micro_hub_phase = False
+        self.micro_hub_phase = True
         self.active_resource = None
         self.custom_log = custom_log
         self.entity_dicts = {}
@@ -71,6 +71,7 @@ class GlobalState:
         self.movement_mode = movement_mode
         self.microhub_routes = self.get_microhub_routes()
         self.agent_masks = []
+        self.evaluation_deck = []
 
         # Initialize the centralized DataManager
         self.data_manager = DataManager()
@@ -433,6 +434,12 @@ class GlobalState:
     def get_microhub(self, param):
         mh = self.micro_hubs[param]
         return mh
+
+    # def evaluate_constraints(self):
+    #     for entity in self.evaluation_deck:
+    #         entity.raise_state_change_event()
+    #
+    #     self.evaluation_deck.clear()
 
 
 

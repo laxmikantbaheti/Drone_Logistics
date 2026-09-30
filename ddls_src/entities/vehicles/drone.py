@@ -56,7 +56,8 @@ class Drone(Vehicle):
                          p_visualize=p_visualize,
                          p_logging=p_logging,
                          **p_kwargs)
-
+        # --- NEW: Distance-based drain rate for route planning ---
+        self.battery_drain_per_distance: float = p_kwargs.get('battery_drain_per_distance', 0.005)
         self._state = State(self._state_space)
         self.reset()
 
@@ -226,3 +227,96 @@ class Drone(Vehicle):
             return True
         except KeyError:
             return False
+
+    def get_energy_consumption_rate(self) -> float:
+        """
+        Returns the energy consumed by the drone per unit of distance.
+        """
+        # Using the attribute we added to __init__
+        return getattr(self, 'battery_drain_per_distance', 0.005)
+
+    def get_available_battery_capacity(self) -> float:
+        """
+        Calculates the battery capacity that will be available at the end
+        of the drone's currently committed route (at the last delivery node).
+        """
+        available_battery = self.battery_level
+
+        pickup_orders = self.get_pickup_orders() if hasattr(self, 'get_pickup_orders') else []
+        cargo = self.get_current_cargo() if hasattr(self, 'get_current_cargo') else []
+        commitments = pickup_orders + cargo
+
+        if not commitments:
+            return available_battery
+
+        current_step_node = self.current_node_id
+        committed_distance = 0.0
+
+        for order in commitments:
+            next_node = order.get_delivery_node_id()
+
+            if self.global_state is not None:
+                committed_distance += self.global_state.network.calculate_distance(current_step_node, next_node)
+
+            current_step_node = next_node
+
+        # Subtract the energy required for the committed route
+        committed_energy = committed_distance * self.get_energy_consumption_rate()
+
+        battery_level = available_battery - committed_energy
+
+        return battery_level
+
+    def _evaluate_drone_consolidation(self) -> bool:
+        """Helper logic extracted to serve both Drone and MicroHub+Drone configurations."""
+        cargo = self.get_current_cargo()
+        pickup_orders = self.get_pickup_orders()
+
+        if not (len(cargo) or len(pickup_orders)):
+            return False
+
+        pending_demands = self.global_state.get_pending_demands()
+        pending_sizes = self.global_state.get_next_demands()
+
+        if not len(pending_demands):
+            return True
+
+        ready_for_consolidation = True
+        av_cap = self.get_remaining_capacity()
+
+        if av_cap < min(pending_sizes):
+            return True
+        available_battery = self.get_available_battery_capacity()
+
+        all_commitments = pickup_orders + cargo
+        last_projected_node_id = all_commitments[-1].get_delivery_node_id()
+        hub_node_id = self.start_node_id if hasattr(self, 'start_node_id') else 0
+
+        for n_pair, demand in pending_demands.items():
+            if demand[0] <= av_cap:
+                delivery_node_id = n_pair[1]
+
+                battery_cost = self._calculate_battery_cost(
+                    last_node_id=last_projected_node_id,
+                    delivery_node_id=delivery_node_id,
+                    hub_node_id=hub_node_id
+                )
+
+                if battery_cost <= available_battery:
+                    ready_for_consolidation = False
+                    break
+
+        return ready_for_consolidation
+
+
+    def _calculate_battery_cost(self, last_node_id: int, delivery_node_id: int, hub_node_id: int) -> float:
+        dist_to_next_delivery = self.global_state.get_distance(last_node_id, delivery_node_id) if hasattr(self.global_state,
+                                                                                                     'get_distance') else 0
+        dist_return_to_hub = self.global_state.get_distance(delivery_node_id, hub_node_id) if hasattr(self.global_state,
+                                                                                                 'get_distance') else 0
+
+        total_distance = dist_to_next_delivery + dist_return_to_hub
+        consumption_rate = self.get_energy_consumption_rate() if hasattr(self,
+                                                                            'get_energy_consumption_rate') else 1.0
+
+        return total_distance * consumption_rate

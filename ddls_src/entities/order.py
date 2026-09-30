@@ -348,6 +348,8 @@ class Order(LogisticEntity):
                 succ.predecessor_orders.append(pseudo_order_2)
 
             if succ.node_pair is not None:
+                if succ.node_pair not in self.global_state.evaluation_deck:
+                    self.global_state.evaluation_deck.append(succ.node_pair)
                 succ.node_pair.raise_state_change_event()
 
         # self.predecessor_orders = []
@@ -389,19 +391,36 @@ class Order(LogisticEntity):
         self.node_pair.register_event_handler_for_constraints(p_event_id, p_event_handler)
 
     def raise_state_change_event(self):
-        super().raise_state_change_event()
-        if self.node_pair is not None:
-            self.node_pair.raise_state_change_event()
+        if self.global_state is not None:
+            eval_deck = self.global_state.evaluation_deck
 
-        for successor in self.successor_orders:
-            if successor.node_pair is not None:
-                successor.node_pair.raise_state_change_event()
-            super(Order, successor).raise_state_change_event()
+            if self not in self.global_state.evaluation_deck:
+                eval_deck.append(self)
+            super().raise_state_change_event()
 
-        for predecessor in self.predecessor_orders:
-            if predecessor.node_pair is not None:
-                predecessor.node_pair.raise_state_change_event()
-            super(Order, predecessor).raise_state_change_event()
+            if self.node_pair is not None:
+                if self.node_pair not in eval_deck:
+                    eval_deck.append(self.node_pair)
+                self.node_pair.raise_state_change_event()
+
+            for successor in self.successor_orders:
+                if successor.node_pair is not None:
+                    if successor.node_pair not in eval_deck:
+                        eval_deck.append(successor.node_pair)
+                    successor.node_pair.raise_state_change_event()
+                if successor not in eval_deck:
+                    eval_deck.append(successor)
+                super(Order, successor).raise_state_change_event()
+
+            for predecessor in self.predecessor_orders:
+                if predecessor.node_pair is not None:
+                    if predecessor.node_pair not in eval_deck:
+                        eval_deck.append(predecessor.node_pair)
+                    predecessor.node_pair.raise_state_change_event()
+                if predecessor not in eval_deck:
+                    eval_deck.append(predecessor)
+                super(Order, predecessor).raise_state_change_event()
+
 
     def add_global_state(self, global_state):
         self.global_state = global_state

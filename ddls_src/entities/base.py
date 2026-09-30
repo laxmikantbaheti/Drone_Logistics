@@ -93,11 +93,17 @@ class LogisticEntity(System):
                 self.state[self.state_space.index(dim)] = p_value[i]
         else:
             self.state[self.state_space.index(p_dim_name)] = p_value
-
+        if self.global_state is not None:
+            evaluation_deck = self.global_state.evaluation_deck
+            if self not in evaluation_deck:
+                evaluation_deck.append(self)
         self.raise_state_change_event()
 
     def raise_state_change_event(self):
-        self._raise_event(self.C_EVENT_ENTITY_STATE_CHANGE, Event(self))
+        if self.global_state is not None:
+            if self not in self.global_state.evaluation_deck:
+                self.global_state.evaluation_deck.append(self)
+        # self._raise_event(self.C_EVENT_ENTITY_STATE_CHANGE, Event(self))
 
     def setup_event_string(self):
         self.C_EVENT_ENTITY_STATE_CHANGE = f"{self.C_NAME} - {self._id}: State Change Event"

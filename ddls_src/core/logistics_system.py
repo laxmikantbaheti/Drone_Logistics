@@ -406,6 +406,8 @@ class LogisticsSystem(System, EventManager):
                     print(f"  - Auto Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
             # Execute the action using the ActionManager.
             self.action_manager.execute_action(auto_action_tuple)
+            self.constraint_manager.evaluate_batch(self.global_state.evaluation_deck)
+            # self.global_state.evaluation_deck.clear()
             # Increment the counter.
             i += 1
             # A safety break to prevent infinite loops.
@@ -480,6 +482,8 @@ class LogisticsSystem(System, EventManager):
 
         for system in all_systems:
             system.simulate_reaction(p_state=None, p_action=None, p_t_step=t_step)
+
+        self.constraint_manager.evaluate_batch(self.global_state.evaluation_deck)
 
         # Update the MLPro state object after time has advanced and objects are simulated.
         self._update_state()

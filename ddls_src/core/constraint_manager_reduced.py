@@ -242,6 +242,8 @@ class ActiveResourceConstraint(Constraint):
         elif active_resource is None:
 
             for mh in p_entity.global_state.micro_hubs.values():
+                if mh.consolidated:
+                    mask.update(mh.associated_action_indexes.intersection(relevant_actions))
                 if not len(p_entity.global_state.get_next_demands()):
                     mask.update(mh.associated_action_indexes.intersection(relevant_actions))
                 elif mh.get_remaining_capacity() < min(p_entity.global_state.get_next_demands()):
@@ -370,6 +372,7 @@ class ConsolidationConstraint(Constraint):
         elif isinstance(active_resource, MicroHub):
                 return list(self.associated_action_index), []
 
+
 class FullCapacityConsolidationConstraint(Constraint):
     C_NAME = "ConsolidationConstraint"
     C_ACTIONS_AFFECTED = [SimulationActions.CONSOLIDATE]
@@ -377,32 +380,76 @@ class FullCapacityConsolidationConstraint(Constraint):
     C_ACTIVE = True
     C_GLOBAL_CONSTRAINT = True
 
-    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
-
+    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[
+        List, List]:
+        relevant_actions = self.associated_action_index
         active_resource = p_entity.global_state.active_resource
 
         if active_resource is None:
-            return [], list(self.associated_action_index)
-        if isinstance(active_resource, Vehicle):
-            if len(active_resource.get_current_cargo()) or len(active_resource.get_pickup_orders()):
-                av_cap = active_resource.get_remaining_capacity()
-                dems = active_resource.global_state.get_next_demands()
+            return [], list(relevant_actions)
+
+        # --- MicroHub Logic ---
+        if isinstance(active_resource, MicroHub):
+            # Check if it has a drone doing the deliveries
+            drone = getattr(active_resource, 'assigned_drone', None)
+
+            if drone is not None:
+                # Treat this as a Drone consolidation check
+                return self._evaluate_drone_consolidation(drone, p_entity, relevant_actions)
+            else:
+                # Standard MicroHub capacity logic
+                dems = p_entity.global_state.get_next_demands()
                 if not len(dems):
-                    return list(self.associated_action_index), []
-                if av_cap>=min(active_resource.global_state.get_next_demands()):
-                    return [], list(self.associated_action_index)
+                    return list(relevant_actions), []
+                if active_resource.get_remaining_capacity() >= min(dems):
+                    return [], list(relevant_actions)
                 else:
-                    return list(self.associated_action_index), []
+                    return list(relevant_actions), []
+
+        # --- Vehicle Logic (Truck & Drone Fallback) ---
+        if isinstance(active_resource, Drone):
+            return self._evaluate_drone_consolidation(active_resource, p_entity, relevant_actions)
+
+        elif isinstance(active_resource, Truck):
+            cargo = active_resource.get_current_cargo()
+            pickup_orders = active_resource.get_pickup_orders()
+
+            if not (len(cargo) or len(pickup_orders)):
+                return [], list(relevant_actions)
+
+            pending_demands = active_resource.global_state.get_pending_demands()
+            if not len(pending_demands):
+                return list(relevant_actions), []
+
+            av_cap = active_resource.get_remaining_capacity()
+            dems = active_resource.global_state.get_next_demands()
+
+            if len(dems) and av_cap >= min(dems):
+                # Can take an order
+                return [], list(relevant_actions)
             else:
-                return [], list(self.associated_action_index)
-        elif isinstance(active_resource, MicroHub):
-            dems = p_entity.global_state.get_next_demands()
-            if not len(dems):
-                return list(self.associated_action_index), []
-            if active_resource.get_remaining_capacity() >= min(dems):
-                return [], list(self.associated_action_index)
-            else:
-                return list(self.associated_action_index), []
+                # Cannot take an order
+                return list(relevant_actions), []
+
+        return [], list(relevant_actions)
+
+    def _evaluate_drone_consolidation(self, drone: Drone, p_entity: LogisticEntity, relevant_actions: set):
+        ready = drone._evaluate_drone_consolidation()
+        if not ready:
+            return [], list(relevant_actions)
+        else:
+            return list(relevant_actions), []
+
+    def _calculate_battery_cost(self, global_state, vehicle: Drone, last_node_id: int,
+                                delivery_node_id: int, hub_node_id: int) -> float:
+        dist_to_next_delivery = global_state.network.calculate_distance(last_node_id, delivery_node_id)
+        dist_return_to_hub = global_state.network.calculate_distance(delivery_node_id, hub_node_id)
+
+        total_distance = dist_to_next_delivery + dist_return_to_hub
+        consumption_rate = vehicle.get_energy_consumption_rate() if hasattr(vehicle,
+                                                                            'get_energy_consumption_rate') else 1.0
+
+        return total_distance * consumption_rate
 
 
 
@@ -463,7 +510,7 @@ class MicroHubConsolidation(Constraint):
     C_NAME = "MicroHubConsolidation"
     C_ACTIONS_AFFECTED = [SimulationActions.CONSOLIDATE]
     C_ASSOCIATED_ENTITIES = ["Drone", "MicroHub"]
-    C_ACTIVE = True
+    C_ACTIVE = False
 
     def _get_restricted_actions(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         if isinstance(p_entity.global_state.active_resource, MicroHub):
@@ -505,6 +552,74 @@ class TwoEchelonConstraint(Constraint):
             return [], relevant_actions
         else:
             return relevant_actions, []
+
+
+class BatteryAssignmentConstraint(Constraint):
+    C_NAME = "BatteryAssignmentConstraint"
+    C_ASSOCIATED_ENTITIES = ["MicroHub", "Drone", "Truck"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_RESOURCE]
+    C_GLOBAL_CONSTRAINT = True
+
+    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, deck) -> Tuple[List, List]:
+        actions_to_block = set()
+        actions_to_unblock = set()
+        relevant_actions = self.associated_action_index
+
+        active_resource = p_entity.global_state.active_resource
+        if isinstance(active_resource, Truck):
+            return list(relevant_actions), []
+        if active_resource is None or not isinstance(active_resource, MicroHub):
+            return [], list(relevant_actions)
+
+        available_battery = active_resource.assigned_drone.get_available_battery_capacity()
+
+        cargo = active_resource.get_current_cargo()
+        pickup_orders = active_resource.assigned_drone.get_pickup_orders()
+
+        if pickup_orders or cargo:
+            all_commitments = pickup_orders + cargo
+            last_projected_node_id = all_commitments[-1].get_delivery_node_id()
+        else:
+            last_projected_node_id = active_resource.assigned_drone.current_node_id
+
+        # Replaced home_node_id with start_node_id
+        hub_node_id = active_resource.start_node_id if hasattr(active_resource, 'start_node_id') else 0
+
+        pending_demands = p_entity.global_state.get_pending_demands()
+
+        for n_pair, demand in pending_demands.items():
+            node_pair_obj = p_entity.global_state.node_pairs[n_pair]
+            delivery_node_id = n_pair[1]
+
+            battery_cost = self._calculate_battery_cost(
+                global_state=p_entity.global_state,
+                vehicle=active_resource,
+                last_node_id=last_projected_node_id,
+                delivery_node_id=delivery_node_id,
+                hub_node_id=hub_node_id
+            )
+
+            target_assign_actions = node_pair_obj.associated_action_indexes.intersection(relevant_actions)
+            if battery_cost <= available_battery:
+                actions_to_unblock.update(target_assign_actions)
+            else:
+                actions_to_block.update(target_assign_actions)
+
+        return list(actions_to_unblock), list(actions_to_block)
+
+    def _calculate_battery_cost(self, global_state, vehicle: Drone, last_node_id: int,
+                                delivery_node_id: int, hub_node_id: int) -> float:
+        dist_to_next_delivery = global_state.get_distance(last_node_id, delivery_node_id) if hasattr(global_state,
+                                                                                                     'get_distance') else 0
+        dist_return_to_hub = global_state.get_distance(delivery_node_id, hub_node_id) if hasattr(global_state,
+                                                                                                 'get_distance') else 0
+
+        total_distance = dist_to_next_delivery + dist_return_to_hub
+        consumption_rate = vehicle.get_energy_consumption_rate() if hasattr(vehicle,
+                                                                            'get_energy_consumption_rate') else 1.0
+
+        return total_distance * consumption_rate
+
 
 
 class ConstraintManager(EventManager):
@@ -556,15 +671,21 @@ class ConstraintManager(EventManager):
             return self.entity_constraints[p_entity.C_NAME]
         return []
 
-    def handle_entity_state_change(self, p_event_id, p_event_object):
-        # DEBUG 1: Did we even get called?
-        if self.custom_log:
-            print(
-                f"[ConstraintManager] Event received: {p_event_id} from {p_event_object.get_raising_object().get_id()}")
+    def handle_entity_state_change(self, p_event_id=None, p_event_object=None, p_entity = None):
+        if p_event_id is not None and p_event_object is not None and p_entity is None:
+            # DEBUG 1: Did we even get called?
+            if self.custom_log:
+                print(
+                    f"[ConstraintManager] Event received: {p_event_id} from {p_event_object.get_raising_object().get_id()}")
 
-        self._update_counter += 1
-        entity = p_event_object.get_raising_object()
+            self._update_counter += 1
+            entity = p_event_object.get_raising_object()
+        elif p_entity is not None and p_event_object is None and p_event_id is None:
+            entity = p_entity
+        else:
+            raise ValueError(f"Please provide either p_event_id and p_event_object or provide only p_entity.")
 
+        print(f"Constraint evaluation started for {entity}")
         total_to_block = []
         total_to_unblock = []
 
@@ -611,6 +732,8 @@ class ConstraintManager(EventManager):
         else:
             if self.custom_log:
                 print("[ConstraintManager] No net change in masks. Event skipped.")
+
+        print(f"Constraint evaluation finished for {entity}")
 
     def update_constraints(self, global_state, reverse_action_map):
         """
@@ -710,6 +833,11 @@ class ConstraintManager(EventManager):
     def get_masks(self):
         self.masks = [0 if value else 1 for key, value in self.constraint_deck.items()]
         return self.masks
+
+    def evaluate_batch(self, evaluation_deck):
+        for entity in evaluation_deck:
+            self.handle_entity_state_change(p_entity=entity)
+        evaluation_deck.clear()
 
 
 class StateActionMapper:

@@ -156,7 +156,8 @@ class LogisticsScenario(Scenario):
             action_obj = LogisticsAction(p_action_space=self._system._action_space, p_values=[sys_action_id])
 
             self._system.process_action(action_obj)
-
+            self._system.constraint_manager.evaluate_batch(self._system.global_state.evaluation_deck)
+            # self._system.global_state.evaluate_constraints()
             if self._visualize:
                 self._system.network.update_plot()
 

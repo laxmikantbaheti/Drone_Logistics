@@ -194,11 +194,13 @@ class MicroHub(Node):
             self.assigned_drone.assign_orders([pseudo_order2])
             pseudo_order2.assign_vehicle(self.assigned_drone.get_id(), self.assigned_drone)
         self.raise_state_change_event()
+        if self not in self.global_state.evaluation_deck:
+            self.global_state.evaluation_deck.append(self)
         return True
 
     def get_current_cargo(self):
         if self.assigned_drone_id is not None:
-            return self.assigned_drone_id.current_cargo
+            return self.assigned_drone.get_current_cargo()
 
     def get_remaining_capacity(self):
         if self.assigned_drone is None:
