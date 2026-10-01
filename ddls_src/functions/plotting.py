@@ -200,7 +200,7 @@ class SimulationPlotter:
         ax.grid(which='major', axis='x', linestyle='-', color='#757575', alpha=0.7)
         ax.grid(which='minor', axis='x', linestyle=':', color='#BDBDBD', alpha=1)
 
-        ax.set_xlabel("Simulation Time (s)")
+        ax.set_xlabel("Time")
         ax.set_ylabel("Fleet Vehicles")
         ax.set_title("Fleet State Timeline & Node Progression")
         legend_patches = [mpatches.Patch(color=color, label=status) for status, color in color_map.items()]
@@ -299,7 +299,7 @@ class SimulationPlotter:
 
         ax.set_yticks(yticks)
         ax.set_yticklabels(yticklabels)
-        ax.set_xlabel("Simulation Time (s)");
+        ax.set_xlabel("Time");
         ax.set_title("Fleet Cargo Manifest Timeline")
         plt.tight_layout()
 
@@ -457,7 +457,7 @@ class SimulationPlotter:
 
         ax.set_yticks(yticks)
         ax.set_yticklabels(yticklabels)
-        ax.set_xlabel("Simulation Time (s)")
+        ax.set_xlabel("Time")
         ax.set_title("Fleet Cargo Manifest Timeline (with Cargo Load Bars)")
 
         plt.tight_layout()

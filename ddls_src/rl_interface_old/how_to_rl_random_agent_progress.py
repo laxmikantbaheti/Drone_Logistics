@@ -190,7 +190,7 @@ def plot_results(episodes, total_rewards, makespans, real_durations):
     plt.figure(figsize=(10, 6))
     plt.plot(episodes, makespans, color='r', linewidth=1, label='Makespan (Sim Time)')
     plt.xlabel('Episode')
-    plt.ylabel('Simulation Time (s)')
+    plt.ylabel('Time')
     plt.title('Operational Efficiency: Delivery Makespan per Episode')
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend()
