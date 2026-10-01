@@ -134,21 +134,30 @@ class SimulationPlotter:
             for _, row in group_data.iterrows():
                 curr_time = row['time']
                 curr_status_raw = str(row['status']).lower()
-                curr_node = row['current_node']
+                curr_node = row['current_node_id']
 
                 if prev_time is not None and prev_status is not None:
                     status_to_plot = prev_status
                     if curr_status_raw == 'returned':
                         status_to_plot = 'Returning'
-
-                    intervals.append({
-                        'Vehicle': f"Vehicle {vehicle_id}",
-                        'Start': prev_time, 'End': curr_time, 'Status': status_to_plot
-                    })
+                    if int(vehicle_id[:5]) > 19999:
+                        intervals.append({
+                            'Vehicle': f"Drone {vehicle_id}",
+                            'Start': prev_time, 'End': curr_time, 'Status': status_to_plot
+                        })
+                    else:
+                        intervals.append({
+                            'Vehicle': f"Truck {vehicle_id}",
+                            'Start': prev_time, 'End': curr_time, 'Status': status_to_plot
+                        })
 
                 is_valid_node = pd.notna(curr_node) and str(curr_node).lower() != 'none'
                 if is_valid_node and curr_node != last_annotated_node:
-                    node_annotations.append({'Vehicle': f"Vehicle {vehicle_id}", 'Time': curr_time, 'Node': curr_node})
+                    if int(vehicle_id[:5]) > 19999:
+                        node_annotations.append({'Drone': f"Drone {vehicle_id}", 'Time': curr_time, 'Node': curr_node})
+                    else:
+                        node_annotations.append({'Truck': f"Truck {vehicle_id}", 'Time': curr_time, 'Node': curr_node})
+
                     last_annotated_node = curr_node
 
                 prev_time, prev_status = curr_time, curr_status_raw.title()
@@ -176,8 +185,13 @@ class SimulationPlotter:
                         ha='center', va='center', fontsize=8, color='black', fontweight='bold')
 
         for ann in node_annotations:
-            ax.text(x=ann['Time'], y=ann['Vehicle'], s=f" N:{int(ann['Node'])}", va='bottom', fontsize=9,
+            try:
+                ax.text(x=ann['Time'], y=ann['Truck'], s=f" N:{int(ann['Node'])}", va='bottom', fontsize=9,
                     fontweight='bold')
+            except:
+                ax.text(x=ann['Time'], y=ann['Drone'], s=f" N:{int(ann['Node'])}", va='bottom', fontsize=9,
+                    fontweight='bold')
+
 
         max_x = df_intervals['End'].max()
         ax.set_xticks(np.arange(0, max_x + 100, 100))
@@ -214,7 +228,11 @@ class SimulationPlotter:
                 removed = []
                 for o_id, start_time in active_orders.items():
                     if o_id not in current_manifest:
-                        intervals.append({'Vehicle': f"Vehicle {vehicle_id}", 'Order': o_id,
+                        if int(vehicle_id[:5]) > 19999:
+                            intervals.append({'Vehicle': f"Drone {vehicle_id}", 'Order': o_id,
+                                          'Start': start_time, 'End': current_time, 'IsReturn': False})
+                        else:
+                            intervals.append({'Vehicle': f"Truck {vehicle_id}", 'Order': o_id,
                                           'Start': start_time, 'End': current_time, 'IsReturn': False})
                         removed.append(o_id)
                 for o_id in removed: del active_orders[o_id]
@@ -223,7 +241,13 @@ class SimulationPlotter:
             if not returned_rows.empty:
                 pos = group_data.index.get_loc(returned_rows.index[0])
                 if pos > 0:
-                    intervals.append({'Vehicle': f"Vehicle {vehicle_id}", 'Order': 'Return Leg',
+                    if int(vehicle_id[:5]) > 19999:
+                        intervals.append({'Vehicle': f"Drone {vehicle_id}", 'Order': 'Return Leg',
+                                      'Start': group_data.iloc[pos - 1]['time'],
+                                      'End': group_data.iloc[pos]['time'], 'IsReturn': True})
+                    else:
+
+                        intervals.append({'Vehicle': f"Truck {vehicle_id}", 'Order': 'Return Leg',
                                       'Start': group_data.iloc[pos - 1]['time'],
                                       'End': group_data.iloc[pos]['time'], 'IsReturn': True})
 
@@ -307,13 +331,23 @@ class SimulationPlotter:
                 removed = []
                 for o_id, start_time in active_orders.items():
                     if o_id not in current_manifest:
-                        intervals.append({
-                            'Vehicle': f"Vehicle {vehicle_id}",
+                        if int(vehicle_id[:5]) > 19999:
+                            intervals.append({
+                            'Vehicle': f"Drone {vehicle_id}",
                             'Order': o_id,
                             'Start': start_time,
                             'End': current_time,
                             'IsReturn': False
                         })
+                        else:
+
+                            intervals.append({
+                                'Vehicle': f"Truck {vehicle_id}",
+                                'Order': o_id,
+                                'Start': start_time,
+                                'End': current_time,
+                                'IsReturn': False
+                            })
                         removed.append(o_id)
                 for o_id in removed:
                     del active_orders[o_id]
@@ -322,13 +356,22 @@ class SimulationPlotter:
             if not returned_rows.empty:
                 pos = group_data.index.get_loc(returned_rows.index[0])
                 if pos > 0:
-                    intervals.append({
-                        'Vehicle': f"Vehicle {vehicle_id}",
+                    if int(vehicle_id[:5]) > 19999:
+                        intervals.append({
+                        'Vehicle': f"Drone {vehicle_id}",
                         'Order': 'Return Leg',
                         'Start': group_data.iloc[pos - 1]['time'],
                         'End': group_data.iloc[pos]['time'],
                         'IsReturn': True
                     })
+                    else:
+                        intervals.append({
+                            'Vehicle': f"Truck {vehicle_id}",
+                            'Order': 'Return Leg',
+                            'Start': group_data.iloc[pos - 1]['time'],
+                            'End': group_data.iloc[pos]['time'],
+                            'IsReturn': True
+                        })
 
         if not intervals:
             return

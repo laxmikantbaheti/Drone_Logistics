@@ -23,11 +23,15 @@ class EventLogger:
         }
         self.recorded_events_count = 0
 
-    def handle_entity_state_change(self, p_event_id, p_event_object):
+    def log_events(self, p_entity=None, p_event_id=None, p_event_object=None):
         """
         The universal listener. Caught whenever an entity calls self.raise_state_change_event().
         """
-        entity = p_event_object.get_raising_object()
+        try:
+            entity = p_event_object.get_raising_object()
+            return
+        except:
+            entity = p_entity
 
         # Safety check: ensure entity has a reference to global state and time
         if not hasattr(entity, 'global_state') or entity.global_state is None:

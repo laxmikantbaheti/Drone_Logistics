@@ -38,7 +38,7 @@ class LogisticEntity(System):
         self.data_storage = {}
 
         # [NEW] Added an attribute for global state reference
-        self.global_state:GlobalState = None
+        self.global_state = None
 
         # [NEW] Set to store actions involved with this entity
         self.associated_actions = set()
@@ -97,6 +97,8 @@ class LogisticEntity(System):
             evaluation_deck = self.global_state.evaluation_deck
             if self not in evaluation_deck:
                 evaluation_deck.append(self)
+        if self.global_state is not None:
+            self.global_state.event_logger.log_events(p_entity = self)
         self.raise_state_change_event()
 
     def raise_state_change_event(self):

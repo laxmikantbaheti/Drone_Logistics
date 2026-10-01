@@ -184,17 +184,17 @@ class LogisticsScenario(Scenario):
                 self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
 
             # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
-            # plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
+            plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
             #
             # # Generate the Gantt charts
-            # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
-            # plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
+            plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+            plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
             #
             # # Generate the state timeline plot
-            # plotter.generate_plot('state_timeline', save_to_disk=False)
+            plotter.generate_plot('state_timeline', save_to_disk=False)
             #
             # # Generate 2d routes
-            # plotter.generate_plot("2d_routes", save_to_disk=False)
+            plotter.generate_plot("2d_routes", save_to_disk=False)
         # -----------------------------------------------------------
 
         new_state = self._system.get_state()
