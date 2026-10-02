@@ -44,7 +44,7 @@ class EventLogger:
             # STRICTLY WATCHING THE CARGO MANIFEST ONLY
             manifest_ids = [f"{o.get_id()}-{o.get_pickup_node_id(), o.get_delivery_node_id()}-{o.size}" for o in entity.cargo_manifest]
 
-            energy = getattr(entity, 'battery_level', getattr(entity, 'fuel_level', None))
+            energy = getattr(entity, 'current_battery_soc', getattr(entity, 'fuel_level', None))
 
             self.logs["vehicles"].append({
                 'time': current_time,

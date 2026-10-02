@@ -102,6 +102,7 @@ class Vehicle(LogisticEntity, ABC):
         self.cargo_stats = {}
         self.d_tstamps = []
         self.location_history = []
+        self.visited_node_history = []
         self.distance_travelled = 0
         # --- NEW: Staging Area for the Batch Sequencer ---
         self.staged_pickup_orders = defaultdict()
@@ -171,7 +172,8 @@ class Vehicle(LogisticEntity, ABC):
         Resets the vehicle to its initial state at its starting node.
         """
         self.status = "idle"
-        self.location_history = []
+        self.location_history.clear()
+        self.visited_node_history.clear()
         self.distance_travelled = 0
         self.consolidation_confirmed = False
         self.set_current_node_id(self.start_node_id)
@@ -1073,7 +1075,8 @@ class Vehicle(LogisticEntity, ABC):
             self.en_route_timer = distance / self.get_speed()
             # XXX - This is critical, update it when you upgrade to a dynamic setting, with in route event based changes.
             self.distance_travelled += self.en_route_timer
-            self.location_history.append(self.current_location_coords)
+            # self.location_history.append(self.current_location_coords)
+            # self.visited_node_history.append(self.current_node_id)
     
             self.set_current_node_id(None)
             self.update_state_value_by_dim_name(
@@ -1090,6 +1093,8 @@ class Vehicle(LogisticEntity, ABC):
         return self.current_node_id
 
     def set_current_node_id(self, current_node_id):
+        if self.C_NAME == "Drone":
+            self.update_battery_soc(current_node_id)
         self.current_node_id = current_node_id
         for order in self.get_current_cargo():
             if not isinstance(order, Order):
@@ -1098,6 +1103,9 @@ class Vehicle(LogisticEntity, ABC):
             order.current_node_id = current_node_id
             if order.current_node_id == order.get_delivery_node_id():
                 order.update_state_value_by_dim_name(order.C_DIM_CURRENT_NODE[0], self.current_node_id)
+        if current_node_id is not None:
+            self.visited_node_history.append(current_node_id)
+            self.location_history.append(self.current_location_coords)
 
     def get_cargo_capacity(self):
         return self.max_payload_capacity

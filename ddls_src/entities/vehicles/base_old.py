@@ -1030,6 +1030,8 @@ class Vehicle(LogisticEntity, ABC):
         return self.current_node_id
 
     def set_current_node_id(self, current_node_id):
+        if self.C_NAME == "Drone":
+            self.update_current_battery_soc()
         self.current_node_id = current_node_id
         for order in self.get_current_cargo():
             if not isinstance(order, Order):

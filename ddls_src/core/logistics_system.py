@@ -715,7 +715,7 @@ class LogisticsSystem(System, EventManager):
                 if not len(v.d_tstamps):
                     continue
                 current_node = v.current_node_id
-                v.current_node_id = v.start_node_id
+                v.set_current_node_id(v.start_node_id)
                 ret_node = v.start_node_id
                 if v.C_NAME == "Drone":
                     dist = math.ceil(self.network.air_distance_matrix[str(current_node)][str(ret_node)])

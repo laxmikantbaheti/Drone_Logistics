@@ -50,7 +50,7 @@ class SimulationPlotter:
             self.df_orders = None
         self.plot_return = plot_return
 
-    def generate_plot(self, plot_type: str, save_to_disk: bool = False, output_dir: str = "."):
+    def generate_plot(self, plot_type: str, save_to_disk: bool = False, output_dir: str = ".", **kwargs):
         if plot_type == 'cargo_gantt':
             self._plot_cargo_gantt(save_to_disk, output_dir)
         elif plot_type == 'state_timeline':
@@ -59,6 +59,12 @@ class SimulationPlotter:
             self._plot_cargo_gantt_with_size_curve(save_to_disk, output_dir)
         elif plot_type == "2d_routes":
             self._plot_2d_routes(save_to_disk, output_dir)
+        elif plot_type == "cargo_level_analysis":
+            separate_subfigures = kwargs.get('separate_subfigures', False)
+            self._plot_cargo_level_analysis(separate_subfigures=separate_subfigures, save_to_disk=save_to_disk, output_dir=output_dir)
+        elif plot_type == "drone_energy_analysis":
+            separate_subfigures = kwargs.get('separate_subfigures', False)
+            self._plot_drone_energy_analysis(separate_subfigures=separate_subfigures, save_to_disk=save_to_disk, output_dir=output_dir)
         else:
             print(f"Error: Unknown plot type '{plot_type}'.")
 
@@ -464,5 +470,152 @@ class SimulationPlotter:
 
         if save_to_disk:
             plt.savefig(os.path.join(output_dir, "gantt_fleet_cargo_bars.png"), bbox_inches="tight")
+        else:
+            plt.show()
+
+    def _plot_cargo_level_analysis(self, separate_subfigures: bool = False, save_to_disk: bool = False,
+                                   output_dir: str = "."):
+        """
+        Plots used cargo size vs max cargo capacity over time for each vehicle in the fleet.
+        Supports separate subplots per vehicle or combined into a single plot.
+        """
+        if self.df_vehicles is None or self.df_vehicles.empty:
+            print("No vehicle data available for cargo level analysis.")
+            return
+
+        grouped = list(self.df_vehicles.groupby('vehicle_id'))
+        num_vehicles = len(grouped)
+
+        if separate_subfigures:
+            fig, axes = plt.subplots(num_vehicles, 1, figsize=(14, 4 * num_vehicles), sharex=True)
+            if num_vehicles == 1:
+                axes = [axes]
+        else:
+            fig, ax = plt.subplots(figsize=(14, 8))
+            axes = [ax] * num_vehicles
+
+        cmap = plt.get_cmap('tab10')
+        colors = cmap(np.linspace(0, 1, num_vehicles))
+
+        for idx, ((vehicle_id, group_data), color) in enumerate(zip(grouped, colors)):
+            current_ax = axes[idx] if separate_subfigures else ax
+            group_data = group_data.reset_index().sort_values(by=['time', 'index'])
+
+            v_type = "Drone" if int(str(vehicle_id)[:5]) > 19999 else "Truck"
+            v_label = f"{v_type} {vehicle_id}"
+
+            times = group_data['time']
+            cargo_size = group_data['cargo_size']
+            cargo_capacity = group_data['cargo_capacity'].iloc[0]
+
+            # Plot used capacity line
+            current_ax.step(times, cargo_size, where='post', label=f"{v_label} (Used)", color=color, linewidth=2)
+            # Plot max capacity reference dotted line
+            current_ax.axhline(y=cargo_capacity, color=color, linestyle='--', alpha=0.7,
+                               label=f"{v_label} (Capacity: {cargo_capacity})")
+
+            if separate_subfigures:
+                current_ax.set_ylabel("Cargo", fontsize=12, fontweight='bold')
+                current_ax.set_title(f"Cargo Level Tracking: {v_label}", fontsize=14, fontweight='bold')
+                current_ax.grid(True, linestyle=':', alpha=0.6)
+                current_ax.legend(loc='upper right', fontsize=10)
+                current_ax.tick_params(axis='both', labelsize=11)
+
+        if not separate_subfigures:
+            ax.set_xlabel("Time", fontsize=16, fontweight='bold')
+            ax.set_ylabel("Cargo Capacity / Used Size", fontsize=16, fontweight='bold')
+            ax.set_title("Fleet Cargo Level Tracking (Combined)", fontsize=18, fontweight='bold')
+            ax.grid(True, linestyle=':', alpha=0.6)
+            ax.legend(loc='upper right', bbox_to_anchor=(1.2, 1), fontsize=12)
+            ax.tick_params(axis='both', labelsize=14)
+        else:
+            axes[-1].set_xlabel("Time", fontsize=14, fontweight='bold')
+
+        plt.tight_layout()
+
+        filename = "cargo_level_analysis_subfigures.png" if separate_subfigures else "cargo_level_analysis_combined.png"
+        if save_to_disk:
+            plt.savefig(os.path.join(output_dir, filename), bbox_inches="tight")
+        else:
+            plt.show()
+
+    def _plot_drone_energy_analysis(self, separate_subfigures: bool = False, save_to_disk: bool = False,
+                                    output_dir: str = "."):
+        """
+        Plots energy levels over time specifically for drone vehicles.
+        Supports separate subplots per drone or combined into a single plot.
+        """
+        if self.df_vehicles is None or self.df_vehicles.empty or 'energy_level' not in self.df_vehicles.columns:
+            print("No vehicle energy data available for analysis.")
+            return
+
+        # Filter rows where vehicle is a drone (e.g. vehicle_id starting > 19999 or type matches Drone)
+        drone_df = self.df_vehicles[
+            self.df_vehicles['vehicle_id'].astype(str).str.startswith(('2', 'drone', 'Drone')) |
+            (self.df_vehicles['vehicle_id'].apply(lambda x: int(str(x)[:5]) > 19999 if str(x)[:5].isdigit() else False))
+            ]
+
+        if drone_df.empty:
+            # Fallback check on vehicle_type column if present
+            if 'vehicle_type' in self.df_vehicles.columns:
+                drone_df = self.df_vehicles[self.df_vehicles['vehicle_type'].astype(str).str.lower() == 'drone']
+
+        if drone_df.empty:
+            print("No drone vehicles found in the report logs.")
+            return
+
+        grouped = list(drone_df.groupby('vehicle_id'))
+        num_drones = len(grouped)
+
+        if separate_subfigures:
+            fig, axes = plt.subplots(num_drones, 1, figsize=(14, 4 * num_drones), sharex=True)
+            if num_drones == 1:
+                axes = [axes]
+        else:
+            fig, ax = plt.subplots(figsize=(14, 8))
+            axes = [ax] * num_drones
+
+        cmap = plt.get_cmap('tab10')
+        colors = cmap(np.linspace(0, 1, num_drones))
+
+        for idx, ((drone_id, group_data), color) in enumerate(zip(grouped, colors)):
+            current_ax = axes[idx] if separate_subfigures else ax
+            group_data = group_data.reset_index().sort_values(by=['time', 'index'])
+
+            times = group_data['time']
+            energy_levels = group_data['energy_level']
+            max_battery = energy_levels.max() if not energy_levels.empty else 1.0
+            max_battery = max(max_battery, 1.0)  # Ensure at least 1.0 or 100% boundary reference
+
+            # Plot energy level trace
+            current_ax.plot(times, energy_levels, label=f"Drone {drone_id} (Energy)", color=color, linewidth=2)
+            # Plot max capacity reference dotted line
+            current_ax.axhline(y=max_battery, color=color, linestyle='--', alpha=0.7,
+                               label=f"Drone {drone_id} (Max Capacity)")
+
+            if separate_subfigures:
+                current_ax.set_ylabel("Battery SoC", fontsize=12, fontweight='bold')
+                current_ax.set_title(f"Drone Energy Level Tracking: Drone {drone_id}", fontsize=14, fontweight='bold')
+                current_ax.grid(True, linestyle=':', alpha=0.6)
+                current_ax.set_ylim(-0.05, 1.05)
+                current_ax.legend(loc='upper right', fontsize=10)
+                current_ax.tick_params(axis='both', labelsize=11)
+
+        if not separate_subfigures:
+            ax.set_xlabel("Time", fontsize=16, fontweight='bold')
+            ax.set_ylabel("Energy Level (SoC)", fontsize=16, fontweight='bold')
+            ax.set_title("Fleet Drone Energy Consumption Tracking (Combined)", fontsize=18, fontweight='bold')
+            ax.grid(True, linestyle=':', alpha=0.6)
+            ax.set_ylim(-0.05, 1.05)
+            ax.legend(loc='upper right', bbox_to_anchor=(1.2, 1), fontsize=12)
+            ax.tick_params(axis='both', labelsize=14)
+        else:
+            axes[-1].set_xlabel("Time", fontsize=14, fontweight='bold')
+
+        plt.tight_layout()
+
+        filename = "drone_energy_analysis_subfigures.png" if separate_subfigures else "drone_energy_analysis_combined.png"
+        if save_to_disk:
+            plt.savefig(os.path.join(output_dir, filename), bbox_inches="tight")
         else:
             plt.show()

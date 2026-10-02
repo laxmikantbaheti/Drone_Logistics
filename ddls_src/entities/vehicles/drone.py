@@ -50,6 +50,7 @@ class Drone(Vehicle):
         self.battery_level: float = self.initial_battery
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self.automatic_logic_config = p_kwargs.get('p_automatic_logic_config', {})
+        self.current_battery_soc = self.initial_battery
 
         super().__init__(p_id=p_id,
                          p_name=p_name,
@@ -320,3 +321,25 @@ class Drone(Vehicle):
                                                                             'get_energy_consumption_rate') else 1.0
 
         return total_distance * consumption_rate
+
+
+    def update_battery_soc(self, new_node_id: int):
+        """
+        Updates the drone's current battery state of charge based on the distance
+        from the current node to the new node, consumption rate, and network matrices.
+        """
+        if new_node_id is None:
+            return
+
+        # Fetch distance from current node to the new node
+        distance = 0.0
+        if self.global_state is not None and len(self.visited_node_history):
+            distance = self.global_state.network.calculate_distance(self.visited_node_history[-1], new_node_id)
+
+        # Calculate energy consumption based on distance and rate
+        consumption_rate = self.get_energy_consumption_rate()
+        energy_consumed = distance * consumption_rate
+
+        # Update battery SoC and sync battery_level
+        self.current_battery_soc -= energy_consumed
+        self.current_battery_soc = max(0.0, min(self.max_battery_capacity, self.current_battery_soc))

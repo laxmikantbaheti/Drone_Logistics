@@ -193,6 +193,12 @@ class LogisticsScenario(Scenario):
             # # Generate the state timeline plot
             plotter.generate_plot('state_timeline', save_to_disk=False)
             #
+            # Generate the cargo plots
+            plotter.generate_plot("cargo_level_analysis", save_to_disk=False)
+            #
+            # Generate drone energy consumption plot
+            plotter.generate_plot("drone_energy_analysis", save_to_disk=False)
+            #
             # # Generate 2d routes
             plotter.generate_plot("2d_routes", save_to_disk=False)
         # -----------------------------------------------------------
