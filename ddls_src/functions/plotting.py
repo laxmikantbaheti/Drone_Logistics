@@ -103,7 +103,7 @@ class SimulationPlotter:
             x, y = zip(*coords)
 
             # Plot the route lines and individual node dots
-            ax.plot(x, y, color=color, linewidth=1.2, alpha=0.8)
+            ax.plot(x, y, color=color, linewidth=1, alpha=0.8)
             ax.scatter(x, y, color=color, s=30, zorder=3)
 
             # Mark the Depot (assumes the very first recorded coordinate is the depot)
@@ -509,7 +509,7 @@ class SimulationPlotter:
             cargo_capacity = group_data['cargo_capacity'].iloc[0]
 
             # Plot used capacity line
-            current_ax.step(times, cargo_size, where='post', label=f"{v_label} (Used)", color=color, linewidth=2)
+            current_ax.step(times, cargo_size, where='post', label=f"{v_label} (Used)", color=color, linewidth=1)
             # Plot max capacity reference dotted line
             current_ax.axhline(y=cargo_capacity, color=color, linestyle='--', alpha=0.7,
                                label=f"{v_label} (Capacity: {cargo_capacity})")
@@ -539,30 +539,31 @@ class SimulationPlotter:
         else:
             plt.show()
 
-    def _plot_drone_energy_analysis(self, separate_subfigures: bool = False, save_to_disk: bool = False,
-                                    output_dir: str = "."):
+    def _plot_drone_energy_analysis(self, separate_subfigures: bool = False, save_to_disk: bool = False, output_dir: str = "."):
         """
-        Plots energy levels over time specifically for drone vehicles.
+        Plots continuous energy level trajectories over time for drone vehicles,
+        extending a smooth flat line after the last record to the end of the simulation.
         Supports separate subplots per drone or combined into a single plot.
         """
         if self.df_vehicles is None or self.df_vehicles.empty or 'energy_level' not in self.df_vehicles.columns:
             print("No vehicle energy data available for analysis.")
             return
 
-        # Filter rows where vehicle is a drone (e.g. vehicle_id starting > 19999 or type matches Drone)
+        # Filter rows where vehicle is a drone
         drone_df = self.df_vehicles[
             self.df_vehicles['vehicle_id'].astype(str).str.startswith(('2', 'drone', 'Drone')) |
             (self.df_vehicles['vehicle_id'].apply(lambda x: int(str(x)[:5]) > 19999 if str(x)[:5].isdigit() else False))
-            ]
+        ]
 
-        if drone_df.empty:
-            # Fallback check on vehicle_type column if present
-            if 'vehicle_type' in self.df_vehicles.columns:
-                drone_df = self.df_vehicles[self.df_vehicles['vehicle_type'].astype(str).str.lower() == 'drone']
+        if drone_df.empty and 'vehicle_type' in self.df_vehicles.columns:
+            drone_df = self.df_vehicles[self.df_vehicles['vehicle_type'].astype(str).str.lower() == 'drone']
 
         if drone_df.empty:
             print("No drone vehicles found in the report logs.")
             return
+
+        # Find the global maximum simulation time across all vehicles for flat-line extension
+        max_global_time = self.df_vehicles['time'].max() if 'time' in self.df_vehicles.columns else 0
 
         grouped = list(drone_df.groupby('vehicle_id'))
         num_drones = len(grouped)
@@ -582,16 +583,21 @@ class SimulationPlotter:
             current_ax = axes[idx] if separate_subfigures else ax
             group_data = group_data.reset_index().sort_values(by=['time', 'index'])
 
-            times = group_data['time']
-            energy_levels = group_data['energy_level']
-            max_battery = energy_levels.max() if not energy_levels.empty else 1.0
-            max_battery = max(max_battery, 1.0)  # Ensure at least 1.0 or 100% boundary reference
+            times = list(group_data['time'])
+            energy_levels = list(group_data['energy_level'])
 
-            # Plot energy level trace
-            current_ax.plot(times, energy_levels, label=f"Drone {drone_id} (Energy)", color=color, linewidth=2)
+            # Extend smoothly with a flat line up to global max time after the last record
+            if times and times[-1] < max_global_time:
+                times.append(max_global_time)
+                energy_levels.append(energy_levels[-1])
+
+            max_battery = max(energy_levels) if energy_levels else 1.0
+            max_battery = max(max_battery, 1.0)
+
+            # Plot continuous energy level trajectory (non-stepwise)
+            current_ax.plot(times, energy_levels, linestyle='-', marker='', label=f"Drone {drone_id} (Energy)", color=color, linewidth=1)
             # Plot max capacity reference dotted line
-            current_ax.axhline(y=max_battery, color=color, linestyle='--', alpha=0.7,
-                               label=f"Drone {drone_id} (Max Capacity)")
+            current_ax.axhline(y=max_battery, color=color, linestyle='--', alpha=0.7, label=f"Drone {drone_id} (Max Capacity)")
 
             if separate_subfigures:
                 current_ax.set_ylabel("Battery SoC", fontsize=12, fontweight='bold')
