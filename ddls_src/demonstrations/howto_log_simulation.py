@@ -3,39 +3,34 @@ from datetime import datetime
 from ddls_src.scenarios.scenario import LogisticsScenario
 import random
 
+
 def run_scenario_demo():
-    # Set the seed for full reproducibility
-    seed = 42
+    seed = 111
     random.seed(seed)
-    """
-    Demonstrates and validates the distance matrix-based movement functionality
-    on a large-scale instance (>= 50 nodes) generated entirely in-memory.
-    """
+
     print("==================================================================")
-    print("=== Howto: Running Large Distance Matrix Scenario (50+ Nodes)  ===")
+    print("=== Howto: Running Simplified Distance Matrix Scenario         ===")
     print("==================================================================")
 
-    # 1. Define the simulation configuration with direct in-memory generator parameters
+    # 1. Simplified simulation configuration with direct entity counts and ranges
     sim_config = {
-        "seed": 45,
+        "seed": 111,
         "movement_mode": "matrix",
         "initial_time": 0.0,
         "main_timestep_duration": 1.0,
         "data_loader_config": {
             "generator_type": "distance_matrix",
             "generator_config": {
-                "base_scale_factor": 10,
-                "num_nodes": 60,  # Explicitly configured for >= 50 nodes
-                "area_x_range": (0.0, 200.0),
-                "area_y_range": (0.0, 200.0),
-                "scaling_factors": {
-                    "nodes": 6.0,
-                    "depots": 0.3,       # ~3 depots
-                    "customers": 4.5,    # ~45 customers
-                    "micro_hubs": 0.6,   # ~6 micro-hubs (and 6 paired drones)
-                    "trucks": 0.5,       # ~5 trucks
-                    "initial_orders": 3.5 # ~35 orders
-                },
+                # Direct Entity Counts (No Scale Factors)
+                "num_depots": 3,
+                "num_customers": 15,
+                "num_micro_hubs": 2,
+                "num_trucks": 4,
+                "num_initial_orders": 15,
+
+                # Area and Ranges
+                "area_x_range": (0.0, 100.0),
+                "area_y_range": (0.0, 100.0),
                 "truck_payload_range": [8, 16],
                 "drone_payload_range": [1, 3],
                 "truck_speed_range": [40.0, 80.0],

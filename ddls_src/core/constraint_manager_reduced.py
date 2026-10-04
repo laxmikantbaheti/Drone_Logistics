@@ -175,6 +175,7 @@ class VehicleCapacityConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_RESOURCE]
     C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "MicroHub"]
     C_GLOBAL_CONSTRAINT = True
+    C_ACTIVE = True
 
     def evaluate_impact_global(self, p_entity: Vehicle, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
 
@@ -311,7 +312,8 @@ class VehicleLoadConstraint(Constraint):
             if current_node is not None and (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in vehicle.C_TRIP_STATE_HALT):
                 pickup_orders = [o for o in vehicle.get_pickup_orders() if o.get_pickup_node_id() == current_node]
                 if len(pickup_orders):
-                    precedence = [o.check_order_precedence() for o in pickup_orders]
+                    # precedence = [o.check_order_precedence() for o in pickup_orders]
+                    precedence = [True for o in pickup_orders]
                     if False in precedence:
                         actions_to_block.update(relevant_actions.intersection(vehicle.associated_action_indexes))
                     else:
@@ -320,6 +322,30 @@ class VehicleLoadConstraint(Constraint):
                     actions_to_block.update(relevant_actions.intersection(vehicle.associated_action_indexes))
             else:
                 actions_to_block.update(relevant_actions.intersection(vehicle.associated_action_indexes))
+        return list(actions_to_unblock), list(actions_to_block)
+
+class VehicleLoadPrecedenceConstraint(Constraint):
+    C_NAME = "VehiclePrecedenceConstraint"
+    C_ACTIONS_AFFECTED = [SimulationActions.LOAD_DRONE_ACTION]
+    C_ASSOCIATED_ENTITIES = ["Order", "Truck", "Drone"]
+    C_GLOBAL_CONSTRAINT = True
+    C_ACTIVE = True
+
+    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+        actions_to_block = set()
+        actions_to_unblock = set()
+        relevant_actions = self.associated_action_index
+        for vehicle in p_entity.global_state.get_vehicles():
+            current_node = vehicle.current_node_id
+            if current_node is not None and (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in vehicle.C_TRIP_STATE_HALT):
+                pickup_orders = [o for o in vehicle.get_pickup_orders() if o.get_pickup_node_id() == current_node]
+                if len(pickup_orders):
+                    precedence = [o.check_order_precedence() for o in pickup_orders]
+                    # precedence = [True for o in pickup_orders]
+                    if False in precedence:
+                        actions_to_block.update(relevant_actions.intersection(vehicle.associated_action_indexes))
+                    else:
+                        actions_to_unblock.update(relevant_actions.intersection(vehicle.associated_action_indexes))
         return list(actions_to_unblock), list(actions_to_block)
 
 
@@ -442,8 +468,8 @@ class FullCapacityConsolidationConstraint(Constraint):
 
     def _calculate_battery_cost(self, global_state, vehicle: Drone, last_node_id: int,
                                 delivery_node_id: int, hub_node_id: int) -> float:
-        dist_to_next_delivery = global_state.network.calculate_distance(last_node_id, delivery_node_id)
-        dist_return_to_hub = global_state.network.calculate_distance(delivery_node_id, hub_node_id)
+        dist_to_next_delivery = global_state.network.calculate_distance(last_node_id, delivery_node_id, vehicle.C_NAME)
+        dist_return_to_hub = global_state.network.calculate_distance(delivery_node_id, hub_node_id, vehicle.C_NAME)
 
         total_distance = dist_to_next_delivery + dist_return_to_hub
         consumption_rate = vehicle.get_energy_consumption_rate() if hasattr(vehicle,
@@ -460,6 +486,7 @@ class PseudoOrderAssignmentConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_RESOURCE]
     C_ASSOCIATED_ENTITIES = ["Node Pair"]
     C_GLOBAL_CONSTRAINT = True
+    C_ACTIVE = True
 
     def evaluate_impact_global(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
 

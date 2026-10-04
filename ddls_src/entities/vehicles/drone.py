@@ -257,7 +257,7 @@ class Drone(Vehicle):
             next_node = order.get_delivery_node_id()
 
             if self.global_state is not None:
-                committed_distance += self.global_state.network.calculate_distance(current_step_node, next_node)
+                committed_distance += self.global_state.network.calculate_distance(current_step_node, next_node, self.C_NAME)
 
             current_step_node = next_node
 
@@ -334,7 +334,7 @@ class Drone(Vehicle):
         # Fetch distance from current node to the new node
         distance = 0.0
         if self.global_state is not None and len(self.visited_node_history):
-            distance = self.global_state.network.calculate_distance(self.visited_node_history[-1], new_node_id)
+            distance = self.global_state.network.calculate_distance(self.visited_node_history[-1], new_node_id, self.C_NAME)
 
         # Calculate energy consumption based on distance and rate
         consumption_rate = self.get_energy_consumption_rate()

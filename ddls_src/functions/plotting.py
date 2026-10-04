@@ -3,7 +3,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import ast
 import os
+import re
 import numpy as np
+import math
 
 
 class SimulationPlotter:
@@ -53,6 +55,8 @@ class SimulationPlotter:
     def generate_plot(self, plot_type: str, save_to_disk: bool = False, output_dir: str = ".", **kwargs):
         if plot_type == 'cargo_gantt':
             self._plot_cargo_gantt(save_to_disk, output_dir)
+        elif plot_type == "cargo_gantt_invalid_highlight":
+            self._plot_cargo_gantt_invalid_highlight(save_to_disk, output_dir)
         elif plot_type == 'state_timeline':
             self._plot_state_timeline(save_to_disk, output_dir)
         elif plot_type == "cargo_gantt_with_size_curve":
@@ -60,7 +64,7 @@ class SimulationPlotter:
         elif plot_type == "2d_routes":
             self._plot_2d_routes(save_to_disk, output_dir)
         elif plot_type == "cargo_level_analysis":
-            separate_subfigures = kwargs.get('separate_subfigures', False)
+            separate_subfigures = kwargs.get('separate_subfigures', True)
             self._plot_cargo_level_analysis(separate_subfigures=separate_subfigures, save_to_disk=save_to_disk, output_dir=output_dir)
         elif plot_type == "drone_energy_analysis":
             separate_subfigures = kwargs.get('separate_subfigures', False)
@@ -473,11 +477,11 @@ class SimulationPlotter:
         else:
             plt.show()
 
-    def _plot_cargo_level_analysis(self, separate_subfigures: bool = False, save_to_disk: bool = False,
+    def _plot_cargo_level_analysis(self, separate_subfigures: bool = True, save_to_disk: bool = False,
                                    output_dir: str = "."):
         """
         Plots used cargo size vs max cargo capacity over time for each vehicle in the fleet.
-        Supports separate subplots per vehicle or combined into a single plot.
+        Supports separate subplots per vehicle in a grid layout or combined into a single plot.
         """
         if self.df_vehicles is None or self.df_vehicles.empty:
             print("No vehicle data available for cargo level analysis.")
@@ -487,9 +491,16 @@ class SimulationPlotter:
         num_vehicles = len(grouped)
 
         if separate_subfigures:
-            fig, axes = plt.subplots(num_vehicles, 1, figsize=(14, 4 * num_vehicles), sharex=True)
+            # Define a 2-column grid layout to avoid excessively long vertical stacks
+            ncols = 2 if num_vehicles > 1 else 1
+            nrows = math.ceil(num_vehicles / ncols)
+            fig, axes = plt.subplots(nrows, ncols, figsize=(14, 3 * nrows), sharex=True)
+
+            # Flatten axes array for easy iteration, handling scalar/1D/2D edge cases safely
             if num_vehicles == 1:
-                axes = [axes]
+                axes = np.array([axes])
+            else:
+                axes = axes.flatten()
         else:
             fig, ax = plt.subplots(figsize=(14, 8))
             axes = [ax] * num_vehicles
@@ -509,17 +520,18 @@ class SimulationPlotter:
             cargo_capacity = group_data['cargo_capacity'].iloc[0]
 
             # Plot used capacity line
-            current_ax.step(times, cargo_size, where='post', label=f"{v_label} (Used)", color=color, linewidth=1)
+            current_ax.step(times, cargo_size, where='post', label=f"{v_label} (Used)", color=color, linewidth=1.5)
             # Plot max capacity reference dotted line
             current_ax.axhline(y=cargo_capacity, color=color, linestyle='--', alpha=0.7,
                                label=f"{v_label} (Capacity: {cargo_capacity})")
 
             if separate_subfigures:
-                current_ax.set_ylabel("Cargo", fontsize=12, fontweight='bold')
-                current_ax.set_title(f"Cargo Level Tracking: {v_label}", fontsize=14, fontweight='bold')
+                # Reduced font sizes and legend placed at the bottom right
+                current_ax.set_ylabel("Cargo", fontsize=10, fontweight='bold')
+                current_ax.set_title(f"Cargo Level Tracking: {v_label}", fontsize=11, fontweight='bold')
                 current_ax.grid(True, linestyle=':', alpha=0.6)
-                current_ax.legend(loc='upper right', fontsize=10)
-                current_ax.tick_params(axis='both', labelsize=11)
+                current_ax.legend(loc='lower right', fontsize=9)
+                current_ax.tick_params(axis='both', labelsize=9)
 
         if not separate_subfigures:
             ax.set_xlabel("Time", fontsize=16, fontweight='bold')
@@ -529,7 +541,13 @@ class SimulationPlotter:
             ax.legend(loc='upper right', bbox_to_anchor=(1.2, 1), fontsize=12)
             ax.tick_params(axis='both', labelsize=14)
         else:
-            axes[-1].set_xlabel("Time", fontsize=14, fontweight='bold')
+            # Hide any unused subplots if the total grid slots exceed the number of vehicles
+            for idx in range(num_vehicles, len(axes)):
+                fig.delaxes(axes[idx])
+
+            # Apply X-axis label across the active subplots
+            for idx in range(num_vehicles):
+                axes[idx].set_xlabel("Time", fontsize=10, fontweight='bold')
 
         plt.tight_layout()
 
@@ -625,3 +643,177 @@ class SimulationPlotter:
             plt.savefig(os.path.join(output_dir, filename), bbox_inches="tight")
         else:
             plt.show()
+
+    # --- NEW METHOD ADDED FOR INVALID DELIVERY GANTT HIGHLIGHTING ---
+    def _plot_cargo_gantt_invalid_highlight(self, save_to_disk: bool = False, output_dir: str = "."):
+        """
+        Creates a cargo Gantt chart that highlights leg_2 orders (_2) loaded
+        before their corresponding leg_1 orders (_1) have been completed.
+        """
+        if self.df_vehicles is None or self.df_vehicles.empty:
+            print("No vehicle data available for invalid cargo Gantt plotting.")
+            return
+
+        intervals = []
+        grouped = self.df_vehicles.groupby('vehicle_id')
+
+        # First pass: collect all order delivery/completion end times globally to verify precedence
+        order_completion_times = {}
+
+        temp_intervals = []
+        for vehicle_id, group_data in grouped:
+            group_data = group_data.reset_index().sort_values(by=['time', 'index'])
+            active_orders = {}
+            for _, row in group_data.iterrows():
+                current_time, current_manifest = row['time'], set(str(item) for item in row['cargo_manifest'])
+                for o_id in current_manifest:
+                    if o_id not in active_orders: active_orders[o_id] = current_time
+                removed = []
+                for o_id, start_time in active_orders.items():
+                    if o_id not in current_manifest:
+                        temp_intervals.append({'Order': o_id, 'End': current_time})
+                        removed.append(o_id)
+                for o_id in removed: del active_orders[o_id]
+
+        for item in temp_intervals:
+            o_id = item['Order']
+            end_t = item['End']
+            if o_id not in order_completion_times or end_t < order_completion_times[o_id]:
+                order_completion_times[o_id] = end_t
+
+        # Second pass: Build actual intervals and check if leg 2 was loaded before leg 1 completed
+        for vehicle_id, group_data in grouped:
+            group_data = group_data.reset_index().sort_values(by=['time', 'index'])
+            active_orders = {}
+            for _, row in group_data.iterrows():
+                current_time, current_manifest = row['time'], set(str(item) for item in row['cargo_manifest'])
+                for o_id in current_manifest:
+                    if o_id not in active_orders: active_orders[o_id] = current_time
+                removed = []
+                for o_id, start_time in active_orders.items():
+                    if o_id not in current_manifest:
+                        v_prefix = f"Drone {vehicle_id}" if int(str(vehicle_id)[:5]) > 19999 else f"Truck {vehicle_id}"
+                        load_start_time = start_time
+
+                        # Check if this is a leg 2 order using regex
+                        is_invalid = False
+                        match_leg2 = re.search(r'(\d+)_2', o_id)
+                        if match_leg2:
+                            base_num = match_leg2.group(1)
+                            leg1_completed = False
+                            leg1_finish_time = float('inf')
+
+                            for completed_order, comp_time in order_completion_times.items():
+                                if completed_order.startswith(f"{base_num}_1"):
+                                    leg1_completed = True
+                                    if comp_time < leg1_finish_time:
+                                        leg1_finish_time = comp_time
+
+                            # Invalid if leg 1 was never completed OR if leg 2 started loading before leg 1 finished
+                            if not leg1_completed or load_start_time < leg1_finish_time:
+                                is_invalid = True
+
+                        intervals.append({
+                            'Vehicle': v_prefix,
+                            'Order': o_id,
+                            'Start': load_start_time,
+                            'End': current_time,
+                            'IsReturn': False,
+                            'IsInvalid': is_invalid
+                        })
+                        removed.append(o_id)
+                for o_id in removed: del active_orders[o_id]
+
+            returned_rows = group_data[group_data['status'].str.lower() == 'returned']
+            if not returned_rows.empty:
+                pos = group_data.index.get_loc(returned_rows.index[0])
+                if pos > 0:
+                    v_prefix = f"Drone {vehicle_id}" if int(str(vehicle_id)[:5]) > 19999 else f"Truck {vehicle_id}"
+                    intervals.append({
+                        'Vehicle': v_prefix,
+                        'Order': 'Return Leg',
+                        'Start': group_data.iloc[pos - 1]['time'],
+                        'End': group_data.iloc[pos]['time'],
+                        'IsReturn': True,
+                        'IsInvalid': False
+                    })
+
+        if not intervals: return
+        df_intervals = pd.DataFrame(intervals)
+        df_intervals['Duration'] = df_intervals['End'] - df_intervals['Start']
+        df_intervals = df_intervals[df_intervals['Duration'] > 0]
+
+        df_intervals = df_intervals.sort_values(by=['Vehicle', 'Start'])
+        optimized_intervals = []
+        for vehicle, group in df_intervals.groupby('Vehicle'):
+            ends = []
+            for _, row in group.iterrows():
+                lane = -1
+                for i, e in enumerate(ends):
+                    if e <= row['Start']: lane = i; ends[i] = row['End']; break
+                if lane == -1: lane = len(ends); ends.append(row['End'])
+                d = row.to_dict()
+                d['Lane'] = lane
+                optimized_intervals.append(d)
+
+        df_opt = pd.DataFrame(optimized_intervals)
+        fig, ax = plt.subplots(figsize=(14, 8))
+        unique_vehicles = sorted(df_opt['Vehicle'].unique(), reverse=True)
+        current_y_base, yticks, yticklabels = 0, [], []
+
+        for v in unique_vehicles:
+            v_data = df_opt[df_opt['Vehicle'] == v]
+            max_lane = v_data['Lane'].max()
+            for _, row in v_data.iterrows():
+                y_pos = current_y_base + row['Lane']
+
+                if row.get('IsReturn'):
+                    color = '#FFA726'
+                    edgecolor = 'black'
+                    hatch = None
+                elif row.get('IsInvalid'):
+                    color = 'white'
+                    edgecolor = '#D32F2F'
+                    hatch = '///'
+                else:
+                    color = 'skyblue'
+                    edgecolor = 'black'
+                    hatch = None
+
+                ax.barh(y=y_pos, width=row['Duration'], left=row['Start'], height=0.8,
+                        color=color, edgecolor=edgecolor, hatch=hatch, linewidth=1.5 if row.get('IsInvalid') else 1.0)
+
+                label_text = f"{row['Order']} ({int(row['Duration'])}s)"
+                text_color = '#D32F2F' if row.get('IsInvalid') else 'black'
+                ax.text(row['Start'] + (row['Duration'] / 2), y_pos, label_text,
+                        ha='center', va='center', fontsize=8, fontweight='bold', color=text_color)
+
+            yticks.append(current_y_base + (max_lane / 2.0))
+            yticklabels.append(v)
+            ax.axhline(y=current_y_base - 0.5, color='gray', linestyle=':', alpha=0.4)
+            current_y_base += max_lane + 2.0
+
+        max_x = df_opt['End'].max()
+        ax.set_xticks(np.arange(0, max_x + 100, 100))
+        ax.set_xticks(np.arange(0, max_x + 10, 10), minor=True)
+        ax.grid(which='major', axis='x', linestyle='-', color='#757575', alpha=0.7)
+        ax.grid(which='minor', axis='x', linestyle=':', color='#BDBDBD', alpha=1)
+
+        ax.set_yticks(yticks)
+        ax.set_yticklabels(yticklabels)
+        ax.set_xlabel("Time")
+        ax.set_title("Fleet Cargo Manifest Timeline (Highlighting Invalid Leg-2 Deliveries)")
+
+        invalid_patch = mpatches.Patch(facecolor='white', edgecolor='#D32F2F', hatch='///',
+                                       label='Invalid Leg 2 Delivery (Precedence Violated)')
+        normal_patch = mpatches.Patch(facecolor='skyblue', edgecolor='black', label='Valid Delivery')
+        return_patch = mpatches.Patch(facecolor='#FFA726', edgecolor='black', label='Return Leg')
+        ax.legend(handles=[normal_patch, invalid_patch, return_patch], loc='upper right', bbox_to_anchor=(1.15, 1))
+
+        plt.tight_layout()
+
+        if save_to_disk:
+            plt.savefig(os.path.join(output_dir, "gantt_fleet_cargo_invalid_highlight.png"), bbox_inches="tight")
+        else:
+            plt.show()
+

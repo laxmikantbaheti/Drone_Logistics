@@ -844,8 +844,8 @@ class Vehicle(LogisticEntity, ABC):
                 self.log(self.C_LOG_TYPE_W,
                          f"Vehicle {self.get_id()} REJECTED assignment. "
                          f"Attempted: {len(p_orders)}, Remaining Capacity: {self.get_remaining_capacity()}")
-                raise ValueError("Vehicle Overloaded. Please check capacity management and/or constraint management. "
-                                 "Agent is taking impossible actions.")
+                # raise ValueError("Vehicle Overloaded. Please check capacity management and/or constraint management. "
+                #                  "Agent is taking impossible actions.")
 
             for order in p_orders:
                 pickup_node_id = order.get_pickup_node_id()

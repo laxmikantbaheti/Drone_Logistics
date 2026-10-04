@@ -162,7 +162,7 @@ class Network:
         if vehicle_type == "Truck":
             try:
                 # Note: Adjust 'self.ground_distance_matrix' if your variable name differs slightly
-                return float(self.air_distance_matrix[node1_str][node2_str])
+                return float(self.land_distance_matrix[node1_str][node2_str])
             except KeyError:
                 self.log(self.C_LOG_TYPE_E, f"Ground distance missing for {node1_str} -> {node2_str}")
                 return float('inf')

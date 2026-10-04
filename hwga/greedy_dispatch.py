@@ -297,7 +297,8 @@ def evaluate_greedy(env, resolver: SystemActionResolver, num_episodes: int = 10,
             f"Episode {ep:02d}/{num_episodes:02d} | "
             f"Reward: {ep_reward:8.2f} | "
             f"Steps: {steps:3d} | "
-            f"Makespan: {makespan:6.1f}"
+            f"Makespan: {makespan:6.1f}",
+            f"Total Distance: {info['Truck Distance']+info['Drone Distance']}"
         )
 
     duration = time.time() - start_time
@@ -312,7 +313,8 @@ def evaluate_greedy(env, resolver: SystemActionResolver, num_episodes: int = 10,
 
 if __name__ == "__main__":
     script_path = os.path.dirname(os.path.realpath(__file__))
-
+    seed = 42
+    num_nodes = 60
     vrp_instance_path = os.path.join(
         script_path,
         "..",
@@ -329,20 +331,40 @@ if __name__ == "__main__":
         "movement_mode": "matrix",
         "initial_time": 0.0,
         "main_timestep_duration": 1.0,
+        "seed": seed,
+        "p_seed": seed,
         "data_loader_config": {
-            "generator_type": "f2evrpd",
+            "generator_type": "distance_matrix",
             "generator_config": {
-                "instance_path": vrp_instance_path,
-                "num_drones": 0,
-                "num_microhubs": 0,
-                "bbox": (0, 0, 100, 100),
-                "std_dev_scale": 4.0,
-                "drone_capacity_ratio": 0.2,
-                "truck_speed": 1.0,
-                "drone_speed": 1.0,
-                "seed": 42,
-            },
-        },
+                "seed": seed,
+                "base_scale_factor": 10,
+                "num_nodes": max(30, num_nodes),  # Strictly >= 50 nodes
+                "area_x_range": (0.0, 200.0),
+                "area_y_range": (0.0, 200.0),
+                "scaling_factors": {
+                    "nodes": 6.0,
+                    "depots": 0.1,        # ~3 depots
+                    "customers": 4.5,     # ~45 customers
+                    "micro_hubs": 0.6,    # ~6 micro-hubs (and 6 drones)
+                    "trucks": 0.5,        # ~5 trucks
+                    "initial_orders": 3.5 # ~35 orders
+                },
+                "truck_payload_range": [8, 16],
+                "drone_payload_range": [1, 3],
+                "truck_speed_range": [40.0, 80.0],
+                "drone_speed_range": [25.0, 50.0],
+                "initial_fuel_range": [100.0, 200.0],
+                "initial_battery_range": [0.85, 1.0],
+                "sla_min_hours": 1.5,
+                "sla_max_hours": 6.0,
+                "priority_distribution": {1: 0.6, 2: 0.3, 3: 0.1},
+                "truck_fuel_consumption_rate": 0.08,
+                "drone_battery_drain_rate_flying": 0.004,
+                "drone_battery_drain_rate_idle": 0.0008,
+                "drone_battery_charge_rate": 0.02,
+                "drone_eligible_order_ratio": 0.45
+            }
+        }
     }
 
     parser = argparse.ArgumentParser(description="System-Decoded Greedy Baseline")

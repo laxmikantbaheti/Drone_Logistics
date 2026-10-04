@@ -190,6 +190,9 @@ class LogisticsScenario(Scenario):
             plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
             plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
             #
+            # # Generate invalid deliveries
+            plotter.generate_plot("cargo_gantt_invalid_highlight", save_to_disk=False)
+            #
             # # Generate the state timeline plot
             plotter.generate_plot('state_timeline', save_to_disk=False)
             #

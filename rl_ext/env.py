@@ -77,24 +77,24 @@ class LogisticsEnv(gym.Env):
             info["Truck Distance"] = self._system.total_truck_distance
             info["Drone Distance"] = self._system.total_drone_distance
 
-            if hasattr(self._system.global_state, 'event_logger'):
-                # Call export_reports. You can customize the base_filepath here if you want dynamically named folders.
-                self._system.global_state.event_logger.export_reports(base_filepath='evaluation_report')
-            else:
-                self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
-
-            # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
-            plotter = SimulationPlotter(base_filepath='evaluation_report', plot_return=self.ret_trip)
+            # if hasattr(self._system.global_state, 'event_logger'):
+            #     # Call export_reports. You can customize the base_filepath here if you want dynamically named folders.
+            #     self._system.global_state.event_logger.export_reports(base_filepath='evaluation_report')
+            # else:
+            #     self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
             #
-            # # Generate the Gantt charts
-            plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
-            plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
-            #
-            # # Generate the state timeline plot
-            plotter.generate_plot('state_timeline', save_to_disk=False)
-            #
-            # # Generate 2d routes
-            plotter.generate_plot("2d_routes", save_to_disk=False)
+            # # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
+            # plotter = SimulationPlotter(base_filepath='evaluation_report', plot_return=self.ret_trip)
+            # #
+            # # # Generate the Gantt charts
+            # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+            # plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
+            # #
+            # # # Generate the state timeline plot
+            # plotter.generate_plot('state_timeline', save_to_disk=False)
+            # #
+            # # # Generate 2d routes
+            # plotter.generate_plot("2d_routes", save_to_disk=False)
         return observation, reward, terminated, truncated, info
 
     def _proceed_simulation(self):
