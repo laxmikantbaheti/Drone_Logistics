@@ -1,3 +1,4 @@
+import datetime
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from ddls_src.actions.base import SimulationActions, ActionIndex
@@ -711,7 +712,7 @@ class ConstraintManager(EventManager):
             entity = p_entity
         else:
             raise ValueError(f"Please provide either p_event_id and p_event_object or provide only p_entity.")
-
+        time_start = datetime.datetime.now()
         # print(f"Constraint evaluation started for {entity}")
         total_to_block = []
         total_to_unblock = []
@@ -756,6 +757,11 @@ class ConstraintManager(EventManager):
         #                   p_event_object = Event(p_raising_object=self,
         #                                          to_block = total_to_block,
         #                                          to_unblock = total_to_unblock))
+        time_end = datetime.datetime.now()
+        time_taken = time_end - time_start
+        if entity.global_state is not None:
+            # entity.global_state.constraint_latency += time_taken
+            entity.global_state.constraint_latency_per_step.append(time_taken.total_seconds())
         else:
             if self.custom_log:
                 print("[ConstraintManager] No net change in masks. Event skipped.")

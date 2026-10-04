@@ -22,11 +22,11 @@ def run_scenario_demo():
             "generator_type": "distance_matrix",
             "generator_config": {
                 # Direct Entity Counts (No Scale Factors)
-                "num_depots": 3,
-                "num_customers": 15,
-                "num_micro_hubs": 2,
-                "num_trucks": 4,
-                "num_initial_orders": 15,
+                "num_depots": 1,
+                "num_customers": 99,
+                "num_micro_hubs": 6,
+                "num_trucks": 6,
+                "num_initial_orders": 99,
 
                 # Area and Ranges
                 "area_x_range": (0.0, 100.0),
@@ -55,7 +55,7 @@ def run_scenario_demo():
         p_visualize=False,
         p_logging=False,
         config=sim_config,
-        custom_log=True
+        custom_log=False
     )
 
     print("\n--- Starting Scenario Run ---")
@@ -70,6 +70,8 @@ def run_scenario_demo():
     end = datetime.now()
     print("End time:", end)
     print("Total Execution Elapsed:", end - start)
+    print(f"Constraint Latency: {sum(scenario._system.global_state.constraint_latency_per_step)}")
+    print(f"Steps: {scenario.get_cycle_id()}")
     print("\n=============================================")
     print("=========   Validation Complete   =========")
     print("=============================================")

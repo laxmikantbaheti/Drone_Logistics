@@ -7,7 +7,7 @@ from ddls_src.entities.order import PseudoOrder
 from ddls_src.functions.data_manager_obsolete import DataManager
 from typing import Dict, Any, List, Tuple
 from ddls_src.functions.event_logger import EventLogger
-
+from datetime import datetime
 # Forward declarations for entities to avoid circular imports.
 class Node: pass
 
@@ -72,7 +72,9 @@ class GlobalState:
         self.microhub_routes = self.get_microhub_routes()
         self.agent_masks = []
         self.evaluation_deck = []
-
+        self.computational_profile = 0
+        self.constraint_latency = datetime.now()
+        self.constraint_latency_per_step = []
         # Initialize the centralized DataManager
         self.data_manager = DataManager()
         self.event_logger = EventLogger()
