@@ -1,6 +1,9 @@
 from ddls_src.actions.base import ActionType
 import itertools
 from typing import Tuple, List, Dict
+import numpy as np
+
+
 class SimulationActions:
     """
     A namespace class that holds all action blueprints. The 'active' flag
@@ -338,3 +341,134 @@ class SimulationActions:
         self.action_map = action_map
         self.action_space_size = action_space_size
         return action_map, action_space_size
+
+    # ---------------------------------------------------------------------------------------------
+    # -- [NEW ADDITIVE INTERFACE]: 3-Map Vectorized Builders (Option B Architecture)
+    # ---------------------------------------------------------------------------------------------
+    def build_action_registries(self, global_state: 'GlobalState', action_map: Dict[Tuple, int] = None,
+                                action_space_size: int = None):
+        """
+        Builds static NumPy boolean lookup matrices (Map 1 & Map 3) and Option B
+        pre-extracted 1D int32 array tables (Map 2), attaching them to global_state.action_registry.
+        """
+        act_map = action_map if action_map is not None else self.action_map
+        act_space_sz = action_space_size if action_space_size is not None else self.action_space_size
+
+        if act_map is None or act_space_sz is None:
+            raise ValueError("Action map must be generated before building action registries.")
+
+        # Ensure deterministic integer indexing exists on entities
+        if not hasattr(global_state, 'truck_id_to_idx') or len(global_state.truck_id_to_idx) == 0:
+            global_state.initialize_entity_indexing()
+
+        active_action_types = self.get_all_actions()
+        action_type_to_idx = {act.name: i for i, act in enumerate(active_action_types)}
+
+        num_trucks = len(global_state.trucks)
+        num_drones = len(global_state.drones)
+        num_mhs = len(global_state.micro_hubs)
+        num_nps = len(global_state.nodepair_to_idx)
+        num_types = len(active_action_types)
+
+        # ------------------------------------------------------------------
+        # Map 1: Action Type -> Action Mask Matrix (num_types, A)
+        # ------------------------------------------------------------------
+        map_1_action_type = np.zeros((num_types, act_space_sz), dtype=bool)
+
+        # ------------------------------------------------------------------
+        # Map 3: Entity Category -> Action Mask Matrices (num_entities, A)
+        # ------------------------------------------------------------------
+        map_3_truck = np.zeros((num_trucks, act_space_sz), dtype=bool)
+        map_3_drone = np.zeros((num_drones, act_space_sz), dtype=bool)
+        map_3_microhub = np.zeros((num_mhs, act_space_sz), dtype=bool)
+        map_3_nodepair = np.zeros((num_nps, act_space_sz), dtype=bool)
+
+        # Scalar coordinates for zero-parameter actions
+        scalar_actions = {
+            "CONSOLIDATE": act_map.get((self.CONSOLIDATE,), None),
+            "NO_OPERATION": act_map.get((self.NO_OPERATION,), None),
+        }
+
+        # Populate Map 1 and Map 3 using dictionary coordinate mappings
+        for action_tuple, act_idx in act_map.items():
+            act_type = action_tuple[0]
+
+            # Mark Map 1
+            if act_type.name in action_type_to_idx:
+                t_idx = action_type_to_idx[act_type.name]
+                map_1_action_type[t_idx, act_idx] = True
+
+            # Mark Map 3 based on parameters
+            params = action_tuple[1:]
+            for param_val in params:
+                # 1. Truck
+                if param_val in global_state.truck_id_to_idx:
+                    t_idx = global_state.truck_id_to_idx[param_val]
+                    map_3_truck[t_idx, act_idx] = True
+
+                # 2. Drone
+                elif param_val in global_state.drone_id_to_idx:
+                    d_idx = global_state.drone_id_to_idx[param_val]
+                    map_3_drone[d_idx, act_idx] = True
+
+                # 3. MicroHub (Uses isolated microhub coordinate, avoiding node-index collision)
+                if param_val in global_state.microhub_id_to_idx:
+                    m_idx = global_state.microhub_id_to_idx[param_val]
+                    map_3_microhub[m_idx, act_idx] = True
+
+                # 4. Node Pair parameter resolution
+                if param_val in global_state.nodepair_to_idx:
+                    p_idx = global_state.nodepair_to_idx[param_val]
+                    map_3_nodepair[p_idx, act_idx] = True
+
+        # Attach raw Map 1 & Map 3 matrices to global_state
+        global_state.action_registry = {
+            "map_1_action_type": map_1_action_type,
+            "action_type_to_idx": action_type_to_idx,
+            "map_3_truck": map_3_truck,
+            "map_3_drone": map_3_drone,
+            "map_3_microhub": map_3_microhub,
+            "map_3_nodepair": map_3_nodepair,
+            "scalar_actions": scalar_actions,
+            "action_space_size": act_space_sz
+        }
+
+    # ---------------------------------------------------------------------------------------------
+    # -- [NEW ADDITIVE HELPER]: Map 2 Generator (Option B Table Builder)
+    # ---------------------------------------------------------------------------------------------
+    @classmethod
+    def build_common_actions_table(cls,
+                                   global_state: 'GlobalState',
+                                   action_types: List[ActionType],
+                                   entity_category: str) -> List[np.ndarray]:
+        """
+        Option B Generator:
+        Given an entity category ('truck', 'drone', 'microhub', 'node_pair') and a list of
+        affected ActionType blueprints, pre-extracts and returns a 1D list/array of 1D NumPy int32 arrays.
+        Index i in the returned list corresponds strictly to entity.int_id == i.
+        """
+        reg = getattr(global_state, 'action_registry', None)
+        if reg is None:
+            raise RuntimeError("global_state.action_registry has not been built yet.")
+
+        # 1. Combine Map 1 masks for all requested action types via bitwise OR
+        c_mask = np.zeros(reg["action_space_size"], dtype=bool)
+        for act_type in action_types:
+            if act_type.name in reg["action_type_to_idx"]:
+                t_idx = reg["action_type_to_idx"][act_type.name]
+                c_mask |= reg["map_1_action_type"][t_idx]
+
+        # 2. Select corresponding Map 3 entity matrix
+        cat_key = f"map_3_{entity_category.lower()}"
+        entity_matrix = reg.get(cat_key)
+        if entity_matrix is None:
+            raise KeyError(f"Unknown entity category: '{entity_category}'. Expected truck, drone, microhub, or nodepair.")
+
+        # 3. Pre-extract the int32 action IDs for each entity row (Map 2)
+        num_entities = entity_matrix.shape[0]
+        common_actions_table = [None] * num_entities
+        for e_idx in range(num_entities):
+            common_mask = entity_matrix[e_idx] & c_mask
+            common_actions_table[e_idx] = np.flatnonzero(common_mask).astype(np.int32)
+
+        return common_actions_table

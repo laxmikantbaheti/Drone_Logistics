@@ -22,11 +22,11 @@ def run_scenario_demo():
             "generator_type": "distance_matrix",
             "generator_config": {
                 # Direct Entity Counts (No Scale Factors)
-                "num_depots": 1,
-                "num_customers": 99,
-                "num_micro_hubs": 6,
-                "num_trucks": 6,
-                "num_initial_orders": 99,
+                "num_depots": 3,
+                "num_customers": 10,
+                "num_micro_hubs": 2,
+                "num_trucks": 5,
+                "num_initial_orders": 10,
 
                 # Area and Ranges
                 "area_x_range": (0.0, 100.0),

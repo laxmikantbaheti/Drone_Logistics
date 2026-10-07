@@ -200,8 +200,15 @@ class LogisticsSystem(System, EventManager):
             # Initialize the GlobalState, which holds all entities and simulation state.
             self.global_state = GlobalState(initial_entities=self.entities, movement_mode=self.movement_mode)
 
+            # --- [PARALLEL ADDITION]: Initialize deterministic entity coordinates ---
+            self.global_state.initialize_entity_indexing()
+
             # Generate the mapping from action tuples to integer IDs based on the initial global state.
             self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+
+            # --- [PARALLEL ADDITION]: Build Map 1 & Map 3 registries ---
+            self.actions.build_action_registries(self.global_state, self.action_map, self.action_space_size)
+
             # Generate agent action map and action space size
             # self.agent_action_map, self.agent_action_space_size = self.actions.generate_agent_action_map(self.global_state, self.automatic_logic_config)
             # Get non-automatic agent actions
@@ -300,6 +307,10 @@ class LogisticsSystem(System, EventManager):
         if self.setup:
             old_action_map = self.action_map
             self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+
+            # --- [PARALLEL ADDITION]: Rebuild registries on scenario reset ---
+            self.actions.build_action_registries(self.global_state, self.action_map, self.action_space_size)
+
             # Update the reverse action map.
             self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
             # Agent maps
@@ -595,6 +606,11 @@ class LogisticsSystem(System, EventManager):
         # Regenerate the action map to include actions related to the new orders.
         old_action_map = self.action_map.copy()
         self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+
+        # --- [PARALLEL ADDITION]: Rebuild registries for expanded action space ---
+        self.actions.build_action_registries(self.global_state, self.action_map, self.action_space_size)
+
+
         # Update the reverse action map.
         reverse_action_map_old = self._reverse_action_map.copy()
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
@@ -605,6 +621,10 @@ class LogisticsSystem(System, EventManager):
         # Link the updated action index to the constraint manager.
         self.constraint_manager.update_action_index(self.action_map, old_action_map, reverse_action_map_old)
         self.constraint_manager.action_index = self.action_index
+
+        if getattr(self.constraint_manager, 'USE_VECTORIZED_EVALUATION', False):
+            for constraint in self.constraint_manager.constraints:
+                constraint.build_common_actions(self.global_state)
         # Update the state-action mapper with the new action space.
         self.state_action_mapper.update_action_space(self.action_map, old_action_map)
         # Update constraints to reflect the new state.
@@ -747,84 +767,56 @@ class LogisticsSystem(System, EventManager):
 # -------------------------------------------------------------------------
 # -- Validation Block
 # -------------------------------------------------------------------------
-# This block is executed only when the script is run directly.
 if __name__ == "__main__":
-    # Print a header for the validation process.
     print("--- Validating LogisticsSystem ---")
 
-    # Define the path to the configuration file relative to this script's location.
     script_path = os.path.dirname(os.path.realpath(__file__))
     config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data.json')
-    # Normalize the path to be compatible with the operating system.
     config_file_path = os.path.normpath(config_file_path)
 
-    # Define the simulation configuration dictionary.
     sim_config = {
         "initial_time": 0.0,
-        "main_timestep_duration": 300.0,  # Each simulation step represents 300 seconds (5 minutes).
+        "main_timestep_duration": 300.0,
         "data_loader_config": {
             "generator_type": "json_file",
             "generator_config": {"file_path": config_file_path}
         },
-        "new_order_config": {}  # Configuration for dynamic order generation.
+        "new_order_config": {}
     }
 
-    # Instantiate the LogisticsSystem with the defined configuration.
     logistics_system = LogisticsSystem(p_id='validation_sys',
                                        p_visualize=False,
                                        p_logging=False,
                                        config=sim_config)
 
-    # Print a header for the simulation run.
     print("\n--- Running simulation for 20 cycles with Dummy Agent Logic ---")
 
-    # Get the index for the "NO_OPERATION" action.
     no_op_idx = logistics_system.action_map.get((SimulationActions.NO_OPERATION,))
 
-    # Run the simulation for 20 cycles.
     for i in range(20):
         print(f"\n--- Cycle {i + 1} ---")
 
-        # --- Decision Phase ---
-        # A simple dummy agent that takes one random valid action per cycle.
-        # Get the mask of actions available to the agent.
         agent_mask = logistics_system.get_agent_mask()
-        # Find all valid actions, excluding the NO_OPERATION action for selection purposes.
         valid_actions = np.where(np.delete(agent_mask, no_op_idx))[0]
 
-        # If there are valid actions to take...
         if len(valid_actions) > 0:
-            # ...choose one randomly.
             choice = random.choice(valid_actions)
-            # Get the tuple representation of the chosen action for logging.
             act_tuple = logistics_system._reverse_action_map.get(choice)
             print(f"Dummy Agent chooses: {act_tuple}")
-        # Otherwise, if no actions are available...
         else:
-            # ...choose NO_OPERATION.
             choice = no_op_idx
             print("Dummy Agent chooses: NO_OPERATION")
 
-        # Create an MLPro action object with the chosen action index.
         action = LogisticsAction(p_action_space=logistics_system.get_action_space(), p_values=[choice])
 
-        # Process the chosen action in the simulation.
         logistics_system.process_action(action)
-
-        # --- Progression Phase ---
-        # Advance the simulation time by one step.
         logistics_system.advance_time()
 
-        # --- Reporting ---
-        # Get the current state of the system for reporting.
         state = logistics_system.get_state()
         print(f"  - Current Time: {logistics_system.time_manager.get_current_time()}s")
-        # Get the state dimensions for total and delivered orders.
         state_dim_total = state.get_related_set().get_dim_by_name('total_orders')
         state_dim_delivered = state.get_related_set().get_dim_by_name('delivered_orders')
-        # Print the current values from the state object.
         print(f"  - Total Orders: {state.get_value(state_dim_total.get_id())}")
         print(f"  - Delivered Orders: {state.get_value(state_dim_delivered.get_id())}")
 
-    # Print a final message indicating the validation script completed successfully.
     print("\n--- Validation Complete: LogisticsSystem initialized and ran successfully. ---")
