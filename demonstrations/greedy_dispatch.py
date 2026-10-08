@@ -10,13 +10,14 @@ from rl_ext.training.base import Training
 # 1. Environment Harness
 # ----------------------------------------------------------------------
 class _EnvLoader(Training):
+    C_RANDOM = True
     def train(self, *args, **kwargs):
         pass
 
 
 def make_env(vrp_instance_path: str, sim_config: dict, instance_name: str):
     loader = _EnvLoader(
-        config_path=vrp_instance_path,
+        config_path=None,
         sim_config=sim_config,
         instance_name=instance_name,
         save_models=False,
@@ -315,17 +316,17 @@ if __name__ == "__main__":
     script_path = os.path.dirname(os.path.realpath(__file__))
     seed = 42
     num_nodes = 60
-    vrp_instance_path = os.path.join(
-        script_path,
-        "..",
-        "ddls_src",
-        "scenarios",
-        "vrp_d_instances",
-        "VRP-D",
-        "A-n32-k5",
-    )
-    vrp_instance_path = os.path.normpath(vrp_instance_path)
-    instance_name = os.path.splitext(os.path.basename(vrp_instance_path))[0].replace("-", "_")
+    # vrp_instance_path = os.path.join(
+    #     script_path,
+    #     "..",
+    #     "ddls_src",
+    #     "scenarios",
+    #     "vrp_d_instances",
+    #     "VRP-D",
+    #     "A-n32-k5",
+    # )
+    # vrp_instance_path = os.path.normpath(vrp_instance_path)
+    instance_name = "Greedy Dispatch"
 
     sim_config = {
         "movement_mode": "matrix",
@@ -350,19 +351,7 @@ if __name__ == "__main__":
                     "initial_orders": 3.5 # ~35 orders
                 },
                 "truck_payload_range": [8, 16],
-                "drone_payload_range": [1, 3],
-                "truck_speed_range": [40.0, 80.0],
-                "drone_speed_range": [25.0, 50.0],
-                "initial_fuel_range": [100.0, 200.0],
-                "initial_battery_range": [0.85, 1.0],
-                "sla_min_hours": 1.5,
-                "sla_max_hours": 6.0,
-                "priority_distribution": {1: 0.6, 2: 0.3, 3: 0.1},
-                "truck_fuel_consumption_rate": 0.08,
-                "drone_battery_drain_rate_flying": 0.004,
-                "drone_battery_drain_rate_idle": 0.0008,
-                "drone_battery_charge_rate": 0.02,
-                "drone_eligible_order_ratio": 0.45
+                "drone_payload_range": [1, 3]
             }
         }
     }
@@ -372,7 +361,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Evaluation seed")
     args = parser.parse_args()
 
-    env = make_env(vrp_instance_path, sim_config, instance_name)
+    env = make_env(None, sim_config, instance_name)
     resolver = SystemActionResolver(env, depot_idx=0)
 
     evaluate_greedy(

@@ -30,7 +30,8 @@ class Training(ABC):
 
         # 2. Resolve Absolute Config Path
         if not self.C_RANDOM:
-            clean_path = config_path.replace("Drone_Logistics/", "").replace("\\", "/")
+            # clean_path = config_path.replace("Drone_Logistics/", "Drone_Logistics/").replace("\\", "/")
+            clean_path = config_path.replace("\\", "/")
 
             self.config_full_path = (self.project_root / (f"{clean_path}.vrp")).resolve()
             if not self.config_full_path.exists():

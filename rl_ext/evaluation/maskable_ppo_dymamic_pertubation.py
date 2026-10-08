@@ -21,7 +21,7 @@ class MaskablePPOEvaluation(Training):
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at: {model_path}")
 
-        # Load the pre-trained model and attach it to the environment initialized by Training
+        # Load the pre-trained models and attach it to the environment initialized by Training
         model = MaskablePPO.load(model_path, env=self.env, device="cuda")
         print("Model loaded successfully onto device: cuda\n")
 
@@ -43,7 +43,7 @@ class MaskablePPOEvaluation(Training):
                 elif hasattr(self.env.unwrapped, "action_masks"):
                     action_masks = self.env.unwrapped.action_masks()
 
-                # Predict action using the loaded model with action masking & determinism enabled
+                # Predict action using the loaded models with action masking & determinism enabled
                 action, _states = model.predict(obs, action_masks=action_masks, deterministic=True)
 
                 obs, reward, done, truncated, info = self.env.step(action)
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     }
     abs_model_path = "D:\\03_Development\\Drone_Logistics\\results\\MaskablePPODynamicInst_A_n33_k6_dynamic_20260927_203843\\final_MaskablePPODynamicInst_A_n33_k6_dynamic_model.zip"
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, default=abs_model_path, help="Path to the saved .zip model file.")
+    parser.add_argument("--model_path", type=str, default=abs_model_path, help="Path to the saved .zip models file.")
 
     parser.add_argument("--episodes", type=int, default=1, help="No. of episodes you want to run the evalution for.")
     args = parser.parse_args()

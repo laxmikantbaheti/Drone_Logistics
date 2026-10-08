@@ -86,7 +86,7 @@ if __name__ == "__main__":
             "generator_config": {
                 "instance_path": vrp_instance_path,
 
-                # Keep these custom for your delivery model
+                # Keep these custom for your delivery models
                 "num_drones": 0,
                 "num_microhubs": 0,
                 "bbox": (0, 0, 100, 100),

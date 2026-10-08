@@ -169,10 +169,10 @@ class RandomInstanceMaskablePPOTraining(Training):
             df = pd.DataFrame(self.all_episodes_kpis)
             self.save_custom_file(f"{self.name}_run_averages.json", df.mean().to_dict())
 
-        if self.save_models and hasattr(self, "model"):
+        if self.save_models and hasattr(self, "models"):
             model_save_path = os.path.join(self.run_dir, f"final_{self.name}_model")
             self.model.save(model_save_path)
-            print(f"[Model Checkpoint] Saved trained model to: {model_save_path}")
+            print(f"[Model Checkpoint] Saved trained models to: {model_save_path}")
 
 
 if __name__ == "__main__":

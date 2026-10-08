@@ -40,10 +40,10 @@ def run_scenario_demo():
     # 2. Instantiate and run the Scenario
     scenario = LogisticsScenario(
         p_cycle_limit=250000,
-        p_visualize=False,
         p_logging=False,
         config=sim_config,
-        custom_log=False
+        custom_log=False,
+        plot_resuts = True,
     )
 
     print("\n--- Starting Scenario Run ---")
@@ -53,8 +53,8 @@ def run_scenario_demo():
     scenario.run()
 
     print("\n--- Scenario Finished ---")
-    # print(f"Total Truck Distance: {scenario._system.total_truck_distance:.2f}")
-    # print(f"Total Drone Distance: {scenario._system.total_drone_distance:.2f}")
+    print(f"Total Truck Distance: {scenario._system.total_truck_distance:.2f}")
+    print(f"Total Drone Distance: {scenario._system.total_drone_distance:.2f}")
     end = datetime.now()
     print("End time:", end)
     print("Total Execution Elapsed:", end - start)

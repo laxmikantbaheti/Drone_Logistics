@@ -114,7 +114,7 @@ class RandomInstanceMaskablePPOTraining(Training):
             )
 
     def train(self, total_timesteps: int = 500000):
-        # Apply model-specific seed to PyTorch / SB3 policy weights & exploration
+        # Apply models-specific seed to PyTorch / SB3 policy weights & exploration
         set_global_seeds(self.model_seed)
 
         # Tensorboard directory setup
@@ -160,14 +160,14 @@ class RandomInstanceMaskablePPOTraining(Training):
             df = pd.DataFrame(self.all_episodes_kpis)
             self.save_custom_file(f"{self.name}_seed_{self.model_seed}_averages.json", df.mean().to_dict())
 
-        if self.save_models and hasattr(self, "model"):
+        if self.save_models and hasattr(self, "models"):
             model_save_path = os.path.join(self.run_dir, f"final_{self.name}_model_seed_{self.model_seed}")
             self.model.save(model_save_path)
-            print(f"[Model Checkpoint] Saved trained model to: {model_save_path}")
+            print(f"[Model Checkpoint] Saved trained models to: {model_save_path}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train Maskable PPO across 5 model seeds on a fixed dataset config instance")
+    parser = argparse.ArgumentParser(description="Train Maskable PPO across 5 models seeds on a fixed dataset config instance")
     parser.add_argument("--nodes", type=int, default=60, help="Number of nodes to generate (>= 50)")
     parser.add_argument("--timesteps", type=int, default=1000000, help="Total RL training timesteps per seed")
     args = parser.parse_args()
@@ -175,7 +175,7 @@ if __name__ == "__main__":
     # 1. Dataset / scenario config remains strictly default (seed=42)
     fixed_sim_config = get_large_instance_rl_sim_config(num_nodes=args.nodes)
 
-    # 2. Define the 5 separate model training seeds
+    # 2. Define the 5 separate models training seeds
     model_seeds = [42, 101, 202, 303, 404]
 
     print("==================================================")

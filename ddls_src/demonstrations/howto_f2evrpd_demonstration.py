@@ -39,7 +39,7 @@ def run_matrix_scenario_demo(instance:str= None, n_microhubs=2, n_drones=2):
             "generator_config": {
                 "instance_path": vrp_instance_path,
 
-                # Keep these custom for your delivery model
+                # Keep these custom for your delivery models
                 "num_drones": n_drones,
                 "num_microhubs": n_microhubs,
                 "bbox": (0, 0, 100, 100),
