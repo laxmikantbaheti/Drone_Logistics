@@ -52,8 +52,6 @@ cd drone_logistics
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install required dependencies
-pip install -r requirements.txt
 ```
 
 ---
