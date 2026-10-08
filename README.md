@@ -7,7 +7,7 @@
 This repository provides the official implementation, simulation testbed, and experimental validation scripts for the manuscript:
 
 > **"Modular Constraint Based Simulation and Reinforcement Learning Environment of a Truck-Drone Co-ordinated Delivery Logistics System with Micro Hubs"**  
-> *Machine Learning with Applications (MLWA)*, Manuscript No.: `MLWA-D-26-01308`.
+> *Machine Learning with Applications (MLWA)*.
 
 ---
 
