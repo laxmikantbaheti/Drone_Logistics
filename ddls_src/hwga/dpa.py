@@ -28,7 +28,7 @@ def make_env(vrp_instance_path: str, sim_config: dict, instance_name: str):
 
 
 # ----------------------------------------------------------------------
-# 2. Action Decoder & Multi-Modal Feature Extractor
+# 2. Action Decoder & Multi-Modal Network Extractor
 # ----------------------------------------------------------------------
 class ActionFeatureExtractor:
     """
@@ -38,18 +38,23 @@ class ActionFeatureExtractor:
        Dispatches drone from a microhub to a node.
     """
 
-    def __init__(self, env, num_nodes: int = 60, num_microhubs: int = 6):
+    def __init__(self, env, num_nodes: int = 32, num_microhubs: int = 6):
         self.env = env
         self.num_nodes = num_nodes
         self.num_microhubs = max(1, num_microhubs)
 
         self.land_matrix, self.air_matrix = self._extract_matrices()
 
-        # Cache matrix maxima to avoid redundant np.max calls inside step loops
-        self.max_land = float(np.max(self.land_matrix)) if self.land_matrix is not None and np.max(
-            self.land_matrix) > 0 else 1.0
-        self.max_air = float(np.max(self.air_matrix)) if self.air_matrix is not None and np.max(
-            self.air_matrix) > 0 else 1.0
+        self.max_land = (
+            float(np.max(self.land_matrix))
+            if self.land_matrix is not None and np.max(self.land_matrix) > 0
+            else 1.0
+        )
+        self.max_air = (
+            float(np.max(self.air_matrix))
+            if self.air_matrix is not None and np.max(self.air_matrix) > 0
+            else 1.0
+        )
 
     def _ensure_numpy_matrix(self, mat: Any) -> Optional[np.ndarray]:
         """
@@ -59,13 +64,10 @@ class ActionFeatureExtractor:
         if mat is None:
             return None
 
-        # 1. Direct NumPy array
         if isinstance(mat, np.ndarray):
             return mat.astype(np.float32)
 
-        # 2. Dictionary-wrapped matrix
         if isinstance(mat, dict):
-            # Check for inner array keys
             for inner_key in ["matrix", "data", "distances", "distance_matrix", "values", "array"]:
                 if inner_key in mat:
                     sub_val = mat[inner_key]
@@ -74,7 +76,6 @@ class ActionFeatureExtractor:
                     elif isinstance(sub_val, list):
                         return np.array(sub_val, dtype=np.float32)
 
-            # Check if nested dict: dict[i][j] = distance
             sample_val = next(iter(mat.values())) if len(mat) > 0 else None
             if isinstance(sample_val, dict):
                 all_keys = set(mat.keys())
@@ -87,7 +88,6 @@ class ActionFeatureExtractor:
                         arr[int(i), int(j)] = float(dist)
                 return arr
 
-            # Check if tuple keys: dict[(i, j)] = distance
             sample_key = next(iter(mat.keys())) if len(mat) > 0 else None
             if isinstance(sample_key, tuple):
                 nodes = set()
@@ -100,13 +100,11 @@ class ActionFeatureExtractor:
                     arr[int(i), int(j)] = float(dist)
                 return arr
 
-            # Generic dict-of-lists or array values
             try:
                 return np.array(list(mat.values()), dtype=np.float32)
             except Exception:
                 pass
 
-        # 3. Standard list of lists
         if isinstance(mat, list):
             return np.array(mat, dtype=np.float32)
 
@@ -116,7 +114,6 @@ class ActionFeatureExtractor:
         """Extracts land and air matrices directly from the environment or data generator."""
         unwrapped = getattr(self.env, "unwrapped", self.env)
 
-        # Search targets across hierarchy
         targets = [unwrapped]
         for attr in ["data_loader", "generator", "scenario", "config"]:
             if hasattr(unwrapped, attr):
@@ -128,10 +125,13 @@ class ActionFeatureExtractor:
         raw_land, raw_air = None, None
 
         for t in targets:
-            if raw_land is None:
-                raw_land = t._system.network.land_distance_matrix
-            if raw_air is None:
-                raw_air = t._system.network.air_distance_matrix
+            try:
+                if raw_land is None and hasattr(t, "_system") and hasattr(t._system, "network"):
+                    raw_land = getattr(t._system.network, "land_distance_matrix", None)
+                if raw_air is None and hasattr(t, "_system") and hasattr(t._system, "network"):
+                    raw_air = getattr(t._system.network, "air_distance_matrix", None)
+            except Exception:
+                pass
 
         land_mat = self._ensure_numpy_matrix(raw_land)
         air_mat = self._ensure_numpy_matrix(raw_air)
@@ -139,7 +139,7 @@ class ActionFeatureExtractor:
         return land_mat, air_mat
 
     def decode_action(self, action_idx: int) -> Dict[str, Any]:
-        """Maps an integer action to its operational context."""
+        """Maps an integer action to its operational context and target node."""
         if action_idx < self.num_nodes:
             return {
                 "type": "node_visit",
@@ -147,7 +147,7 @@ class ActionFeatureExtractor:
                 "target_node": action_idx,
                 "is_drone": False,
                 "is_hub": (action_idx < self.num_microhubs),
-                "is_depot": (action_idx == 0)
+                "is_depot": (action_idx == 0),
             }
         else:
             offset = action_idx - self.num_nodes
@@ -159,91 +159,62 @@ class ActionFeatureExtractor:
                 "target_node": target_node,
                 "is_drone": True,
                 "is_hub": False,
-                "is_depot": False
+                "is_depot": False,
             }
 
-    def compute_action_features(self, action_idx: int, current_loc: int) -> np.ndarray:
-        """
-        Extracts 6 normalized heuristic features:
-        [norm_land_dist, norm_air_dist, detour_saving_bonus, is_drone, is_hub, is_depot]
-        """
-        info = self.decode_action(action_idx)
-        target = info["target_node"]
-
-        # 1. Land distance
-        land_dist = 1.0
-        if self.land_matrix is not None:
-            from_loc = current_loc if not info["is_drone"] else info["origin"]
-            if from_loc < self.land_matrix.shape[0] and target < self.land_matrix.shape[1]:
-                land_dist = float(self.land_matrix[from_loc, target]) / self.max_land
-
-        # 2. Air distance
-        air_dist = 1.0
-        if self.air_matrix is not None:
-            from_loc = info["origin"] if info["is_drone"] else current_loc
-            if from_loc < self.air_matrix.shape[0] and target < self.air_matrix.shape[1]:
-                air_dist = float(self.air_matrix[from_loc, target]) / self.max_air
-
-        # 3. Detour bonus (how much distance the drone bypasses vs land travel)
-        detour_bonus = max(0.0, land_dist - air_dist) if info["is_drone"] else 0.0
-
-        return np.array([
-            land_dist,  # Negative weight preferred (closer = better)
-            air_dist if info["is_drone"] else 0.0,  # Flight distance
-            detour_bonus,  # Positive weight preferred (incentivize drone bypass)
-            1.0 if info["is_drone"] else 0.0,  # Drone action bias
-            1.0 if info["is_hub"] else 0.0,  # Microhub visit bias
-            1.0 if info["is_depot"] else 0.0  # Depot return bias
-        ], dtype=np.float32)
-
 
 # ----------------------------------------------------------------------
-# 3. Heuristic-Weight Genetic Algorithm (HWGA)
+# 3. Dynamic Perturbation Optimizer (DPO)
 # ----------------------------------------------------------------------
-class HWGAOptimizer:
+class DynamicPerturbationOptimizer:
     """
-    Optimizes a 6-parameter linear dispatch policy via Genetic Algorithm.
-    Never uses neural networks; 100% compliant with action masks.
+    Adaptive Priority Search over Node Action Space.
+    1. Operates directly on continuous customer/node priorities.
+    2. Completely avoids mask collisions (100% compliant with env.action_masks()).
+    3. Uses dynamic adaptive perturbation to break out of reward plateaus.
     """
 
     def __init__(
-            self,
-            env,
-            num_nodes: int = 60,
-            num_microhubs: int = 6,
-            pop_size: int = 24,
-            generations: int = 30,
-            mutation_rate: float = 0.20,
-            elite_ratio: float = 0.15,
-            seed: int = 42
+        self,
+        env,
+        num_nodes: int = 32,
+        num_microhubs: int = 6,
+        pop_size: int = 24,
+        generations: int = 150,
+        base_mutation_rate: float = 0.20,
+        elite_ratio: float = 0.15,
+        patience_threshold: int = 8,
+        seed: int = 42,
     ):
         self.env = env
+        self.num_nodes = num_nodes
+        self.num_microhubs = max(1, num_microhubs)
         self.extractor = ActionFeatureExtractor(env, num_nodes, num_microhubs)
+
         self.pop_size = pop_size
         self.generations = generations
-        self.mutation_rate = mutation_rate
+        self.base_mutation_rate = base_mutation_rate
         self.elite_count = max(2, int(pop_size * elite_ratio))
+        self.patience_threshold = patience_threshold
         self.seed = seed
 
         random.seed(seed)
         np.random.seed(seed)
 
-        self.dim = 6
-        self.population = np.random.uniform(-1.0, 1.0, size=(self.pop_size, self.dim))
+        # Chromosome represents priority keys [0.0, 1.0] for every node
+        self.chromosome_dim = self.num_nodes
+        self.population = np.random.uniform(0.0, 1.0, size=(self.pop_size, self.chromosome_dim))
 
-        # Intuitive baseline seed: penalize distances, reward drone detour bypass
-        self.population[0] = np.array([-1.0, -0.8, 1.2, 0.3, -0.2, -0.5])
-
-    def evaluate_chromosome(self, weights: np.ndarray) -> float:
+    def evaluate_chromosome(self, priorities: np.ndarray) -> float:
         """
-        Executes a single episode rollout using the chromosome as a linear ranker.
-        Always picks strictly from valid_indices: zero infeasible penalties.
+        Rolls out an entire episode.
+        At each step, picks the valid action whose target node has the highest priority score.
+        Always feasible: zero penalties, zero crashes, zero heuristic collisions.
         """
         obs, info = self.env.reset(seed=self.seed)
         done = False
         truncated = False
         total_reward = 0.0
-        current_loc = 0
 
         while not (done or truncated):
             mask = self.env.action_masks()
@@ -251,18 +222,17 @@ class HWGAOptimizer:
             if len(valid_indices) == 0:
                 break
 
-            # Fast matrix projection of candidate features
-            feature_batch = np.array([
-                self.extractor.compute_action_features(a, current_loc)
+            # Map all valid actions to their target destination nodes
+            target_nodes = [
+                self.extractor.decode_action(a)["target_node"]
                 for a in valid_indices
-            ])
+            ]
 
-            scores = feature_batch @ weights
-            best_action = valid_indices[np.argmax(scores)]
+            # Extract priority scores for valid target nodes
+            action_priorities = priorities[target_nodes]
 
-            # Track location for next ground hop
-            action_meta = self.extractor.decode_action(best_action)
-            current_loc = action_meta["target_node"]
+            # Select the valid action with the maximum priority
+            best_action = valid_indices[np.argmax(action_priorities)]
 
             step_res = self.env.step(best_action)
             if len(step_res) == 5:
@@ -276,70 +246,97 @@ class HWGAOptimizer:
         return float(total_reward)
 
     def optimize(self) -> Tuple[np.ndarray, float]:
-        print("--- STARTING HWGA OPTIMIZER ---")
-        print(f"Population: {self.pop_size} | Generations: {self.generations} | Gene Dimension: {self.dim}")
-        print(
-            f"Land Matrix: {'DETECTED (Numpy Array)' if self.extractor.land_matrix is not None else 'UNAVAILABLE (Unit Scaling)'}")
-        print(
-            f"Air Matrix : {'DETECTED (Numpy Array)' if self.extractor.air_matrix is not None else 'UNAVAILABLE (Unit Scaling)'}\n")
+        print("\n--- STARTING DYNAMIC PERTURBATION OPTIMIZER (DPO) ---")
+        print(f"Population: {self.pop_size} | Generations: {self.generations} | Nodes: {self.num_nodes}")
+        print(f"Land Matrix: {'DETECTED' if self.extractor.land_matrix is not None else 'UNAVAILABLE'}")
+        print(f"Air Matrix : {'DETECTED' if self.extractor.air_matrix is not None else 'UNAVAILABLE'}\n")
 
         start_time = time.time()
-        best_overall_weights = None
-        best_overall_reward = -float("inf")
+        best_overall_genome = None
+        best_overall_fitness = -float("inf")
+        stagnation_counter = 0
 
         for gen in range(1, self.generations + 1):
             gen_start = time.time()
 
-            # Sequential evaluation of individuals
+            # 1. Evaluate population
             fitness_scores = np.array([self.evaluate_chromosome(ind) for ind in self.population])
 
-            # Rank population descending
+            # Rank descending (highest reward first)
             sorted_indices = np.argsort(fitness_scores)[::-1]
             self.population = self.population[sorted_indices]
             fitness_scores = fitness_scores[sorted_indices]
 
             gen_best_fit = fitness_scores[0]
-            if gen_best_fit > best_overall_reward:
-                best_overall_reward = gen_best_fit
-                best_overall_weights = copy.deepcopy(self.population[0])
 
-            # Elitism: retain top individuals
-            new_population = [copy.deepcopy(self.population[i]) for i in range(self.elite_count)]
+            # Track stagnation and adapt perturbation strength
+            if gen_best_fit > best_overall_fitness:
+                best_overall_fitness = gen_best_fit
+                best_overall_genome = copy.deepcopy(self.population[0])
+                stagnation_counter = 0
+                status_tag = "[IMPROVED]"
+            else:
+                stagnation_counter += 1
+                status_tag = f"[STAGNANT {stagnation_counter}/{self.patience_threshold}]"
 
-            # Tournament selection and uniform blending crossover
+            # Dynamic perturbation scaling
+            if stagnation_counter >= self.patience_threshold:
+                perturbation_sigma = 0.35
+                mutation_prob = 0.50
+                status_tag = "[*HEAVY PERTURBATION*]"
+                stagnation_counter = 0
+            else:
+                perturbation_sigma = 0.10 + (0.02 * stagnation_counter)
+                mutation_prob = self.base_mutation_rate
+
+            # 2. Build Next Generation
+            new_population = []
+
+            # (A) Elitism: retain top individuals
+            for i in range(self.elite_count):
+                new_population.append(copy.deepcopy(self.population[i]))
+
+            # (B) Inject fresh random individuals when stagnating
+            inject_count = 2 if status_tag == "[*HEAVY PERTURBATION*]" else 1
+            for _ in range(inject_count):
+                new_population.append(np.random.uniform(0.0, 1.0, size=self.chromosome_dim))
+
+            # (C) Biased Crossover & Perturbation Mutation
+            elite_pool = self.population[:self.elite_count]
+            non_elite_pool = self.population[self.elite_count:]
+
             while len(new_population) < self.pop_size:
-                p1_idx = min(random.sample(range(self.pop_size), 3))
-                p2_idx = min(random.sample(range(self.pop_size), 3))
-                parent1, parent2 = self.population[p1_idx], self.population[p2_idx]
+                p_elite = elite_pool[random.randint(0, len(elite_pool) - 1)]
+                p_other = non_elite_pool[random.randint(0, len(non_elite_pool) - 1)]
 
-                alpha = np.random.uniform(0.0, 1.0, size=self.dim)
-                child = alpha * parent1 + (1.0 - alpha) * parent2
+                # 70% allele bias toward superior elite parent
+                crossover_mask = np.random.uniform(0.0, 1.0, size=self.chromosome_dim) < 0.70
+                child = np.where(crossover_mask, p_elite, p_other)
 
-                # Gaussian mutation
-                if random.random() < self.mutation_rate:
-                    mutation_noise = np.random.normal(0.0, 0.25, size=self.dim)
-                    child += mutation_noise
+                # Dynamic Gaussian jitter
+                if random.random() < mutation_prob:
+                    noise = np.random.normal(0.0, perturbation_sigma, size=self.chromosome_dim)
+                    child = np.clip(child + noise, 0.0, 1.0)
 
-                new_population.append(np.clip(child, -3.0, 3.0))
+                new_population.append(child)
 
             self.population = np.array(new_population)
             gen_time = time.time() - gen_start
 
             print(
-                f"Gen {gen:02d}/{self.generations:02d} | "
-                f"Best Fit: {best_overall_reward:8.2f} | "
-                f"Gen Best: {gen_best_fit:8.2f} | "
-                f"Gen Avg: {np.mean(fitness_scores):8.2f} | "
+                f"Gen {gen:03d}/{self.generations:03d} {status_tag:22s} | "
+                f"Best: {best_overall_fitness:8.4f} | "
+                f"Gen Best: {gen_best_fit:8.4f} | "
+                f"Avg: {np.mean(fitness_scores):8.4f} | "
                 f"Time: {gen_time:4.1f}s"
             )
 
         total_time = time.time() - start_time
-        print("\n--- HWGA OPTIMIZATION COMPLETED ---")
-        print(f"Optimal Cumulative Return: {best_overall_reward:.2f}")
-        print(f"Optimized Heuristic Weights: {np.round(best_overall_weights, 3)}")
-        print(f"Total Computation Duration: {total_time:.2f}s")
+        print(f"\n--- OPTIMIZATION COMPLETE ---")
+        print(f"Optimal Cumulative Return: {best_overall_fitness:.4f}")
+        print(f"Total Search Time: {total_time:.2f}s")
 
-        return best_overall_weights, best_overall_reward
+        return best_overall_genome, best_overall_fitness
 
 
 # ----------------------------------------------------------------------
@@ -349,7 +346,7 @@ if __name__ == "__main__":
     script_path = os.path.dirname(os.path.realpath(__file__))
 
     vrp_instance_path = os.path.normpath(
-        os.path.join(script_path, "..", "ddls_src", "scenarios", "vrp_d_instances", "VRP-D", "A-n32-k5")
+        os.path.join(script_path, "../..", "ddls_src", "scenarios", "vrp_d_instances", "VRP-D", "A-n32-k5")
     )
     instance_name = os.path.splitext(os.path.basename(vrp_instance_path))[0].replace("-", "_")
 
@@ -369,27 +366,29 @@ if __name__ == "__main__":
                 "truck_speed": 1.0,
                 "drone_speed": 1.5,
                 "seed": 42,
-            }
+            },
         },
     }
 
-    parser = argparse.ArgumentParser(description="Heuristic-Weight GA (HWGA)")
+    parser = argparse.ArgumentParser(description="Dynamic Perturbation Optimizer (DPO)")
     parser.add_argument("--pop", type=int, default=24, help="Population size")
     parser.add_argument("--gens", type=int, default=300, help="Generations")
     parser.add_argument("--nodes", type=int, default=32, help="Instance node count")
     parser.add_argument("--hubs", type=int, default=6, help="Microhub count")
+    parser.add_argument("--patience", type=int, default=8, help="Generations before scaling perturbation")
     parser.add_argument("--seed", type=int, default=42, help="Seed")
     args = parser.parse_args()
 
     env = make_env(vrp_instance_path, sim_config, instance_name)
 
-    optimizer = HWGAOptimizer(
+    optimizer = DynamicPerturbationOptimizer(
         env=env,
         num_nodes=args.nodes,
         num_microhubs=args.hubs,
         pop_size=args.pop,
         generations=args.gens,
-        seed=args.seed
+        patience_threshold=args.patience,
+        seed=args.seed,
     )
 
-    best_weights, best_reward = optimizer.optimize()
+    best_genome, best_fitness = optimizer.optimize()

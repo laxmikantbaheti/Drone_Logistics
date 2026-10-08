@@ -1,7 +1,7 @@
 # In file: ddls_src/scenarios/scenario.py
 
 import numpy as np
-from agents.dummy_agent import DummyAgent
+from ddls_src.agents.dummy_agent import DummyAgent
 from datetime import timedelta, datetime
 from ddls_src.actions.base import SimulationActions
 from ddls_src.core.basics import LogisticsAction
