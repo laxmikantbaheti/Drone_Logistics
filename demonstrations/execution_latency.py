@@ -37,13 +37,6 @@ def run_scenario_demo():
                 "drone_speed_range": [25.0, 50.0],
                 "initial_fuel_range": [100.0, 200.0],
                 "initial_battery_range": [0.85, 1.0],
-                "sla_min_hours": 1.5,
-                "sla_max_hours": 6.0,
-                "priority_distribution": {1: 0.6, 2: 0.3, 3: 0.1},
-                "truck_fuel_consumption_rate": 0.08,
-                "drone_battery_drain_rate_flying": 0.004,
-                "drone_battery_drain_rate_idle": 0.0008,
-                "drone_battery_charge_rate": 0.02,
                 "drone_eligible_order_ratio": 0.45
             }
         }
