@@ -11,7 +11,7 @@ This repository provides the official implementation, simulation testbed, and ex
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```text
 ├── demonstrations/               # Demonstration and experiment reproduction scripts
@@ -37,7 +37,7 @@ This repository provides the official implementation, simulation testbed, and ex
 
 ---
 
-## 🛠️ Installation & Setup
+## Installation & Setup
 
 ### Prerequisites
 * Python 3.9 or higher
@@ -56,7 +56,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 ---
 
-## 🚀 Running Demonstrations & Experiments
+## Running Demonstrations & Experiments
 
 The scripts located in the `demonstrations/` directory directly reproduce the experimental results and validations reported in Section 4 of the manuscript:
 
@@ -140,7 +140,7 @@ python -m demonstrations.ppo_without_masking_no_termination --timesteps 1000000 
 * `--config`: Simulation configuration file path.
 
 
-## 📜 Citation & License
+## Citation & License
 
 This codebase is licensed under the [MIT License](LICENSE)[cite: 1].
 
