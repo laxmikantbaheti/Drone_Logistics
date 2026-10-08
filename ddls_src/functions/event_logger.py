@@ -23,11 +23,15 @@ class EventLogger:
         }
         self.recorded_events_count = 0
 
-    def handle_entity_state_change(self, p_event_id, p_event_object):
+    def log_events(self, p_entity=None, p_event_id=None, p_event_object=None):
         """
         The universal listener. Caught whenever an entity calls self.raise_state_change_event().
         """
-        entity = p_event_object.get_raising_object()
+        try:
+            entity = p_event_object.get_raising_object()
+            return
+        except:
+            entity = p_entity
 
         # Safety check: ensure entity has a reference to global state and time
         if not hasattr(entity, 'global_state') or entity.global_state is None:
@@ -40,14 +44,14 @@ class EventLogger:
             # STRICTLY WATCHING THE CARGO MANIFEST ONLY
             manifest_ids = [f"{o.get_id()}-{o.get_pickup_node_id(), o.get_delivery_node_id()}-{o.size}" for o in entity.cargo_manifest]
 
-            energy = getattr(entity, 'battery_level', getattr(entity, 'fuel_level', None))
+            energy = getattr(entity, 'current_battery_soc', getattr(entity, 'fuel_level', None))
 
             self.logs["vehicles"].append({
                 'time': current_time,
                 'vehicle_id': f"{entity.get_id()}-{entity.max_payload_capacity}",
                 'vehicle_type': entity.C_NAME,
                 'status': entity.get_state_value_by_dim_name(entity.C_DIM_TRIP_STATE[0]),
-                'current_node': entity.get_current_node(),
+                'current_node_id': entity.get_current_node_id(),
                 "current_coords": entity.current_location_coords,
                 'energy_level': energy,
                 "cargo_capacity": entity.get_cargo_capacity(),

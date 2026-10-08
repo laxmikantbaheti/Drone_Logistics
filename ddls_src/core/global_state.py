@@ -1,35 +1,19 @@
 import itertools
 from collections import defaultdict
-# from mlpro.bf import ParamError
-
 from ddls_src.entities.order import PseudoOrder
-# Import the DataManager from the functions directory
 from ddls_src.functions.data_manager_obsolete import DataManager
 from typing import Dict, Any, List, Tuple
 from ddls_src.functions.event_logger import EventLogger
+from datetime import datetime
 
 # Forward declarations for entities to avoid circular imports.
 class Node: pass
-
-
 class Edge: pass
-
-
 class Order: pass
-
-
 class Truck: pass
-
-
 class Drone: pass
-
-
 class MicroHub: pass
-
-
 class Network: pass
-
-
 class OrderRequests: pass
 
 
@@ -40,6 +24,8 @@ class GlobalState:
     """
 
     def __init__(self, initial_entities: Dict[str, Dict[int, Any]], movement_mode, custom_log = False):
+        self.micro_hub_phase = True
+        self.active_resource = None
         self.custom_log = custom_log
         self.entity_dicts = {}
         self.nodes: Dict[int, Node] = initial_entities.get('nodes', {})
@@ -64,13 +50,120 @@ class GlobalState:
         self.orders_by_nodes = self.setup_order_by_node_pairs()
         self.capacity_demands = self.setup_capacity_demands()
         self.movement_mode = movement_mode
-
+        self.microhub_routes = self.get_microhub_routes()
+        self.agent_masks = []
+        self.evaluation_deck = []
+        self.computational_profile = 0
+        self.constraint_latency = datetime.now()
+        self.constraint_latency_per_step = []
         # Initialize the centralized DataManager
         self.data_manager = DataManager()
         self.event_logger = EventLogger()
 
+        # -----------------------------------------------------------------------------------------
+        # [NEW]: Deterministic Integer Indexing Registries (Parallel Non-Breaking Buffers)
+        # -----------------------------------------------------------------------------------------
+        self.truck_id_to_idx: Dict[Any, int] = {}
+        self.drone_id_to_idx: Dict[Any, int] = {}
+        self.microhub_id_to_idx: Dict[Any, int] = {}
+        self.node_id_to_idx: Dict[Any, int] = {}
+        self.nodepair_to_idx: Dict[Any, int] = {}
+
+        self.trucks_by_idx: List[Any] = []
+        self.drones_by_idx: List[Any] = []
+        self.microhubs_by_idx: List[Any] = []
+        self.nodes_by_idx: List[Any] = []
+        self.nodepairs_by_idx: List[Any] = []
+
         if self.custom_log:
             print(f"GlobalState initialized with provided entities. Movement mode set to: '{self.movement_mode}'.")
+
+    # ---------------------------------------------------------------------------------------------
+    # [NEW INTERFACE]: Entity Deterministic Indexing Setup
+    # ---------------------------------------------------------------------------------------------
+    def initialize_entity_indexing(self):
+        """
+        Assigns deterministic, contiguous zero-based integer indices
+        to physical entities without modifying existing .id or .get_id() attributes.
+        Populates bidirectional lookup structures in GlobalState.
+        """
+        # 1. Trucks (0 to V_truck - 1)
+        sorted_trucks = sorted(self.trucks.values(), key=lambda t: str(t.get_id()))
+        self.truck_id_to_idx = {}
+        self.trucks_by_idx = sorted_trucks
+        for idx, truck in enumerate(sorted_trucks):
+            truck.int_id = idx
+            truck.truck_int_id = idx
+            self.truck_id_to_idx[truck.get_id()] = idx
+            if hasattr(truck, 'id'):
+                self.truck_id_to_idx[truck.id] = idx
+        # Also map dictionary keys directly
+        for k, truck in self.trucks.items():
+            self.truck_id_to_idx[k] = truck.int_id
+
+        # 2. Drones (0 to V_drone - 1)
+        sorted_drones = sorted(self.drones.values(), key=lambda d: str(d.get_id()))
+        self.drone_id_to_idx = {}
+        self.drones_by_idx = sorted_drones
+        for idx, drone in enumerate(sorted_drones):
+            drone.int_id = idx
+            drone.drone_int_id = idx
+            self.drone_id_to_idx[drone.get_id()] = idx
+            if hasattr(drone, 'id'):
+                self.drone_id_to_idx[drone.id] = idx
+        for k, drone in self.drones.items():
+            self.drone_id_to_idx[k] = drone.int_id
+
+        # 3. Micro-Hubs (0 to M - 1)
+        sorted_mhs = sorted(self.micro_hubs.values(), key=lambda mh: str(mh.get_id()))
+        self.microhub_id_to_idx = {}
+        self.microhubs_by_idx = sorted_mhs
+        for idx, mh in enumerate(sorted_mhs):
+            mh.int_id = idx
+            mh.mh_int_id = idx
+            self.microhub_id_to_idx[mh.get_id()] = idx
+            if hasattr(mh, 'id'):
+                self.microhub_id_to_idx[mh.id] = idx
+        for k, mh in self.micro_hubs.items():
+            self.microhub_id_to_idx[k] = mh.mh_int_id
+
+        # 4. Physical Nodes (0 to N - 1)
+        sorted_nodes = sorted(self.nodes.values(), key=lambda n: str(n.get_id()))
+        self.node_id_to_idx = {}
+        self.nodes_by_idx = sorted_nodes
+        for idx, node in enumerate(sorted_nodes):
+            node.node_int_id = idx
+            # Do not overwrite mh.int_id if node is also a micro-hub
+            if not hasattr(node, 'mh_int_id'):
+                node.int_id = idx
+            self.node_id_to_idx[node.get_id()] = idx
+            if hasattr(node, 'id'):
+                self.node_id_to_idx[node.id] = idx
+        for k, node in self.nodes.items():
+            self.node_id_to_idx[k] = getattr(node, 'node_int_id', node.int_id)
+
+        # 5. Node Pairs (0 to P - 1)
+        self.nodepair_to_idx = {}
+        self.nodepairs_by_idx = []
+        if isinstance(self.node_pairs, dict):
+            sorted_pairs = sorted(self.node_pairs.items(), key=lambda item: str(item[0]))
+            for idx, (pair_key, pair_val) in enumerate(sorted_pairs):
+                self.nodepair_to_idx[pair_key] = idx
+                self.nodepairs_by_idx.append(pair_val)
+                if hasattr(pair_val, '__dict__'):
+                    pair_val.int_id = idx
+                    pair_val.pair_int_id = idx
+                if hasattr(pair_val, 'get_id'):
+                    self.nodepair_to_idx[pair_val.get_id()] = idx
+        else:
+            sorted_pairs = sorted(self.node_pairs, key=lambda p: str(getattr(p, 'id', p)))
+            self.nodepairs_by_idx = sorted_pairs
+            for idx, pair_val in enumerate(sorted_pairs):
+                pair_key = getattr(pair_val, 'id', pair_val)
+                self.nodepair_to_idx[pair_key] = idx
+                if hasattr(pair_val, '__dict__'):
+                    pair_val.int_id = idx
+                    pair_val.pair_int_id = idx
 
     def setup_node_pairs(self):
         node_ids = list(self.nodes.keys())
@@ -123,7 +216,6 @@ class GlobalState:
         if entity_obj.id in target_dict:
             raise ValueError(f"Entity of type {entity_obj.__class__.__name__} with ID {entity_obj.id} already exists.")
         target_dict[entity_obj.id] = entity_obj
-        # print(f"Added {entity_obj.__class__.__name__} with ID {entity_obj.id}")
 
     def remove_entity(self, entity_type: str, entity_id: int):
         """
@@ -135,17 +227,14 @@ class GlobalState:
         if entity_id not in entities_dict:
             raise KeyError(f"Entity of type '{entity_type}' with ID '{entity_id}' not found for removal.")
         del entities_dict[entity_id]
-        # print(f"Removed {entity_type} with ID {entity_id}")
 
     def add_vehicles(self, p_vehicles:[]):
-        # TODO: Do this
         pass
 
     def remove_vehicles(self, p_vehicles:[]):
         pass
 
     def add_nodes(self, p_nodes:[Node]):
-        # Todo: Do this
         pass
 
     def remove_node(self, p_nodes:[Node]):
@@ -169,26 +258,22 @@ class GlobalState:
     def remove_micro_hub(self, p_micro_hubs:[]):
         pass
 
-    # --- Specific Getters (as per plan) ---
+    # --- Specific Getters ---
 
     def get_truck_location(self, truck_id: int) -> int:
         """Returns current node ID of truck."""
         truck = self.get_entity("truck", truck_id)
-        # Assumes Truck class has current_node_id attribute
         return truck.current_node_id
 
     def is_node_loadable(self, node_id: int) -> bool:
         """Checks if a node is a valid loading point."""
         node = self.get_entity("node", node_id)
-        # Assumes Node class has is_loadable attribute
         return node.is_loadable
 
     def get_order_status(self, order_id: int) -> str:
         """Returns order status."""
         order = self.get_entity("order", order_id)
-        # Assumes Order class has status attribute
         return order.status
-
 
     def get_vehicle(self, p_vehicle_id):
         if p_vehicle_id in self.trucks:
@@ -200,7 +285,6 @@ class GlobalState:
 
     def get_vehicle_status(self, vehicle_id: int) -> str:
         """Returns vehicle status (can be truck or drone)."""
-        # This requires checking both truck and drone dictionaries or a unified vehicle type handling
         if vehicle_id in self.trucks:
             return self.trucks[vehicle_id].status
         elif vehicle_id in self.drones:
@@ -211,36 +295,20 @@ class GlobalState:
     def get_drone_battery_level(self, drone_id: int) -> float:
         """Returns drone battery."""
         drone = self.get_entity("drone", drone_id)
-        # Assumes Drone class has battery_level attribute
         return drone.battery_level
 
     def get_micro_hub_status(self, hub_id: int) -> str:
         """Returns micro-hub status."""
         hub = self.get_entity("micro_hub", hub_id)
-        # Assumes MicroHub class has operational_status attribute
         return hub.operational_status
 
     def get_packages_at_node(self, node_id: int) -> List[int]:
         """Returns list of order IDs at a node."""
         node = self.get_entity("node", node_id)
-        # Assumes Node class has packages_held attribute
         return node.packages_held
 
-    # --- Plotting Methods (Placeholders) ---
     def initialize_plot_data(self, figure_data: dict):
-        """
-        Sets up the initial plotting data for GlobalState-level elements (e.g., the network graph).
-        Modifies the passed figure_data dictionary.
-        This method will typically be called once at the start of a simulation.
-        """
         print("GlobalState: Initializing plot data...")
-        # This method will call similar initialization methods on its contained entities
-        # or aggregate their initial data.
-        # For example, it might iterate self.nodes and call node.initialize_plot_data() if nodes handle their own drawing.
-        # Or it might directly add network nodes/edges data here.
-
-        # Placeholder for network plot (nodes and edges)
-        # Assumes Node has 'coords' and 'type', Edge has 'start_node_id' and 'end_node_id'
         figure_data['network_nodes'] = {
             'coords': [node.coords for node in self.nodes.values()],
             'ids': [node.id for node in self.nodes.values()],
@@ -251,35 +319,16 @@ class GlobalState:
                          self.edges.values()],
             'ids': [edge.id for edge in self.edges.values()]
         }
-        # Other initial plot data as needed.
         print("GlobalState: Initial plot data placeholder added to figure_data.")
 
     def update_plot_data(self, figure_data: dict):
-        """
-        Updates the plotting data for GlobalState-level elements for the current simulation step.
-        Modifies the passed figure_data dictionary.
-        This method will typically be called after each main simulation timestep.
-        """
         print(f"GlobalState: Updating plot data at time {self.current_time}...")
-        # For dynamic elements like vehicles and parcels, their current positions/statuses
-        # will need to be updated in the figure_data.
-
-        # For example, vehicles will have their own update_plot_data methods
-        # Or GlobalState can aggregate data for all vehicles and update a single 'vehicles' layer in figure_data
-
-        # Placeholder for vehicle positions
-        # Assumes Truck has 'current_location_coords', 'status', 'cargo_manifest'
-        # Assumes Drone has 'current_location_coords', 'status', 'battery_level', 'cargo_manifest'
         figure_data['vehicle_positions'] = {
             'trucks': [{'id': t.id, 'coords': t.current_location_coords, 'status': t.status} for t in
                        self.trucks.values()],
             'drones': [{'id': d.id, 'coords': d.current_location_coords, 'status': d.status, 'battery': d.battery_level}
                        for d in self.drones.values()]
         }
-
-        # Placeholder for parcels at nodes / in vehicles
-        # Assumes Node has 'packages_held'
-        # Assumes Truck/Drone have 'cargo_manifest'
         figure_data['parcel_locations'] = {
             'at_nodes': {node_id: node.packages_held for node_id, node in self.nodes.items() if node.packages_held},
             'in_trucks': {truck_id: truck.cargo_manifest for truck_id, truck in self.trucks.items() if
@@ -287,9 +336,6 @@ class GlobalState:
             'in_drones': {drone_id: drone.cargo_manifest for drone_id, drone in self.drones.items() if
                           drone.cargo_manifest}
         }
-
-        # The actual implementation will depend on the final structure of the figure_data
-        # and how the plotting library expects to receive updates (e.g., updating scatter points, line segments).
         print("GlobalState: Update plot data placeholder added to figure_data.")
 
     def setup_order_by_node_pairs(self):
@@ -300,39 +346,13 @@ class GlobalState:
             order_requests[node_pick_up,node_delivery].append(order)
         return order_requests
 
-    # def get_order_requests(self):
-    #     order_requests = {}
-    #     for ids, order in self.orders.items():
-    #         if order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_STATUS[0]) == order.C_STATUS_PLACED:
-    #             node_pick_up = order.get_pickup_node_id()
-    #             node_delivery = order.get_delivery_node_id()
-    #             if (node_pick_up, node_delivery) not in order_requests.keys():
-    #                 order_requests[(node_pick_up, node_delivery)] = [order]
-    #             else:
-    #                 order_requests[(node_pick_up, node_delivery)].append(order)
-    #     return order_requests
-
-
-
     def get_order_requests(self):
         order_requests = defaultdict(list)
-
-        # 1. Use .values() since 'ids' is unused
         for order in self.orders.values():
             if order.get_state_value_by_dim_name(order.C_DIM_DELIVERY_STATUS[0]) == order.C_STATUS_PLACED:
-                # 2. Create the tuple key once
                 key = (order.get_pickup_node_id(), order.get_delivery_node_id())
-                # 3. Automatically append without if/else checks
                 order_requests[key].append(order)
-
-        return dict(order_requests)  # Optional: Cast back to a standard dict if needed
-
-    # def get_order_requests(self):
-    #     req = {np_id: ords for np_id, ords in self.orders_by_nodes.items() if len(ords)}
-    #     return req
-
-    # def setup_type_dicts(self):
-    #     self.entity_dicts = {"Node":self.nodes, "Edge", "Micro Hub", "Truck", "Drone", "Order", "Pseudo Order", "Node Pair"}
+        return dict(order_requests)
 
     def get_orders(self):
         return self.orders
@@ -341,10 +361,13 @@ class GlobalState:
         for ordr in p_orders:
             self.orders[ordr.get_id()] = ordr
             self.orders_by_nodes[ordr.get_pickup_node_id(), ordr.get_delivery_node_id()].append(ordr)
-            self.capacity_demands[ordr.get_pickup_node_id(), ordr.get_delivery_node_id()].append(ordr.size)
+            p_id, d_id = ordr.get_pickup_node_id(), ordr.get_delivery_node_id()
+            if (p_id, d_id) not in self.capacity_demands:
+                self.capacity_demands[p_id, d_id] = [ordr.size]
+            else:
+                self.capacity_demands[ordr.get_pickup_node_id(), ordr.get_delivery_node_id()].append(ordr.size)
             if isinstance(ordr, PseudoOrder):
                 self.pseudo_orders[ordr.get_id()] = ordr
-
 
     def get_all_entities(self):
         return [self.node_pairs, self.orders, self.trucks, self.drones, self.micro_hubs, self.nodes]
@@ -353,29 +376,59 @@ class GlobalState:
         self.current_time = 0
         for ps_order in self.pseudo_orders.keys():
             self.orders.pop(ps_order)
-            # entities["orders"].pop(ps_order)
-        # self.orders = entities["orders"]
         self.pseudo_orders = {}
-        # self.capacity_demands = self.setup_capacity_demands()
-        # self.orders_by_nodes = self.setup_order_by_node_pairs()
-
-        # Clear logs at the start of a new run
         self.data_manager.reset()
         self.event_logger.reset()
 
     def get_available_capacities(self):
-
         caps = {v.get_id():v.get_remaining_capacity() for v in (self.trucks | self.drones).values()}
         return caps
 
-    def get_pending_demands(self):
+    def get_pending_demands(self, all_node_pairs=False):
+        if all_node_pairs:
+            return {self.node_pairs[key].get_id(): [o.size for o in value] for key, value in self.orders_by_nodes.items()}
         caps = self.setup_capacity_demands()
         return caps
 
+    def get_next_demands(self, except_micro_hubs=True):
+        if except_micro_hubs:
+            return [o[0].size for np,o in self.get_order_requests().items() if len(o) and np not in self.microhub_routes.keys()]
+        else:
+            return [o[0].size for np,o in self.get_order_requests().items() if len(o) and np[0] not in self.micro_hubs.keys()]
+
     def setup_capacity_demands(self):
-        caps = {key: [o.size for o in value] for key, value in self.orders_by_nodes.items()}
+        caps = {self.node_pairs[key].get_id(): [o.size for o in value] for key, value in self.get_order_requests().items()}
         return caps
 
     def get_total_distance(self):
         tot_dist = sum([v.distance_travelled for v in (self.trucks|self.drones).values()])
         return tot_dist
+
+    def get_vehicles(self):
+        trucks = list(self.trucks.values())
+        drones = list(self.drones.values())
+        vehicles = trucks + drones
+        return vehicles
+
+    def get_resources(self):
+        vehicles = self.get_vehicles()
+        micro_hubs = list(self.micro_hubs.values())
+        resources = vehicles + micro_hubs
+        return resources
+
+    def get_microhub_orders(self):
+        micro_hubs = self.micro_hubs
+        requests = self.get_order_requests()
+        pickups = {key:value for key,value in requests.items() if key[0] in micro_hubs.keys()}
+        deliveries = {key:value for key, value in requests.items() if key[1] in micro_hubs.keys()}
+        return deliveries, pickups
+
+    def get_microhub_routes(self):
+        micro_hubs = self.micro_hubs
+        node_pairs = self.node_pairs
+        routes = {key:value for key,value in node_pairs.items() if key[0] in micro_hubs.keys() or key[1] in micro_hubs.keys()}
+        return routes
+
+    def get_microhub(self, param):
+        mh = self.micro_hubs[param]
+        return mh

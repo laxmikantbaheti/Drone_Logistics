@@ -29,6 +29,7 @@ class LogisticsScenario(Scenario):
         self._visualize = p_visualize
         self.custom_log = custom_log
         self.ret_trip = ret_trip
+        self.plot_results = p_kwargs.get("plot_results")
 
         super().__init__(p_mode=p_mode, p_cycle_limit=p_cycle_limit, p_visualize=p_visualize, p_logging=p_logging,
                          **p_kwargs)
@@ -156,7 +157,8 @@ class LogisticsScenario(Scenario):
             action_obj = LogisticsAction(p_action_space=self._system._action_space, p_values=[sys_action_id])
 
             self._system.process_action(action_obj)
-
+            # self._system.constraint_manager.evaluate_batch(self._system.global_state.evaluation_deck)
+            # self._system.global_state.evaluate_constraints()
             if self._visualize:
                 self._system.network.update_plot()
 
@@ -175,26 +177,36 @@ class LogisticsScenario(Scenario):
             print(f"\nSimulation successful at cycle {self.get_cycle_id()}. Generating event reports...")
             print(f"Total distance travelled: {self._system.global_state.get_total_distance()}")
             print(f"Time for simulation: {self._actual_end_time-self.actual_sim_time}")
-            # The EventLogger lives inside the GlobalState
-            if hasattr(self._system.global_state, 'event_logger'):
-                # Call export_reports. You can customize the base_filepath here if you want dynamically named folders.
-                self._system.global_state.event_logger.export_reports(base_filepath='scenario_report')
-            else:
-                self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
+            if self.plot_results:
+                # The EventLogger lives inside the GlobalState
+                if hasattr(self._system.global_state, 'event_logger'):
+                    # Call export_reports. You can customize the base_filepath here if you want dynamically named folders.
+                    self._system.global_state.event_logger.export_reports(base_filepath='scenario_report')
+                else:
+                    self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
 
-            # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
-            # plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
-            #
-            # # Generate the Gantt charts
-            # # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
-            # plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
-            #
-            # # Generate the state timeline plot
-            # plotter.generate_plot('state_timeline', save_to_disk=False)
-            #
-            # # Generate 2d routes
-            # plotter.generate_plot("2d_routes", save_to_disk=False)
-        # -----------------------------------------------------------
+                # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
+                plotter = SimulationPlotter(base_filepath='scenario_report', plot_return = self.ret_trip)
+                #
+                # # Generate the Gantt charts
+                plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+                plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
+                #
+                # # Generate invalid deliveries
+                plotter.generate_plot("cargo_gantt_invalid_highlight", save_to_disk=False)
+                #
+                # # Generate the state timeline plot
+                plotter.generate_plot('state_timeline', save_to_disk=False)
+                #
+                # Generate the cargo plots
+                plotter.generate_plot("cargo_level_analysis", save_to_disk=False)
+                #
+                # Generate drone energy consumption plot
+                plotter.generate_plot("drone_energy_analysis", save_to_disk=False)
+                #
+                # # Generate 2d routes
+                plotter.generate_plot("2d_routes", save_to_disk=False)
+            # -----------------------------------------------------------
 
         new_state = self._system.get_state()
         return self._system.get_success(), self._system.get_broken(), adapted, eof_data

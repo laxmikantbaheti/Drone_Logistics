@@ -7,8 +7,10 @@ import copy  # Added for deepcopying the logs
 # Core simulation imports
 from ddls_src.core.logistics_system import LogisticsSystem
 from ddls_src.core.basics import LogisticsAction
-from rl_ext.observations import DefaultObservations, BaseObservations, DemandCapacityObservations
+from rl_ext.observations import DefaultObservations, BaseObservations, DemandCapacityObservations, ObservationSpaceActiveResource, ActiveResourceObservation
+from rl_ext.observations import MaskState, PerturbationAwareActiveResourceObservation
 from rl_ext.rewards import DefaultRewards, BaseRewards
+from ddls_src.functions.plotting import SimulationPlotter
 
 
 class LogisticsEnv(gym.Env):
@@ -25,9 +27,9 @@ class LogisticsEnv(gym.Env):
         )
 
         if observation_handler is not None:
-            self.obs_handler = observation_handler
+            self.obs_handler = PerturbationAwareActiveResourceObservation()
         else:
-            self.obs_handler = DemandCapacityObservations()
+            self.obs_handler = PerturbationAwareActiveResourceObservation()
 
         if rewards_handler is not None:
             self.rewards_handler = rewards_handler
@@ -41,7 +43,7 @@ class LogisticsEnv(gym.Env):
     def reset(self, seed=None, options=None) -> Tuple[np.ndarray, Dict]:
         super().reset(seed=seed)
         self._system.reset(p_seed=seed)
-
+        # self._system.setup = True
         self.rewards_handler.reset(self._system)
         self._proceed_simulation()
         return self._get_obs(), self._get_info()
@@ -72,7 +74,27 @@ class LogisticsEnv(gym.Env):
             info["terminal_event_count"] = logger.recorded_events_count
             info["reward"] = self._calculate_reward()
             info["makespan"] = self._system.global_state.current_time
+            info["Truck Distance"] = self._system.total_truck_distance
+            info["Drone Distance"] = self._system.total_drone_distance
 
+            # if hasattr(self._system.global_state, 'event_logger'):
+            #     # Call export_reports. You can customize the base_filepath here if you want dynamically named folders.
+            #     self._system.global_state.event_logger.export_reports(base_filepath='evaluation_report')
+            # else:
+            #     self.log(self.C_LOG_TYPE_E, "Failed to generate reports: EventLogger not found in GlobalState.")
+            #
+            # # Ensure this matches the 'base_filepath' you used in EventLogger.export_reports()
+            # plotter = SimulationPlotter(base_filepath='evaluation_report', plot_return=self.ret_trip)
+            # #
+            # # # Generate the Gantt charts
+            # plotter.generate_plot('cargo_gantt', save_to_disk=False)  # Set to True to save images
+            # plotter.generate_plot("cargo_gantt_with_size_curve", save_to_disk=False)  # Set to True to save images
+            # #
+            # # # Generate the state timeline plot
+            # plotter.generate_plot('state_timeline', save_to_disk=False)
+            # #
+            # # # Generate 2d routes
+            # plotter.generate_plot("2d_routes", save_to_disk=False)
         return observation, reward, terminated, truncated, info
 
     def _proceed_simulation(self):
@@ -112,7 +134,8 @@ class LogisticsEnv(gym.Env):
     def _calculate_reward(self) -> float:
         # Kept for compatibility but not used in step() anymore per your request
         if self._system.get_success():
-            return -float((self._system.global_state.get_total_distance()))
+            reward = float((self._system.global_state.get_total_distance()))
+            return 1.0 - (reward/10000.0)
         elif self._system.get_broken():
             return -float(100000)
         else:

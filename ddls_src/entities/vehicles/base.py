@@ -102,6 +102,7 @@ class Vehicle(LogisticEntity, ABC):
         self.cargo_stats = {}
         self.d_tstamps = []
         self.location_history = []
+        self.visited_node_history = []
         self.distance_travelled = 0
         # --- NEW: Staging Area for the Batch Sequencer ---
         self.staged_pickup_orders = defaultdict()
@@ -158,7 +159,7 @@ class Vehicle(LogisticEntity, ABC):
             self.state_history.append({
                 'time': current_time,
                 'vehicle_id': self.get_id(),
-                'node_id': self.get_current_node(),
+                'node_id': self.get_current_node_id(),
                 'status': status,'num_pickup_tasks': len(pickup_list),
                 'pickup_orders': str(pickup_list),
                 'num_delivery_tasks': len(delivery_list),
@@ -171,7 +172,8 @@ class Vehicle(LogisticEntity, ABC):
         Resets the vehicle to its initial state at its starting node.
         """
         self.status = "idle"
-        self.location_history = []
+        self.location_history.clear()
+        self.visited_node_history.clear()
         self.distance_travelled = 0
         self.consolidation_confirmed = False
         self.set_current_node_id(self.start_node_id)
@@ -652,6 +654,46 @@ class Vehicle(LogisticEntity, ABC):
 
         self._evaluate_route_state()
 
+    def load_orders_at_node(self):
+        orders_loaded = []
+        cargo_updated = False
+        current_node = self.current_node_id
+        if current_node is None:
+            raise ValueError("The vehicle is not at any node. Load actions shall be masked when the vehicle is not at "
+                             "any node or is in transit.")
+        for order in self.pickup_orders:
+            if order.get_pickup_node_id() == current_node:
+                self.add_cargo(order)
+                order.set_enroute(self)
+                orders_loaded.extend([orders_loaded])
+                if self.custom_log:
+                    print(f"Order {order.get_id()} is loaded in the vehicle {self.get_id()}.")
+                cargo_updated = True
+        if not cargo_updated:
+            if self.custom_log:
+                print(f"No orders to be picked up at {current_node}")
+        return orders_loaded
+
+    def unload_orders_at_node(self):
+        delivered_orders = []
+        cargo_updated = False
+        current_node = self.current_node_id
+        if current_node is None:
+            raise ValueError("The unload/load actions shall be masked if the vehicle is not at any node"
+                             "or the vehicle is in transit.")
+        for order in self.get_current_cargo():
+            if order.get_delivery_node_id() == current_node:
+                self.remove_cargo(order.get_id())
+                order.set_delivered()
+                delivered_orders.extend([order])
+                if self.custom_log:
+                    print(f"Order {order.get_id()} is delivered by vehicle {self.get_id()}.")
+                cargo_updated = True
+        if not cargo_updated:
+            if self.custom_log:
+                print(f"No orders to be delivered at {current_node}.")
+        return delivered_orders
+
     # def remove_cargo(self, order_id: int):
     #     """Removes a package from the manifest by ID and safely mutates the MLPro state."""
     #     # Find the order by ID since the manifest holds Order objects
@@ -702,7 +744,7 @@ class Vehicle(LogisticEntity, ABC):
 
             self.log_current_state()
 
-            if self.get_current_node() is None:
+            if self.get_current_node_id() is None:
                 self.set_current_node_id(self.start_node_id)
             return
 
@@ -729,7 +771,7 @@ class Vehicle(LogisticEntity, ABC):
         self.log_current_state()
 
     def get_current_location(self):
-        return self.get_current_node().coords
+        return self.get_current_node_id().coords
 
     def get_delivery_orders(self):
         return self.delivery_orders
@@ -802,8 +844,8 @@ class Vehicle(LogisticEntity, ABC):
                 self.log(self.C_LOG_TYPE_W,
                          f"Vehicle {self.get_id()} REJECTED assignment. "
                          f"Attempted: {len(p_orders)}, Remaining Capacity: {self.get_remaining_capacity()}")
-                raise ValueError("Vehicle Overloaded. Please check capacity management and/or constraint management. "
-                                 "Agent is taking impossible actions.")
+                # raise ValueError("Vehicle Overloaded. Please check capacity management and/or constraint management. "
+                #                  "Agent is taking impossible actions.")
 
             for order in p_orders:
                 pickup_node_id = order.get_pickup_node_id()
@@ -1028,27 +1070,31 @@ class Vehicle(LogisticEntity, ABC):
             target_node = self.planned_node_sequence[self.current_sequence_index]
 
         # 3. START THE ENGINE
-        distance = self.global_state.network.calculate_distance(self.current_node_id, target_node)
-        self.en_route_timer = distance / self.get_speed()
-        # XXX - This is critical, update it when you upgrade to a dynamic setting, with in route event based changes.
-        self.distance_travelled += self.en_route_timer
-        self.location_history.append(self.current_location_coords)
-
-        self.set_current_node_id(None)
-        self.update_state_value_by_dim_name(
-            p_dim_name=[self.C_DIM_AT_NODE[0], self.C_DIM_TRIP_STATE[0]],
-            p_value=[False, self.C_TRIP_STATE_EN_ROUTE]
-        )
+        if self.current_node_id is not None:
+            distance = self.global_state.network.calculate_distance(self.current_node_id, target_node, self.C_NAME)
+            self.en_route_timer = distance / self.get_speed()
+            # XXX - This is critical, update it when you upgrade to a dynamic setting, with in route event based changes.
+            self.distance_travelled += self.en_route_timer
+            # self.location_history.append(self.current_location_coords)
+            # self.visited_node_history.append(self.current_node_id)
+    
+            self.set_current_node_id(None)
+            self.update_state_value_by_dim_name(
+                p_dim_name=[self.C_DIM_AT_NODE[0], self.C_DIM_TRIP_STATE[0]],
+                p_value=[False, self.C_TRIP_STATE_EN_ROUTE]
+            )
 
     def unload_order(self, p_order):
         if p_order:
             self.delivery_orders.remove(p_order)
             self.cargo_manifest.remove(p_order)
 
-    def get_current_node(self):
+    def get_current_node_id(self):
         return self.current_node_id
 
     def set_current_node_id(self, current_node_id):
+        if self.C_NAME == "Drone":
+            self.update_battery_soc(current_node_id)
         self.current_node_id = current_node_id
         for order in self.get_current_cargo():
             if not isinstance(order, Order):
@@ -1057,6 +1103,9 @@ class Vehicle(LogisticEntity, ABC):
             order.current_node_id = current_node_id
             if order.current_node_id == order.get_delivery_node_id():
                 order.update_state_value_by_dim_name(order.C_DIM_CURRENT_NODE[0], self.current_node_id)
+        if current_node_id is not None:
+            self.visited_node_history.append(current_node_id)
+            self.location_history.append(self.current_location_coords)
 
     def get_cargo_capacity(self):
         return self.max_payload_capacity

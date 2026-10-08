@@ -50,6 +50,8 @@ class SaveOnEpisodeCallback(BaseCallback):
 
             makespan = info.get("current_time", 0.0)
             delivered = info.get("delivered_count", 0)
+            truck_distance = info.get("Truck Distance", "Error")
+            drone_distance = info.get("Drone Distance", "Error")
 
             ep_kpis = {
                 "episode": self.episode_count,
@@ -67,6 +69,8 @@ class SaveOnEpisodeCallback(BaseCallback):
             print(f"   REWARD:    {reward}", flush=True)
             print(f"   MAKESPAN:  {makespan}", flush=True)
             print(f"   DELIVERED: {delivered} items", flush=True)
+            print(f"   TRUCK DISTANCE: {truck_distance}", flush = True)
+            print(f"   DRONE DISTANCE: {drone_distance}", flush = True)
             print("-" * 50 + "\n", flush=True)
 
             # self.trainer.all_episodes_kpis.append(ep_kpis)

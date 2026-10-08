@@ -102,6 +102,7 @@ class Order(LogisticEntity):
 
         # Will be instantiated properly in reset()
         self.state_history = []
+        self.leg = 1
         self.reset()
 
     @staticmethod
@@ -200,8 +201,6 @@ class Order(LogisticEntity):
         self.assigned_micro_hub_id = micro_hub_id
         self.assigned_micro_hub = self.global_state.micro_hubs[micro_hub_id]
         self.status = "at_micro_hub"
-        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
-                                            [micro_hub_id, self.C_STATUS_ASSIGNED])
         o = self.global_state.orders_by_nodes[(self.pickup_node_id, self.delivery_node_id)].pop(0)
         if o != self:
             raise ValueError("Something is wrong in handling orders in the node pair containers.")
@@ -209,6 +208,9 @@ class Order(LogisticEntity):
         if c != self.size:
             raise ValueError(
                 "Something is wrong in handling capacity demands in global state. The assigned order does not match with the token sequence.")
+
+        self.update_state_value_by_dim_name([self.C_DIM_ASSIGNED_VEHICLE[0], self.C_DIM_DELIVERY_STATUS[0]],
+                                            [micro_hub_id, self.C_STATUS_ASSIGNED])
         self._update_state()
         self.log_current_state()
         return True
@@ -241,12 +243,14 @@ class Order(LogisticEntity):
         if self.assigned_vehicle_id:
             return self.assigned_vehicle_id
 
-    def set_enroute(self):
+    def set_enroute(self, vehicle):
         """Triggered when the order is picked up."""
-        self.carrying_vehicle = self.assigned_vehicle
-        self.assigned_vehicle_id = None
-        self.assigned_vehicle = None
+        if self.assigned_vehicle is None:
+            raise ValueError(f"The order {self.get_id()} cannot be set without an assigned vehicle")
+        if vehicle.get_id() != self.assigned_vehicle.get_id():
+            raise ValueError("Order can only be loaded to its assgined vehicle")
         self.update_state_value_by_dim_name(self.C_DIM_DELIVERY_STATUS[0], self.C_STATUS_EN_ROUTE)
+        self.carrying_vehicle = self.assigned_vehicle
         self.status = "En Route"
 
         # Capture the actual node at the moment of pickup
@@ -344,6 +348,8 @@ class Order(LogisticEntity):
                 succ.predecessor_orders.append(pseudo_order_2)
 
             if succ.node_pair is not None:
+                if succ.node_pair not in self.global_state.evaluation_deck:
+                    self.global_state.evaluation_deck.append(succ.node_pair)
                 succ.node_pair.raise_state_change_event()
 
         # self.predecessor_orders = []
@@ -366,24 +372,55 @@ class Order(LogisticEntity):
                         precedence_satisfied = False
             return precedence_satisfied
 
+    def check_assignment_precedence(self):
+        predecessor_orders:[Order] = self.predecessor_orders
+        if not len(predecessor_orders):
+            return True
+        precedence_satisfied = True
+        for ordr in predecessor_orders:
+            if isinstance(ordr, Order):
+                if ordr.get_state_value_by_dim_name(ordr.C_DIM_DELIVERY_STATUS[0]) == ordr.C_STATUS_ASSIGNED:
+                    precedence_satisfied = True and precedence_satisfied
+                else:
+                    precedence_satisfied = False
+        return precedence_satisfied
+
+
     def register_event_handler_for_constraints(self, p_event_id: str, p_event_handler):
         super().register_event_handler_for_constraints(p_event_id, p_event_handler)
         self.node_pair.register_event_handler_for_constraints(p_event_id, p_event_handler)
 
     def raise_state_change_event(self):
-        super().raise_state_change_event()
-        if self.node_pair is not None:
-            self.node_pair.raise_state_change_event()
+        if self.global_state is not None:
+            eval_deck = self.global_state.evaluation_deck
 
-        for successor in self.successor_orders:
-            if successor.node_pair is not None:
-                successor.node_pair.raise_state_change_event()
-            super(Order, successor).raise_state_change_event()
+            if self not in self.global_state.evaluation_deck:
+                eval_deck.append(self)
+            super().raise_state_change_event()
 
-        for predecessor in self.predecessor_orders:
-            if predecessor.node_pair is not None:
-                predecessor.node_pair.raise_state_change_event()
-            super(Order, predecessor).raise_state_change_event()
+            if self.node_pair is not None:
+                if self.node_pair not in eval_deck:
+                    eval_deck.append(self.node_pair)
+                self.node_pair.raise_state_change_event()
+
+            for successor in self.successor_orders:
+                if successor.node_pair is not None:
+                    if successor.node_pair not in eval_deck:
+                        eval_deck.append(successor.node_pair)
+                    successor.node_pair.raise_state_change_event()
+                if successor not in eval_deck:
+                    eval_deck.append(successor)
+                super(Order, successor).raise_state_change_event()
+
+            for predecessor in self.predecessor_orders:
+                if predecessor.node_pair is not None:
+                    if predecessor.node_pair not in eval_deck:
+                        eval_deck.append(predecessor.node_pair)
+                    predecessor.node_pair.raise_state_change_event()
+                if predecessor not in eval_deck:
+                    eval_deck.append(predecessor)
+                super(Order, predecessor).raise_state_change_event()
+
 
     def add_global_state(self, global_state):
         self.global_state = global_state
@@ -416,10 +453,10 @@ class PseudoOrder(Order):
                        size = p_parent_order.size,
                        p_logging=p_logging,
                        **p_kwargs)
+        self.parent_order = p_parent_order
         if p_leg is None:
             raise ValueError("Please provide the number of leg this pseudo order represents.")
-        self.p_leg = p_leg
-        self.parent_order = p_parent_order
+        self.leg = max(p_leg, self.parent_order.leg)
 
         self.register_event_handler(self.C_EVENT_ORDER_DELIVERED,
                                     self.parent_order.handle_pseudo_delivery)

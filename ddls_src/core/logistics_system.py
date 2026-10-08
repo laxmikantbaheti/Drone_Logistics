@@ -15,6 +15,7 @@ from sympy.plotting.intervalmath import ceil
 
 # Import action-related classes.
 from ddls_src.actions.base import SimulationActions, ActionType, ActionIndex
+from ddls_src.actions.conditional_actions import SimulationActions
 from ddls_src.core.basics import LogisticsAction
 # from ddls_src.actions.action_map_generator import generate_action_map
 # Local Imports
@@ -24,15 +25,17 @@ from ddls_src.core.global_state import GlobalState
 from ddls_src.core.time_manager import TimeManager
 from ddls_src.core.network import Network
 # Import mapping and constraint management classes.
-from ddls_src.core.constraint_manager import StateActionMapper, ConstraintManager
+# from ddls_src.core.constraint_manager import StateActionMapper, ConstraintManager
+from ddls_src.core.constraint_manager_reduced import ConstraintManager, StateActionMapper
 # Import all entity classes (e.g., Truck, Drone, Hub).
 from ddls_src.entities import *
 # Import manager classes that handle different aspects of the simulation logic.
 from ddls_src.managers.action_manager import ActionManager
 from ddls_src.managers.network_manager import NetworkManager
 from ddls_src.managers.resource_manager.base import ResourceManager
-from ddls_src.managers.supply_chain_manager import SupplyChainManager
+# from ddls_src.managers.supply_chain_manager import SupplyChainManager
 # Import scenario and data generation utilities.
+from ddls_src.managers_reduced.logistic_manager import LogisticManager
 from ddls_src.scenarios.generators.data_loader import DataLoader
 from ddls_src.scenarios.generators.order_generator import OrderGenerator
 from ddls_src.scenarios.generators.scenario_generator import ScenarioGenerator
@@ -66,7 +69,7 @@ class LogisticsSystem(System, EventManager):
                  p_name: str = '',
                  p_visualize: bool = False,
                  p_logging=False,
-                 custom_log = False,
+                 custom_log = True,
                  ret_trip = False,
                  **p_kwargs):
         """
@@ -80,6 +83,8 @@ class LogisticsSystem(System, EventManager):
             **p_kwargs: Additional keyword arguments, expected to contain 'config'.
         """
         # Retrieve the configuration dictionary from keyword arguments.
+        self.total_truck_distance = 0
+        self.total_drone_distance = 0
         self.ret_computed:bool = False
         self.custom_log = custom_log
         self._config = p_kwargs.get('config', {})
@@ -115,9 +120,9 @@ class LogisticsSystem(System, EventManager):
         # Manages the execution of actions.
         self.action_manager: ActionManager = None
         # Manages orders, products, and supply chain logic.
-        self.supply_chain_manager: SupplyChainManager = None
+        self.logistic_manager: LogisticManager = None
         # Manages resources like vehicles and hubs.
-        self.resource_manager: ResourceManager = None
+        # self.resource_manager: ResourceManager = None
         # Manages vehicle movements and network-related logic.
         self.network_manager: NetworkManager = None
         # Generates new orders during the simulation.
@@ -135,6 +140,9 @@ class LogisticsSystem(System, EventManager):
         # Call the reset method to perform the main setup.
         self.setup = False
         self.ret_trip = ret_trip
+        self.decision_phase = 1
+        # Load the initial simulation data (e.g., from a JSON file).
+        self.raw_entity_data = self.data_loader.load_initial_simulation_data()
         self.reset()
         # self.setup = True
 
@@ -181,17 +189,26 @@ class LogisticsSystem(System, EventManager):
             self.automatic_logic_config = {action: action.is_automatic for action in self.actions.get_all_actions()}
 
             # Load the initial simulation data (e.g., from a JSON file).
-            raw_entity_data = self.data_loader.load_initial_simulation_data()
+            # raw_entity_data = self.data_loader.load_initial_simulation_data()
+            if self.data_loader.data_generator.dynamic == True:
+                self.raw_entity_data = self.data_loader.data_generator.generate_data()
             # Use a ScenarioGenerator to create entity objects from the raw data.
-            scenario_generator = ScenarioGenerator(raw_entity_data)
+            scenario_generator = ScenarioGenerator(self.raw_entity_data)
             self.entities = scenario_generator.build_entities(p_logging=self.get_log_level(),
                                                               p_movement_mode=self.movement_mode)
 
             # Initialize the GlobalState, which holds all entities and simulation state.
             self.global_state = GlobalState(initial_entities=self.entities, movement_mode=self.movement_mode)
 
+            # --- [PARALLEL ADDITION]: Initialize deterministic entity coordinates ---
+            self.global_state.initialize_entity_indexing()
+
             # Generate the mapping from action tuples to integer IDs based on the initial global state.
             self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+
+            # --- [PARALLEL ADDITION]: Build Map 1 & Map 3 registries ---
+            self.actions.build_action_registries(self.global_state, self.action_map, self.action_space_size)
+
             # Generate agent action map and action space size
             # self.agent_action_map, self.agent_action_space_size = self.actions.generate_agent_action_map(self.global_state, self.automatic_logic_config)
             # Get non-automatic agent actions
@@ -202,7 +219,10 @@ class LogisticsSystem(System, EventManager):
             # Create Agent actions and agent to system map
             self.agent_actions, self.agent_to_system_map, self.agent_action_space_size = self.get_non_automatic_action_map()
             # Initialize the network graph using the distance matrix from the loaded data.
-            self.network = Network(self.global_state, self.movement_mode, raw_entity_data['ground_distance_matrix'], raw_entity_data["air_distance_matrix"])
+            self.network = Network(self.global_state,
+                                   self.movement_mode,
+                                   self.raw_entity_data['ground_distance_matrix'],
+                                   self.raw_entity_data["air_distance_matrix"])
             # Link the network to the global state.
             self.global_state.network = self.network
             # Initialize the mapper that determines valid actions based on the state.
@@ -219,10 +239,10 @@ class LogisticsSystem(System, EventManager):
             self.constraint_manager = ConstraintManager(action_index=self.action_index,
                                                         reverse_action_map=self._reverse_action_map)
             # Initialize the SupplyChainManager.
-            self.supply_chain_manager = SupplyChainManager(p_id='scm', global_state=self.global_state,
+            self.logistic_manager = LogisticManager(p_id='scm', global_state=self.global_state,
                                                            p_automatic_logic_config=self.automatic_logic_config)
-            # Initialize the ResourceManager.
-            self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
+            # # Initialize the ResourceManager.
+            # self.resource_manager = ResourceManager(p_id='rm', global_state=self.global_state)
             # Initialize the NetworkManager.
             self.network_manager = NetworkManager(p_id='nm', global_state=self.global_state, network=self.network,
                                                   p_automatic_logic_config=self.automatic_logic_config)
@@ -236,15 +256,15 @@ class LogisticsSystem(System, EventManager):
                     entity.global_state = self.global_state
                     entity.reset()
 
-                    # [NEW MODIFICATION]: Wire the EventLogger to listen to this entity
-                    if hasattr(entity, 'register_event_handler_for_constraints'):
-                        entity.register_event_handler_for_constraints(
-                            entity.C_EVENT_ENTITY_STATE_CHANGE,
-                            self.global_state.event_logger.handle_entity_state_change
-                        )
+                    # # [NEW MODIFICATION]: Wire the EventLogger to listen to this entity
+                    # if hasattr(entity, 'register_event_handler_for_constraints'):
+                    #     entity.register_event_handler_for_constraints(
+                    #         entity.C_EVENT_ENTITY_STATE_CHANGE,
+                    #         self.global_state.event_logger.handle_entity_state_change
+                    #     )
 
             # Create a dictionary of managers for easy access.
-            managers = {'SupplyChainManager': self.supply_chain_manager, 'ResourceManager': self.resource_manager,
+            managers = {'Logistic': self.logistic_manager,
                         'NetworkManager': self.network_manager}
 
             # Give each manager a reference to the parent system.
@@ -283,8 +303,14 @@ class LogisticsSystem(System, EventManager):
         initial_sim_time = self.entities.get('initial_time', 0.0)
         self.time_manager.reset_time(new_initial_time=initial_sim_time)
         self.global_state.current_time = initial_sim_time
+        self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
         if self.setup:
+            old_action_map = self.action_map
             self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+
+            # --- [PARALLEL ADDITION]: Rebuild registries on scenario reset ---
+            self.actions.build_action_registries(self.global_state, self.action_map, self.action_space_size)
+
             # Update the reverse action map.
             self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
             # Agent maps
@@ -294,13 +320,14 @@ class LogisticsSystem(System, EventManager):
             # Link the updated action index to the constraint manager.
             self.constraint_manager.action_index = self.action_index
             # Update the state-action mapper with the new action space.
-            self.state_action_mapper.update_action_space(self.action_map, None)
+            self.state_action_mapper.update_action_space(self.action_map, old_action_map)
             self.state_action_mapper.reverse_action_map = self._reverse_action_map
             self.constraint_manager.update_constraints(self.global_state, self._reverse_action_map)
             self.ret_computed = False
 
         # Perform an initial update of the MLPro state object.
         self._update_state()
+        # self.setup = True
 
         return True
 
@@ -390,6 +417,8 @@ class LogisticsSystem(System, EventManager):
                     print(f"  - Auto Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
             # Execute the action using the ActionManager.
             self.action_manager.execute_action(auto_action_tuple)
+            self.constraint_manager.evaluate_batch(self.global_state.evaluation_deck)
+            # self.global_state.evaluation_deck.clear()
             # Increment the counter.
             i += 1
             # A safety break to prevent infinite loops.
@@ -410,6 +439,10 @@ class LogisticsSystem(System, EventManager):
         Returns:
             bool: True if an action was successfully processed, False otherwise.
         """
+        if self.global_state.active_resource is None:
+            self.decision_phase = 1
+        else:
+            self.decision_phase = 2
         # print("Process Started--", datetime.now())
         # Flag to track if the action was processed.
         action_processed = False
@@ -423,7 +456,7 @@ class LogisticsSystem(System, EventManager):
         # Check if the action is valid and is not the "No Operation" action.
         if action_tuple and action_tuple[0] != SimulationActions.NO_OPERATION:
             if self.custom_log:
-                    print(f"  - Agent Action: {action_tuple[0].name}{action_tuple[1:]}")
+                    print(f"  - Agent Action: {action_index} - {action_tuple[0].name}{action_tuple[1:]}")
             # Execute the action via the ActionManager.
             action_processed = self.action_manager.execute_action(action_tuple)
 
@@ -431,6 +464,8 @@ class LogisticsSystem(System, EventManager):
         # Update the MLPro state object after the action.
         self._update_state()
         # Return whether an action was processed.
+        # print(f"Masked: {[i for i,a in enumerate(self.constraint_manager.get_masks()) if a == 0]}, Unmasked: {[i for i,a in enumerate(self.constraint_manager.get_masks()) if a == 1]}")
+        self.constraint_manager.evaluate_batch(self.global_state.evaluation_deck)
         return action_processed
 
     # --------------------------------------------------------------------------------------------------
@@ -455,10 +490,12 @@ class LogisticsSystem(System, EventManager):
         all_systems = (list(self.global_state.trucks.values()) +
                        list(self.global_state.drones.values()) +
                        list(self.global_state.micro_hubs.values()) +
-                       [self.supply_chain_manager, self.resource_manager, self.network_manager])
+                       [self.logistic_manager, self.network_manager])
 
         for system in all_systems:
             system.simulate_reaction(p_state=None, p_action=None, p_t_step=t_step)
+
+        self.constraint_manager.evaluate_batch(self.global_state.evaluation_deck)
 
         # Update the MLPro state object after time has advanced and objects are simulated.
         self._update_state()
@@ -526,6 +563,8 @@ class LogisticsSystem(System, EventManager):
         no_op_idx = self.action_map.get((SimulationActions.NO_OPERATION,))
         # if no_op_idx is not None:
         agent_mask[self.agent_to_system_map.index(no_op_idx)] = False
+        # Save the mask in the global_state
+        self.global_state.agent_masks = agent_mask
         # Return the final agent-specific mask.
         return agent_mask
 
@@ -567,6 +606,11 @@ class LogisticsSystem(System, EventManager):
         # Regenerate the action map to include actions related to the new orders.
         old_action_map = self.action_map.copy()
         self.action_map, self.action_space_size = self.actions.generate_action_map(self.global_state)
+
+        # --- [PARALLEL ADDITION]: Rebuild registries for expanded action space ---
+        self.actions.build_action_registries(self.global_state, self.action_map, self.action_space_size)
+
+
         # Update the reverse action map.
         reverse_action_map_old = self._reverse_action_map.copy()
         self._reverse_action_map = {idx: act for act, idx in self.action_map.items()}
@@ -577,6 +621,10 @@ class LogisticsSystem(System, EventManager):
         # Link the updated action index to the constraint manager.
         self.constraint_manager.update_action_index(self.action_map, old_action_map, reverse_action_map_old)
         self.constraint_manager.action_index = self.action_index
+
+        if getattr(self.constraint_manager, 'USE_VECTORIZED_EVALUATION', False):
+            for constraint in self.constraint_manager.constraints:
+                constraint.build_common_actions(self.global_state)
         # Update the state-action mapper with the new action space.
         self.state_action_mapper.update_action_space(self.action_map, old_action_map)
         # Update constraints to reflect the new state.
@@ -588,10 +636,10 @@ class LogisticsSystem(System, EventManager):
             order.register_event_handler_for_constraints(LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
                                                       self.constraint_manager.handle_entity_state_change)
             # [NEW MODIFICATION]: Wire dynamically generated orders to the EventLogger
-            order.register_event_handler_for_constraints(
-                LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
-                self.global_state.event_logger.handle_entity_state_change
-            )
+            # order.register_event_handler_for_constraints(
+            #     LogisticEntity.C_EVENT_ENTITY_STATE_CHANGE,
+            #     self.global_state.event_logger.handle_entity_state_change
+            # )
             # order.raise_state_change_event()
         # print("End --", datetime.now())
         # Re-generate the masks to account for the new state and actions.
@@ -626,7 +674,7 @@ class LogisticsSystem(System, EventManager):
                                                                       self.constraint_manager.handle_entity_state_change)
 
         # When the SupplyChainManager requests a new order, it triggers an event.
-        self.supply_chain_manager.register_event_handler(SupplyChainManager.C_EVENT_NEW_ORDER_REQUEST,
+        self.logistic_manager.register_event_handler(LogisticManager.C_EVENT_NEW_ORDER_REQUEST,
                                                          # This event is handled by the system's own method to add the order.
                                                          self._handle_new_order_request)
 
@@ -644,6 +692,9 @@ class LogisticsSystem(System, EventManager):
         # Assume success is true initially.
         success = True
         # Check each order's status.
+        self.calculate_total_distances_travelled()
+        # if self.custom_log:
+        #     print(f"Truck Distance: {self.total_truck_distance}, Drone Distance: {self.total_drone_distance}")
         for ords in orders.values():
             # The overall success is only true if every single order is delivered.
             success = (ords.get_state_value_by_dim_name(
@@ -684,9 +735,12 @@ class LogisticsSystem(System, EventManager):
                 if not len(v.d_tstamps):
                     continue
                 current_node = v.current_node_id
-                v.current_node_id = v.start_node_id
+                v.set_current_node_id(v.start_node_id)
                 ret_node = v.start_node_id
-                dist = math.ceil(self.network.air_distance_matrix[str(current_node)][str(ret_node)])
+                if v.C_NAME == "Drone":
+                    dist = math.ceil(self.network.air_distance_matrix[str(current_node)][str(ret_node)])
+                elif v.C_NAME:
+                    dist = math.ceil(self.network.land_distance_matrix[str(current_node)][str(ret_node)])
                 v.ret_tstamp = v.d_tstamps[-1] + dist
                 max_return = max(max_return, v.ret_tstamp)
                 self.global_state.current_time = math.ceil(v.ret_tstamp)
@@ -705,88 +759,64 @@ class LogisticsSystem(System, EventManager):
 
         return True
 
+    def calculate_total_distances_travelled(self):
+        self.total_truck_distance = sum([truck.distance_travelled for truck in self.global_state.trucks.values()])
+        self.total_drone_distance = sum([drone.distance_travelled for drone in self.global_state.drones.values()])
+
 
 # -------------------------------------------------------------------------
 # -- Validation Block
 # -------------------------------------------------------------------------
-# This block is executed only when the script is run directly.
 if __name__ == "__main__":
-    # Print a header for the validation process.
     print("--- Validating LogisticsSystem ---")
 
-    # Define the path to the configuration file relative to this script's location.
     script_path = os.path.dirname(os.path.realpath(__file__))
     config_file_path = os.path.join(script_path, '..', 'config', 'initial_entity_data.json')
-    # Normalize the path to be compatible with the operating system.
     config_file_path = os.path.normpath(config_file_path)
 
-    # Define the simulation configuration dictionary.
     sim_config = {
         "initial_time": 0.0,
-        "main_timestep_duration": 300.0,  # Each simulation step represents 300 seconds (5 minutes).
+        "main_timestep_duration": 300.0,
         "data_loader_config": {
             "generator_type": "json_file",
             "generator_config": {"file_path": config_file_path}
         },
-        "new_order_config": {}  # Configuration for dynamic order generation.
+        "new_order_config": {}
     }
 
-    # Instantiate the LogisticsSystem with the defined configuration.
     logistics_system = LogisticsSystem(p_id='validation_sys',
                                        p_visualize=False,
                                        p_logging=False,
                                        config=sim_config)
 
-    # Print a header for the simulation run.
     print("\n--- Running simulation for 20 cycles with Dummy Agent Logic ---")
 
-    # Get the index for the "NO_OPERATION" action.
     no_op_idx = logistics_system.action_map.get((SimulationActions.NO_OPERATION,))
 
-    # Run the simulation for 20 cycles.
     for i in range(20):
         print(f"\n--- Cycle {i + 1} ---")
 
-        # --- Decision Phase ---
-        # A simple dummy agent that takes one random valid action per cycle.
-        # Get the mask of actions available to the agent.
         agent_mask = logistics_system.get_agent_mask()
-        # Find all valid actions, excluding the NO_OPERATION action for selection purposes.
         valid_actions = np.where(np.delete(agent_mask, no_op_idx))[0]
 
-        # If there are valid actions to take...
         if len(valid_actions) > 0:
-            # ...choose one randomly.
             choice = random.choice(valid_actions)
-            # Get the tuple representation of the chosen action for logging.
             act_tuple = logistics_system._reverse_action_map.get(choice)
             print(f"Dummy Agent chooses: {act_tuple}")
-        # Otherwise, if no actions are available...
         else:
-            # ...choose NO_OPERATION.
             choice = no_op_idx
             print("Dummy Agent chooses: NO_OPERATION")
 
-        # Create an MLPro action object with the chosen action index.
         action = LogisticsAction(p_action_space=logistics_system.get_action_space(), p_values=[choice])
 
-        # Process the chosen action in the simulation.
         logistics_system.process_action(action)
-
-        # --- Progression Phase ---
-        # Advance the simulation time by one step.
         logistics_system.advance_time()
 
-        # --- Reporting ---
-        # Get the current state of the system for reporting.
         state = logistics_system.get_state()
         print(f"  - Current Time: {logistics_system.time_manager.get_current_time()}s")
-        # Get the state dimensions for total and delivered orders.
         state_dim_total = state.get_related_set().get_dim_by_name('total_orders')
         state_dim_delivered = state.get_related_set().get_dim_by_name('delivered_orders')
-        # Print the current values from the state object.
         print(f"  - Total Orders: {state.get_value(state_dim_total.get_id())}")
         print(f"  - Delivered Orders: {state.get_value(state_dim_delivered.get_id())}")
 
-    # Print a final message indicating the validation script completed successfully.
     print("\n--- Validation Complete: LogisticsSystem initialized and ran successfully. ---")

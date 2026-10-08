@@ -104,6 +104,7 @@ class Constraint(ABC, EventManager):
             # current_block_set = set(current_actions_to_block) if current_actions_to_block else set()
             # to_block, to_unblock = self.examine_global_cache(current_block_set)
             # self.update_constraint_deck(to_block, to_unblock, deck, p_entity)
+            self.update_constraint_deck_global(to_block, to_unblock, deck)
 
         return to_block, to_unblock
 
@@ -117,6 +118,13 @@ class Constraint(ABC, EventManager):
             deck[action].add(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
         for action in to_unblock:
             deck[action].remove(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
+
+    def update_constraint_deck_global(self, to_block, to_unblock, deck):
+        for action in to_block:
+            deck[action].add(f"{self.C_NAME}")
+        for action in to_unblock:
+            if f"{self.C_NAME}" in deck[action]:
+                deck[action].remove(f"{self.C_NAME}")
 
     def clear_cache(self):
         self._entity_invalidation_map.clear()
@@ -1452,7 +1460,7 @@ class VehicleLoadConstraint(Constraint):
         if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) not in [p_entity.C_TRIP_STATE_HALT]:
             return list(relevant_actions), []
 
-        current_node = p_entity.get_current_node()
+        current_node = p_entity.get_current_node_id()
         valid_orders = []
 
         for order in p_entity.get_pickup_orders():
@@ -1518,7 +1526,7 @@ class OrderUnloadConstraint(Constraint):
         carrying_vehicle = p_entity.carrying_vehicle
         if carrying_vehicle is None:
             return relevant_actions, []
-        current_location = carrying_vehicle.get_current_node()
+        current_location = carrying_vehicle.get_current_node_id()
         if not current_location == p_entity.get_delivery_node_id() :
             return relevant_actions, []
         if p_entity not in carrying_vehicle.get_current_cargo():
@@ -1631,7 +1639,7 @@ class VehicleUnloadConstraint(Constraint):
         if p_entity.get_state_value_by_dim_name(p_entity.C_DIM_TRIP_STATE[0]) not in [p_entity.C_TRIP_STATE_HALT]:
             return list(relevant_actions), []
 
-        current_node = p_entity.get_current_node()
+        current_node = p_entity.get_current_node_id()
         current_cargo = p_entity.get_current_cargo()
 
         valid_orders = []
