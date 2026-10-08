@@ -1,5 +1,5 @@
 import numpy.random as rnd
-from alns_benchmark.state import PriorityPlanState
+from ddls_src.alns_benchmark.state import PriorityPlanState
 
 def destroy_random(state: PriorityPlanState, rng: rnd.Generator) -> PriorityPlanState:
     """Removes 20-30% of orders to explore priority re-ordering."""

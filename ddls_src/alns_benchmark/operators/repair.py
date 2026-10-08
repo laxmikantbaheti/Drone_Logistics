@@ -1,6 +1,6 @@
 import numpy.random as rnd
-from alns_benchmark.state import PriorityPlanState
-from alns_benchmark.evaluator import EnvironmentEvaluator
+from ddls_src.alns_benchmark.state import PriorityPlanState
+from ddls_src.alns_benchmark.evaluator import EnvironmentEvaluator
 
 def repair_greedy(
     state: PriorityPlanState,

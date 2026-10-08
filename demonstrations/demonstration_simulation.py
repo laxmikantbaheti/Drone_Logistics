@@ -43,7 +43,7 @@ def run_scenario_demo():
         p_logging=False,
         config=sim_config,
         custom_log=False,
-        plot_resuts = True,
+        plot_resuts=True,
     )
 
     print("\n--- Starting Scenario Run ---")

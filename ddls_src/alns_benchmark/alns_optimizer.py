@@ -4,7 +4,6 @@ import random
 import math
 import copy
 import time
-from typing import List, Tuple, Dict, Any, Optional
 import numpy as np
 from rl_ext.training.base import Training
 
@@ -17,8 +16,6 @@ class _EnvLoader(Training):
     Minimal concrete subclass to bypass the abstract method check
     and extract self.env initialized via the base Training harness.
     """
-    C_RANDOM = False
-    C_NAME = "ALNS"
     def train(self, *args, **kwargs):
         pass
 
@@ -35,21 +32,16 @@ def make_env(vrp_instance_path: str, sim_config: dict, instance_name: str):
 
 
 # ----------------------------------------------------------------------
-# 2. Reward-Driven ALNS Optimizer Class
+# 2. ALNS Optimizer Class with Regret & Adaptive Reheating
 # ----------------------------------------------------------------------
-class RewardDrivenALNSOptimizer:
-    """
-    ALNS metaheuristic optimizing action sequences strictly through
-    environment cumulative return, handling dynamic action masks natively.
-    """
+class ALNSOptimizer:
     def __init__(
         self,
         env,
-        iterations: int = 150,
+        iterations: int = 250,
         init_temp: float = 200.0,
         cooling_rate: float = 0.97,
         reheat_patience: int = 20,
-        segment_size: int = 30,
         seed: int = 42,
     ):
         self.env = env
@@ -58,21 +50,20 @@ class RewardDrivenALNSOptimizer:
         self.temperature = init_temp
         self.cooling_rate = cooling_rate
         self.reheat_patience = reheat_patience
-        self.segment_size = segment_size
         self.seed = seed
 
         random.seed(self.seed)
         np.random.seed(self.seed)
 
-        # 3 Destroy, 3 Repair operators
+        # Operators: 3 Destroy, 3 Repair
         self.destroy_operators = [
             self.destroy_random,
             self.destroy_worst_segments,
             self.destroy_related_cluster,
         ]
         self.repair_operators = [
-            self.repair_reward_regret2,
-            self.repair_reward_greedy,
+            self.repair_regret2_insertion,
+            self.repair_greedy_insertion,
             self.repair_random_insertion,
         ]
 
@@ -81,31 +72,16 @@ class RewardDrivenALNSOptimizer:
         self.d_scores = [0.0] * len(self.destroy_operators)
         self.r_scores = [0.0] * len(self.repair_operators)
 
-        # Adaptive score increments
-        self.SIGMA_1 = 35.0  # New global best
-        self.SIGMA_2 = 15.0  # Improved current
+        # Performance score adjustments
+        self.SIGMA_1 = 35.0  # Found new global best
+        self.SIGMA_2 = 15.0  # Improved upon current solution
         self.SIGMA_3 = 5.0   # Accepted worsening move
 
-        self.penalty_per_infeasible = 50.0  # Auto-calibrated on startup
-
-    def _fallback_valid_action(self, valid_indices: np.ndarray) -> int:
+    # --- Evaluation ---
+    def evaluate_sequence(self, action_sequence: list):
         """
-        Picks a fallback action when the candidate target action is masked out.
-        Prefers non-zero actions to avoid deadlocks or premature return-to-depots.
-        """
-        if len(valid_indices) == 1:
-            return int(valid_indices[0])
-
-        non_zero = valid_indices[valid_indices != 0]
-        if len(non_zero) > 0:
-            return int(non_zero[0])
-
-        return int(valid_indices[0])
-
-    def evaluate_sequence(self, action_sequence: list) -> Tuple[float, list, dict, int, float]:
-        """
-        Rolls out the action sequence against the environment.
-        Fitness is purely: Total Cumulative Environment Reward - Infeasible Action Penalties.
+        Rolls out an action sequence step-by-step against env.action_masks().
+        Falls back to a valid action if a mask constraint is breached.
         """
         obs, info = self.env.reset(seed=self.seed)
         done = False
@@ -126,26 +102,19 @@ class RewardDrivenALNSOptimizer:
                 infeasible_repairs += 1
                 valid_indices = np.where(mask == 1)[0]
                 if len(valid_indices) == 0:
-                    break
-                chosen = self._fallback_valid_action(valid_indices)
+                    break  # Deadlock reached
+                chosen = int(valid_indices[0])
 
-            step_result = self.env.step(chosen)
-
-            # Accommodates Gym 4-tuple and Gymnasium 5-tuple returns
-            if len(step_result) == 5:
-                obs, reward, done, truncated, info = step_result
-            else:
-                obs, reward, done, info = step_result
-                truncated = False
-
+            obs, reward, done, truncated, info = self.env.step(chosen)
             actual_executed_actions.append(chosen)
             total_reward += reward
 
-        fitness = total_reward - (infeasible_repairs * self.penalty_per_infeasible)
+        # Fitness prioritizes raw reward and penalizes mask corrections
+        fitness = total_reward - (infeasible_repairs * 50.0)
         return fitness, actual_executed_actions, info, infeasible_repairs, total_reward
 
-    def generate_initial_solution(self, max_steps: int = 60) -> list:
-        """Generates a feasible baseline sequence using masked exploration."""
+    def generate_initial_solution(self, max_steps: int = 50):
+        """Builds an initial feasible route using greedy valid mask sampling."""
         obs, info = self.env.reset(seed=self.seed)
         sequence = []
         done = False
@@ -156,14 +125,8 @@ class RewardDrivenALNSOptimizer:
             valid_actions = np.where(mask == 1)[0]
             if len(valid_actions) == 0:
                 break
-            chosen = self._fallback_valid_action(valid_actions)
-            step_result = self.env.step(chosen)
-            if len(step_result) == 5:
-                obs, reward, done, truncated, info = step_result
-            else:
-                obs, reward, done, info = step_result
-                truncated = False
-
+            chosen = int(random.choice(valid_actions))
+            obs, reward, done, truncated, info = self.env.step(chosen)
             sequence.append(chosen)
 
         return sequence
@@ -191,11 +154,14 @@ class RewardDrivenALNSOptimizer:
         return destroyed, removed_nodes
 
     def destroy_related_cluster(self, sequence: list, remove_ratio: float = 0.25):
+        """Removes a localized sub-sequence around a pivot stop to resolve bottlenecks."""
         if len(sequence) <= 4:
             return self.destroy_random(sequence, remove_ratio)
 
         num_to_remove = max(2, int(len(sequence) * remove_ratio))
         pivot_idx = random.randint(0, len(sequence) - 1)
+
+        # Grab a window centered on the pivot
         half_window = num_to_remove // 2
         start_idx = max(0, pivot_idx - half_window)
         end_idx = min(len(sequence), start_idx + num_to_remove)
@@ -204,17 +170,16 @@ class RewardDrivenALNSOptimizer:
         destroyed = sequence[:start_idx] + sequence[end_idx:]
         return destroyed, removed_nodes
 
-    # --- Reward-Based Repair Operators ---
-    def repair_reward_greedy(self, destroyed_seq: list, removed_nodes: list):
-        """Inserts removed nodes into the position that yields the highest cumulative reward."""
+    # --- Repair Operators ---
+    def repair_greedy_insertion(self, destroyed_seq: list, removed_nodes: list):
         current_seq = copy.deepcopy(destroyed_seq)
 
         for node in removed_nodes:
             best_pos = len(current_seq)
             best_score = -float("inf")
 
+            # Sample subset of positions to keep evaluation fast
             candidate_positions = list(range(len(current_seq) + 1))
-            # Sample up to 4 positions to prevent simulation bottleneck
             if len(candidate_positions) > 4:
                 candidate_positions = random.sample(candidate_positions, 4)
 
@@ -226,10 +191,14 @@ class RewardDrivenALNSOptimizer:
                     best_pos = pos
 
             current_seq.insert(best_pos, node)
+
         return current_seq
 
-    def repair_reward_regret2(self, destroyed_seq: list, removed_nodes: list):
-        """Computes regret directly on reward differences between top 2 candidate positions."""
+    def repair_regret2_insertion(self, destroyed_seq: list, removed_nodes: list):
+        """
+        Regret-2 insertion: computes the difference between the best and second-best
+        insertion positions. Places nodes with the highest regret first.
+        """
         current_seq = copy.deepcopy(destroyed_seq)
         unplaced_nodes = list(removed_nodes)
 
@@ -249,8 +218,13 @@ class RewardDrivenALNSOptimizer:
                     score, _, _, _, _ = self.evaluate_sequence(test_seq)
                     scores.append((score, pos))
 
+                # Sort descending by score
                 scores.sort(key=lambda x: x[0], reverse=True)
-                regret = (scores[0][0] - scores[1][0]) if len(scores) >= 2 else 0.0
+
+                if len(scores) >= 2:
+                    regret = scores[0][0] - scores[1][0]
+                else:
+                    regret = 0.0
 
                 if regret > max_regret:
                     max_regret = regret
@@ -269,21 +243,18 @@ class RewardDrivenALNSOptimizer:
             current_seq.insert(pos, node)
         return current_seq
 
-    # --- Search Loop ---
+    # --- Search Loop with Temperature Reheating ---
     def optimize(self):
-        print("Calibrating reward scale and baseline sequence...")
-        curr_sol = self.generate_initial_solution(max_steps=60)
+        print("Generating initial route via valid mask rollout...")
+        curr_sol = self.generate_initial_solution(max_steps=50)
         curr_fitness, _, _, init_repairs, init_raw_reward = self.evaluate_sequence(curr_sol)
-
-        # Scale penalty automatically to 15% of the baseline reward magnitude
-        self.penalty_per_infeasible = max(5.0, abs(init_raw_reward) * 0.15)
 
         best_sol = copy.deepcopy(curr_sol)
         best_fitness = curr_fitness
 
-        print(f"\n--- STARTING REWARD-DRIVEN ALNS ---")
-        print(f"Iterations: {self.iterations} | Init Temp: {self.temperature:.1f} | Calibrated Mask Penalty: {self.penalty_per_infeasible:.2f}")
-        print(f"Baseline Reward: {init_raw_reward:.2f} | Baseline Fitness: {best_fitness:.2f} | Actions: {len(best_sol)}\n")
+        print(f"\n--- STARTING ALNS OPTIMIZER ---")
+        print(f"Iterations: {self.iterations} | Initial Temp: {self.temperature:.1f} | Reheat Patience: {self.reheat_patience}")
+        print(f"Initial Fitness: {best_fitness:.2f} (Raw: {init_raw_reward:.2f}, Violations: {init_repairs}) | Length: {len(best_sol)}\n")
 
         start_time = time.time()
         stagnation_counter = 0
@@ -292,8 +263,11 @@ class RewardDrivenALNSOptimizer:
             d_idx = random.choices(range(len(self.destroy_operators)), weights=self.d_weights, k=1)[0]
             r_idx = random.choices(range(len(self.repair_operators)), weights=self.r_weights, k=1)[0]
 
-            destroyed, removed = self.destroy_operators[d_idx](curr_sol)
-            candidate_sol = self.repair_operators[r_idx](destroyed, removed)
+            d_op = self.destroy_operators[d_idx]
+            r_op = self.repair_operators[r_idx]
+
+            destroyed, removed = d_op(curr_sol)
+            candidate_sol = r_op(destroyed, removed)
 
             cand_fitness, _, _, cand_repairs, cand_raw = self.evaluate_sequence(candidate_sol)
             accepted = False
@@ -330,33 +304,31 @@ class RewardDrivenALNSOptimizer:
                 else:
                     tag = "[REJECTED]"
 
+            # Cooling schedule
             self.temperature *= self.cooling_rate
 
-            # Temperature reheating on stagnation
+            # Adaptive Reheating Check
             if stagnation_counter >= self.reheat_patience:
                 self.temperature = max(self.temperature, self.init_temp * 0.5)
+                # Deep perturbation: remove 40% of the route to break local trap
                 curr_sol, deep_removed = self.destroy_random(curr_sol, remove_ratio=0.40)
                 curr_sol = self.repair_random_insertion(curr_sol, deep_removed)
                 curr_fitness, _, _, _, _ = self.evaluate_sequence(curr_sol)
                 stagnation_counter = 0
                 tag = "[!REHEAT!]"
 
-            # Segment-based operator weight updates
-            if it % self.segment_size == 0:
-                decay = 0.8
-                for i in range(len(self.d_weights)):
-                    self.d_weights[i] = decay * self.d_weights[i] + (1 - decay) * max(0.1, self.d_scores[i])
-                    self.d_scores[i] = 0.0
-                for j in range(len(self.r_weights)):
-                    self.r_weights[j] = decay * self.r_weights[j] + (1 - decay) * max(0.1, self.r_scores[j])
-                    self.r_scores[j] = 0.0
+            # Operator weight update with decay
+            decay = 0.85
+            self.d_weights[d_idx] = decay * self.d_weights[d_idx] + (1 - decay) * max(0.1, self.d_scores[d_idx])
+            self.r_weights[r_idx] = decay * self.r_weights[r_idx] + (1 - decay) * max(0.1, self.r_scores[r_idx])
 
             elapsed_time = time.time() - start_time
+
             if it % 5 == 0 or accepted:
                 print(
                     f"Iter {it:03d}/{self.iterations} {tag:12s} | "
-                    f"Best Fit: {best_fitness:7.2f} (Raw: {cand_raw:7.2f}) | "
-                    f"Violations: {cand_repairs:2d} | "
+                    f"Best: {best_fitness:7.2f} | "
+                    f"Current: {curr_fitness:7.2f} | "
                     f"Temp: {self.temperature:6.2f} | "
                     f"Elapsed: {elapsed_time:.1f}s"
                 )
@@ -364,25 +336,24 @@ class RewardDrivenALNSOptimizer:
         total_elapsed = time.time() - start_time
         final_fit, final_executed, final_info, final_repairs, final_raw = self.evaluate_sequence(best_sol)
 
-        print("\n--- OPTIMIZATION SUMMARY ---")
-        print(f"Optimal Cumulative Reward : {final_raw:.2f}")
-        print(f"Optimal Fitness (Penalized): {final_fit:.2f}")
-        print(f"Mask Corrections Incurred : {final_repairs}")
-        print(f"Executed Steps Count       : {len(final_executed)}")
-        print(f"Total Computation Time     : {total_elapsed:.2f}s")
-        return best_sol, final_raw
+        print("\n--- ALNS OPTIMIZATION COMPLETE ---")
+        print(f"Optimal Fitness Found : {final_fit:.2f}")
+        print(f"Raw Environment Reward: {final_raw:.2f}")
+        print(f"Mask Violations       : {final_repairs}")
+        print(f"Final Route Length    : {len(final_executed)} steps")
+        print(f"Total Execution Time  : {total_elapsed:.2f}s")
+        return best_sol, best_fitness
 
 
 # ----------------------------------------------------------------------
-# 3. Execution Entry Point
+# 3. Main Execution Harness
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
     script_path = os.path.dirname(os.path.realpath(__file__))
 
-    # Standard VRP scenario setup
     vrp_instance_path = os.path.join(
         script_path,
-        "..",
+        "../..",
         "ddls_src",
         "scenarios",
         "vrp_d_instances",
@@ -412,12 +383,12 @@ if __name__ == "__main__":
         },
     }
 
-    parser = argparse.ArgumentParser(description="Pure Reward ALNS Optimizer")
-    parser.add_argument("--iterations", type=int, default=150, help="ALNS search iterations")
-    parser.add_argument("--temp", type=float, default=200.0, help="Initial simulated annealing temperature")
-    parser.add_argument("--cooling", type=float, default=0.97, help="Cooling schedule factor")
-    parser.add_argument("--patience", type=int, default=20, help="Stagnation iterations before reheat")
-    parser.add_argument("--eval_seed", type=int, default=42, help="Deterministic evaluation seed")
+    parser = argparse.ArgumentParser(description="ALNS Optimizer Module")
+    parser.add_argument("--iterations", type=int, default=200)
+    parser.add_argument("--temp", type=float, default=200.0)
+    parser.add_argument("--cooling", type=float, default=0.97)
+    parser.add_argument("--patience", type=int, default=20)
+    parser.add_argument("--eval_seed", type=int, default=42)
     args = parser.parse_args()
 
     env = make_env(
@@ -426,7 +397,7 @@ if __name__ == "__main__":
         instance_name=instance_name
     )
 
-    optimizer = RewardDrivenALNSOptimizer(
+    optimizer = ALNSOptimizer(
         env=env,
         iterations=args.iterations,
         init_temp=args.temp,
@@ -435,4 +406,4 @@ if __name__ == "__main__":
         seed=args.eval_seed
     )
 
-    best_sequence, best_reward = optimizer.optimize()
+    best_sequence, best_fitness = optimizer.optimize()

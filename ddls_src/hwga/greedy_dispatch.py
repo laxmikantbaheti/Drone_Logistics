@@ -317,7 +317,7 @@ if __name__ == "__main__":
     num_nodes = 60
     vrp_instance_path = os.path.join(
         script_path,
-        "..",
+        "../..",
         "ddls_src",
         "scenarios",
         "vrp_d_instances",
