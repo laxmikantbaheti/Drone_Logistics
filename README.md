@@ -161,16 +161,6 @@ python -m demonstrations.ppo_without_masking_no_termination --timesteps 1000000 
 * `--timesteps`: Total RL training timesteps (default: `5000000`).
 * `--config`: Simulation configuration file path.
 
----
-
-## 📊 Performance Metrics
-
-All evaluation scripts track and report three distinct operational metrics:
-* **Total Fleet Distance Cost (D_total):** Combined ground and aerial transit distance (D_truck + D_drone) tracking real operational routing cost.
-* **Delivery Makespan (T_max):** The simulated elapsed time required to complete all customer deliveries.
-* **Constraint Compliance & Feasible Completion Ratio:** Verification that vehicle assignments respect dynamic action masks, cargo capacities, and operational battery boundaries.
-
----
 
 ## 📜 Citation & License
 
