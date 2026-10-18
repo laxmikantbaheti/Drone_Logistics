@@ -46,7 +46,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
             raise ValueError("'num_drones' must be >= 0")
 
         self.num_microhubs = int(config.get("num_microhubs", 0))
-        self.drones_per_mh = int(config.get("drones_per_mh", 1))
+        self.drones_per_mh = int(config.get("drones_per_mh", 2))
         self.bbox = tuple(config.get("bbox", (0.0, 0.0, 100.0, 100.0)))
         self.std_dev_scale = float(config.get("std_dev_scale", 4.0))
 
@@ -57,6 +57,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
         self.seed = config.get("seed")
         self.initial_time = float(config.get("initial_time", 0.0))
         self.include_index_maps = bool(config.get("include_index_maps", True))
+
 
         # Optional override for number of trucks
         self.num_trucks_override: Optional[int] = config.get("num_trucks")
@@ -94,16 +95,16 @@ class F2EVRPDGenerator(BaseDataGenerator):
             num_trucks = self._infer_trucks_from_filename(self.instance_path) or 1
 
         # Nodes
-        nodes_list, depot_id, _ = self._build_nodes(parsed)
+        self.nodes_list, depot_id, _ = self._build_nodes(parsed)
 
         # Micro hubs
         self.num_microhubs = parsed_mh["num_microhubs"]
-        micro_hubs_list = self._build_micro_hubs(parsed_mh, nodes_list)
+        micro_hubs_list = self._build_micro_hubs(parsed_mh, self.nodes_list)
 
         self.num_drones = self.drones_per_mh * len(micro_hubs_list)
 
         # All nodes for matrices
-        all_nodes_list = nodes_list + micro_hubs_list
+        all_nodes_list = self.nodes_list + micro_hubs_list
 
         # Vehicles
         trucks_list = self._build_trucks(num_trucks, depot_id, truck_config)
@@ -278,6 +279,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
                 "type": "micro_hub",
                 "chargeable": random.choice([0, 1]),
                 "demand": 0,
+                "assigned_drone_id":[]
             })
         return hubs
 
@@ -290,15 +292,16 @@ class F2EVRPDGenerator(BaseDataGenerator):
         } for i in range(n)]
 
     def _build_drones(self, n, depot_id, drone_config, mh_list):
-        drones = [{
-            "id": 20000 + i,
-            "max_payload_capacity": drone_config["max_payload_capacity"],
-            "max_speed": drone_config["max_speed"],
-            "start_node_id": mh_list[i]["id"],
-        } for i in range(n)]
-
+        drones = []
+        for i in range(n):
+            drones.append({
+                "id": 20000 + i,
+                "max_payload_capacity": drone_config["max_payload_capacity"],
+                "max_speed": drone_config["max_speed"],
+                "start_node_id": mh_list[math.ceil(i/self.drones_per_mh)-1]["id"],
+                })
         for i,drone in enumerate(drones):
-            mh_list[i]["assigned_drone_id"] = drone["id"]
+            mh_list[drone["start_node_id"]-len(self.nodes_list)]["assigned_drone_id"].append(drone["id"])
 
         return drones
 

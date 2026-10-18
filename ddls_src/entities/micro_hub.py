@@ -52,6 +52,7 @@ class MicroHub(Node):
                 'coords': Tuple[float, float]
                 'num_charging_slots': int
         """
+        self.active_drone = None
         p_kwargs['is_loadable'] = True
         p_kwargs['is_unloadable'] = True
         p_kwargs['is_charging_station'] = True
@@ -78,7 +79,7 @@ class MicroHub(Node):
         self.assigned_capacity = 0
         self.occupied_capacity = 0
         self.assigned_drone_id = p_kwargs.get("assigned_drone_id", None)
-        self.assigned_drone = None
+        self.assigned_drones = None
         self.is_drone_assigned = p_kwargs.get("is_drone_assigned", True)
         self.consolidated = False
         self.reset()
@@ -185,14 +186,14 @@ class MicroHub(Node):
         return [slot_id for slot_id, drone_id in self.charging_slots.items() if drone_id is None]
 
     def assign_order(self, p_order, pseudo_order1, pseudo_order2):
-        if self.assigned_drone is None:
+        if self.assigned_drones is None:
             if self.assigned_drone_id is not None:
-                self.assigned_drone = self.global_state.drones[self.assigned_drone_id]
+                self.assigned_drones = self.global_state.drones[self.assigned_drone_id]
             else:
                 raise ValueError("No assigned drone found")
-        if self.assigned_drone is not None:
-            self.assigned_drone.assign_orders([pseudo_order2])
-            pseudo_order2.assign_vehicle(self.assigned_drone.get_id(), self.assigned_drone)
+        if self.get_active_drone() is not None:
+            self.active_drone.assign_orders([pseudo_order2])
+            pseudo_order2.assign_vehicle(self.active_drone.get_id(), self.active_drone)
         self.raise_state_change_event()
         if self not in self.global_state.evaluation_deck:
             self.global_state.evaluation_deck.append(self)
@@ -200,16 +201,11 @@ class MicroHub(Node):
 
     def get_current_cargo(self):
         if self.assigned_drone_id is not None:
-            return self.assigned_drone.get_current_cargo()
+            return self.assigned_drones.get_current_cargo()
 
     def get_remaining_capacity(self):
-        if self.assigned_drone is None:
-            if self.assigned_drone_id is not None:
-                self.assigned_drone = self.global_state.drones[self.assigned_drone_id]
-            else:
-                raise ValueError("No assigned drone found. Please check the current problem type.")
-        if self.assigned_drone is not None:
-            return self.assigned_drone.get_remaining_capacity()
+        if self.get_active_drone() is not None:
+            return self.active_drone.get_remaining_capacity()
 
         else:
             raise ValueError("MicroHub does not have an assigned drone. Non conformant the problem definition.")
@@ -221,3 +217,30 @@ class MicroHub(Node):
     def get_total_capacity(self):
         return self.total_capacity
 
+    def resolve_active_drone(self):
+        for drone in self.assigned_drones:
+            if not drone.consolidation_confirmed:
+                self.active_drone = drone
+                break
+            else:
+                continue
+
+    def get_active_drone(self):
+        if self.assigned_drones is None:
+            if self.assigned_drone_id is not None:
+                self.assigned_drones = [self.global_state.drones[idx] for idx in self.assigned_drone_id]
+                self.resolve_active_drone()
+            else:
+                raise ValueError("No assigned drone found. Please check the current problem type.")
+
+        return self.active_drone
+
+    def consolidate_for_mh(self):
+        consolidated = all([drone.consolidation_confirmed for drone in self.assigned_drones])
+        if consolidated:
+            self.consolidated = consolidated
+            self.global_state.active_resource = None
+            self.raise_state_change_event()
+        else:
+            self.resolve_active_drone()
+            self.raise_state_change_event()
