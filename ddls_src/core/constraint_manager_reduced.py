@@ -120,7 +120,7 @@ class Constraint(ABC, EventManager):
         raise NotImplementedError
 
     # ---------------------------------------------------------------------------------------------
-    # -- Original Evaluation Interface (Untouched)
+    # -- Original Evaluation Interface
     # ---------------------------------------------------------------------------------------------
     def evaluate_impact(self, p_entity, p_action_index: ActionIndex, deck) -> Tuple[Set[int], Set[int]]:
         """
@@ -139,7 +139,8 @@ class Constraint(ABC, EventManager):
             self._entity_invalidation_map[entity_id] = current_block_set
 
             self.evaluation_history.append(
-                f"{p_entity.C_NAME} - {p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}")
+                f"{p_entity.C_NAME}\n{p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}"
+            )
 
         else:
             masks = self.evaluate_impact_global(p_entity=p_entity, p_action_index=p_action_index, deck=deck, p_global_state=p_entity.global_state)
@@ -188,16 +189,15 @@ class Constraint(ABC, EventManager):
 
     def update_constraint_deck(self, to_block, to_unblock, deck, p_entity):
         for action in to_block:
-            deck[action].add(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
+            deck[action].add(f"{self.C_NAME}\n{p_entity.C_NAME} {p_entity.get_id()}")
         for action in to_unblock:
-            deck[action].remove(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
+            deck[action].discard(f"{self.C_NAME}\n{p_entity.C_NAME} {p_entity.get_id()}")
 
     def update_constraint_deck_global(self, to_block, to_unblock, deck):
         for action in to_block:
             deck[action].add(f"{self.C_NAME}")
         for action in to_unblock:
-            if f"{self.C_NAME}" in deck[action]:
-                deck[action].remove(f"{self.C_NAME}")
+            deck[action].discard(f"{self.C_NAME}")
 
     def clear_cache(self):
         self._entity_invalidation_map.clear()
@@ -226,7 +226,7 @@ class VehicleAvailableConstraint(Constraint):
     C_GLOBAL_CONSTRAINT = True
 
     # 1. Original Legacy Method (Untouched)
-    def evaluate_impact_global(self, p_entity : LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         actions_to_block = set()
         actions_to_unblock = set()
         for vehicle in p_kwargs.get("p_global_state").get_vehicles():
@@ -258,13 +258,11 @@ class VehicleCapacityConstraint(Constraint):
     C_GLOBAL_CONSTRAINT = True
     C_ACTIVE = True
 
-    # 1. Original Legacy Method (Untouched)
+    # 1. Original Legacy Method (Removed ineffective `elif not active_resource == p_entity` block)
     def evaluate_impact_global(self, p_entity: Vehicle, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         active_resource = p_kwargs.get("p_global_state").active_resource
         if active_resource is None:
             return list(self.associated_action_index), []
-        elif not active_resource == p_entity:
-            return [], []
         actions_to_block = set()
         actions_to_unblock = set()
         current_capacity = active_resource.get_remaining_capacity()
@@ -340,7 +338,7 @@ class ActiveResourceConstraint(Constraint):
     C_GLOBAL_CONSTRAINT = True
 
     # 1. Original Legacy Method (Untouched)
-    def evaluate_impact_global(self, p_entity:LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         active_resource = p_kwargs.get("p_global_state").active_resource
         relevant_actions = self.associated_action_index
         mask = set()
@@ -435,14 +433,14 @@ class VehicleLoadConstraint(Constraint):
     C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "Order"]
     C_GLOBAL_CONSTRAINT = True
 
-    # 1. Original Legacy Method (Untouched)
+    # 1. Original Legacy Method
     def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         actions_to_block = set()
         actions_to_unblock = set()
         relevant_actions = self.associated_action_index
         for vehicle in p_kwargs.get("p_global_state").get_vehicles():
             current_node = vehicle.current_node_id
-            if current_node is not None and (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in vehicle.C_TRIP_STATE_HALT):
+            if current_node is not None and (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in [vehicle.C_TRIP_STATE_HALT]):
                 pickup_orders = [o for o in vehicle.get_pickup_orders() if o.get_pickup_node_id() == current_node]
                 if len(pickup_orders):
                     precedence = [True for o in pickup_orders]
@@ -870,7 +868,7 @@ class BatteryAssignmentConstraint(Constraint):
 
 
 # -------------------------------------------------------------------------------------------------
-# -- Part 3: ConstraintManager & StateActionMapper (With Safe Toggle)
+# -- Part 3: ConstraintManager & StateActionMapper (With Direct Batch Evaluation)
 # -------------------------------------------------------------------------------------------------
 
 class ConstraintManager(EventManager):
@@ -922,7 +920,7 @@ class ConstraintManager(EventManager):
             return self.entity_constraints[p_entity.C_NAME]
         return []
 
-    def handle_entity_state_change(self, p_event_id=None, p_event_object=None, p_entity = None):
+    def handle_entity_state_change(self, p_event_id=None, p_event_object=None, p_entity=None):
         if p_event_id is not None and p_event_object is not None and p_entity is None:
             if self.custom_log:
                 print(
@@ -962,6 +960,63 @@ class ConstraintManager(EventManager):
         time_taken = time_end - time_start
         if entity.global_state is not None:
             entity.global_state.constraint_latency_per_step.append(time_taken.total_seconds())
+        else:
+            if self.custom_log:
+                print("[ConstraintManager] No net change in masks. Event skipped.")
+
+    def handle_batch_entity_state_change(self, evaluation_deck: Iterable[LogisticEntity]):
+        """
+        Collects the unique set of constraints for all entity types in `evaluation_deck`
+        and runs `evaluate_impact_global` + `update_constraint_deck_global` directly
+        once per constraint.
+        """
+        if not evaluation_deck:
+            return
+
+        time_start = datetime.datetime.now()
+        total_to_block = []
+        total_to_unblock = []
+
+        # 1. Collect unique constraints across the entity types in the deck
+        constraints_to_check = set()
+        seen_entity_types = set()
+        representative_entity = None
+
+        for entity in evaluation_deck:
+            if representative_entity is None and getattr(entity, 'global_state', None) is not None:
+                representative_entity = entity
+
+            if entity.C_NAME not in seen_entity_types:
+                constraints_to_check.update(self.get_constraints_by_entity(entity))
+                seen_entity_types.add(entity.C_NAME)
+
+        if representative_entity is None:
+            representative_entity = next(iter(evaluation_deck))
+
+        if self.custom_log:
+            print(f"[ConstraintManager] Found {len(constraints_to_check)} unique constraints for batch.")
+
+        # 2. Directly run evaluate_impact_global once per unique constraint and update deck
+        for constraint in constraints_to_check:
+            to_unblock, to_block = constraint.evaluate_impact_global(
+                p_entity=representative_entity,
+                p_action_index=self.action_index,
+                deck=self.constraint_deck,
+                p_global_state=representative_entity.global_state
+            )
+            constraint.update_constraint_deck_global(to_block, to_unblock, self.constraint_deck)
+
+            if to_block or to_unblock:
+                if self.custom_log:
+                    print(f"   -> {constraint.C_NAME}: Block={len(to_block)}, Unblock={len(to_unblock)}")
+
+            total_to_block.extend(to_block)
+            total_to_unblock.extend(to_unblock)
+
+        time_end = datetime.datetime.now()
+        time_taken = time_end - time_start
+        if representative_entity.global_state is not None:
+            representative_entity.global_state.constraint_latency_per_step.append(time_taken.total_seconds())
         else:
             if self.custom_log:
                 print("[ConstraintManager] No net change in masks. Event skipped.")
@@ -1006,8 +1061,8 @@ class ConstraintManager(EventManager):
 
     def update_action_index(self, action_map, action_map_old, reverse_action_map_old):
         for constraint in self.constraints:
-            constraint.associated_action_index = self.action_index.get_actions_of_type(
-                constraint.C_ACTIONS_AFFECTED).copy()
+            constraint.associated_action_index = set(self.action_index.get_actions_of_type(
+                constraint.C_ACTIONS_AFFECTED).copy())
 
         self.update_entity_invalidation_maps(action_map, reverse_action_map_old)
         constraint_deck_old = self.constraint_deck.copy()
@@ -1044,12 +1099,11 @@ class ConstraintManager(EventManager):
                 self.masks[key] = 1
 
     def get_masks(self):
-        self.masks = [0 if value else 1 for key, value in self.constraint_deck.items()]
+        self.update_masks()
         return self.masks
 
     def evaluate_batch(self, evaluation_deck):
-        for entity in evaluation_deck:
-            self.handle_entity_state_change(p_entity=entity)
+        self.handle_batch_entity_state_change(evaluation_deck)
         evaluation_deck.clear()
 
 
