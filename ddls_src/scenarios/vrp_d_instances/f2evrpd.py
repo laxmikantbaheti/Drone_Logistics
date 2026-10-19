@@ -49,7 +49,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
         self.drones_per_mh = int(config.get("drones_per_mh", 2))
         self.bbox = tuple(config.get("bbox", (0.0, 0.0, 100.0, 100.0)))
         self.std_dev_scale = float(config.get("std_dev_scale", 4.0))
-
+        self.drones_at_supplier_hub = bool(config.get("drones_at_supplier_hub", False))
         self.drone_capacity_ratio = float(config.get("drone_capacity_ratio", 1.0))
         self.truck_speed = float(config.get("truck_speed", 1.0))
         self.drone_speed = float(config.get("drone_speed", 1.0))
@@ -294,18 +294,19 @@ class F2EVRPDGenerator(BaseDataGenerator):
     def _build_drones(self, n, depot_id, drone_config, mh_list):
         drones = []
         veh_typ = "Drone"
-        for i in range(self.drones_per_mh):
-            drones.append({
-                "id": 20000 + i,
-                "max_payload_capacity": drone_config["max_payload_capacity"],
-                "max_speed": drone_config["max_speed"],
-                "start_node_id": depot_id,
-                "p_echelon": 1,
-                "p_vehicle_typ": veh_typ
-            })
+        if self.drones_at_supplier_hub:
+            for i in range(self.drones_per_mh):
+                drones.append({
+                    "id": 20000 + i,
+                    "max_payload_capacity": drone_config["max_payload_capacity"],
+                    "max_speed": drone_config["max_speed"],
+                    "start_node_id": depot_id,
+                    "p_echelon": 1,
+                    "p_vehicle_typ": veh_typ
+                })
         for i in range(n):
             drones.append({
-                "id": 20000 + i + self.drones_per_mh,
+                "id": 20000 + i + self.drones_per_mh - 1,
                 "max_payload_capacity": drone_config["max_payload_capacity"],
                 "max_speed": drone_config["max_speed"],
                 "start_node_id": mh_list[math.ceil(i/self.drones_per_mh)-1]["id"],

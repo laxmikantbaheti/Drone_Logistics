@@ -47,7 +47,7 @@ def run_matrix_scenario_demo(instance:str= None, n_microhubs=2, n_drones=2):
 
                 # Capacity-derived configs inside generator
                 "drone_capacity_ratio": 0.2,
-                "drones_per_mh": 1,
+                "drones_per_mh": 5,
                 # Speeds (if your sim uses them)
                 "truck_speed": 1.0,
                 "drone_speed": 1.0,
