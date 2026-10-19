@@ -4,8 +4,8 @@ from ddls_src.entities.micro_hub import MicroHub
 from ddls_src.entities.node import Node
 from ddls_src.entities.order import Order, NodePair
 from ddls_src.entities.vehicles.base import Vehicle
-from ddls_src.entities.vehicles.drone import Drone
-from ddls_src.entities.vehicles.truck import Truck
+from ddls_src.entities.vehicles.secondechelonvehicle import SecondEchelonVehicle
+from ddls_src.entities.vehicles.firstechelonvehicle import FirstEchelonVehicle
 from itertools import product
 from mlpro.bf.various import Log
 from typing import Dict, Any, List, Tuple, Optional
@@ -24,8 +24,8 @@ class ScenarioGenerator:
         self.customer_nodes = {}
         self.supplier_nodes = {}
         self.edges: Dict[int, Edge] = {}
-        self.trucks: Dict[int, Truck] = {}
-        self.drones: Dict[int, Drone] = {}
+        self.trucks: Dict[int, FirstEchelonVehicle] = {}
+        self.drones: Dict[int, SecondEchelonVehicle] = {}
         self.micro_hubs: Dict[int, MicroHub] = {}
         self.orders: Dict[int, Order] = {}
         self.node_pairs = {}
@@ -87,11 +87,14 @@ class ScenarioGenerator:
 
         for truck_data in self._raw_entity_data.get('trucks', []):
             truck_data = self._prepare_kwargs(truck_data)  # <-- FIX
-            self.trucks[truck_data['p_id']] = Truck(**truck_data, p_logging=p_logging, **p_kwargs)
+            self.trucks[truck_data['p_id']] = FirstEchelonVehicle(**truck_data, p_logging=p_logging, **p_kwargs)
 
         for drone_data in self._raw_entity_data.get('drones', []):
             drone_data = self._prepare_kwargs(drone_data)  # <-- FIX
-            self.drones[drone_data['p_id']] = Drone(**drone_data, p_logging=p_logging, **p_kwargs)
+            if drone_data["p_echelon"] == 2:
+                self.drones[drone_data['p_id']] = SecondEchelonVehicle(**drone_data, p_logging=p_logging, **p_kwargs)
+            elif drone_data["p_echelon"] == 1:
+                self.drones[drone_data['p_id']] = FirstEchelonVehicle(**drone_data, p_logging=p_logging, **p_kwargs)
 
         for order_data in self._raw_entity_data.get('orders', []):
             order_data = self._prepare_kwargs(order_data)  # <-- FIX

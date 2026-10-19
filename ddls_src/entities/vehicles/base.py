@@ -30,7 +30,7 @@ class Vehicle(LogisticEntity, ABC):
 
     C_TYPE = 'Vehicle'
     C_NAME = '???'
-
+    C_ECHELON = None
     C_TRIP_STATE_IDLE = "Idle"
     C_TRIP_STATE_EN_ROUTE = "En Route"
     C_TRIP_STATE_HALT = "Halted"
@@ -48,6 +48,12 @@ class Vehicle(LogisticEntity, ABC):
 
     C_DATA_FRAME_VEH_TIMELINE = "Vehicle Timeline"
     C_DATA_FRAME_VEH_STATES = "Vehicle Trip States"
+
+    C_VEHICLE_TYP_TRUCK = "Truck"
+    C_VEHICLE_TYP_DRONE = "Drone"
+    C_VEHICLE_TYP = None
+    C_ECHELON_FIRST = 1
+    C_ECHELON_SECOND = 2
 
     def __init__(self,
                  p_id,
@@ -73,7 +79,11 @@ class Vehicle(LogisticEntity, ABC):
         self.max_payload_capacity: float = p_kwargs.get('max_payload_capacity', 0)
         self.max_speed: float = p_kwargs.get('max_speed', 0)
         self.network_manager: 'NetworkManager' = p_kwargs.get('network_manager')
-
+        if p_kwargs.get("p_vehicle_typ", None) is not None: self.C_VEHICLE_TYP = p_kwargs.get("p_vehicle_typ")
+        else: pass
+        self.C_NAME = self.C_VEHICLE_TYP
+        if p_kwargs.get("p_echelon", None) is not None: self.C_VEHICLE_TYP = p_kwargs.get("p_echelon")
+        else: pass
         # New: Current location coordinates
         self.current_location_coords: Optional[Tuple[float, float]] = None
 
@@ -1093,8 +1103,8 @@ class Vehicle(LogisticEntity, ABC):
         return self.current_node_id
 
     def set_current_node_id(self, current_node_id):
-        if self.C_NAME == "Drone":
-            self.update_battery_soc(current_node_id)
+        # if self.C_NAME == "Drone":
+        #     self.update_battery_soc(current_node_id)
         self.current_node_id = current_node_id
         for order in self.get_current_cargo():
             if not isinstance(order, Order):

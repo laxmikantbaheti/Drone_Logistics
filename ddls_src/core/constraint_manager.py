@@ -7,8 +7,8 @@ from ddls_src.entities.micro_hub import MicroHub
 from ddls_src.entities.node import Node
 from ddls_src.entities.order import PseudoOrder, Order, NodePair
 from ddls_src.entities.vehicles.base import Vehicle
-from ddls_src.entities.vehicles.drone import Drone
-from ddls_src.entities.vehicles.truck import Truck
+from ddls_src.entities.vehicles.secondechelonvehicle import SecondEchelonVehicle
+from ddls_src.entities.vehicles.firstechelonvehicle import FirstEchelonVehicle
 from mlpro.bf.events import Event, EventManager
 from mlpro.bf.various import Log
 from typing import Dict, Tuple, Set, List, Iterable
@@ -436,7 +436,7 @@ class OrderRequestAssignabilityConstraint(Constraint):
         return invalidation_idx, []
 
     def update_operability(self, p_entity, **p_kwargs):
-        if isinstance(p_entity, (Truck, Drone)):
+        if isinstance(p_entity, (FirstEchelonVehicle, SecondEchelonVehicle)):
             is_assignable = p_entity.check_assignability()
             for action_type in self.C_ACTIONS_AFFECTED:
                 if action_type in p_entity.action_operability:
@@ -627,7 +627,7 @@ class VehicleCapacityConstraint(Constraint):
             return [], []
 
     def update_operability(self, p_entity, **p_kwargs):
-        if not isinstance(p_entity, (Truck, Drone)):
+        if not isinstance(p_entity, (FirstEchelonVehicle, SecondEchelonVehicle)):
             return
         vehicle = p_entity
         vehicle_capacity = vehicle.get_cargo_capacity()
@@ -723,7 +723,7 @@ class CapacityConstraint(Constraint):
         blocked_actions = []
         unblocked_actions = []
         for vid,v in (p_entity.global_state.trucks|p_entity.global_state.drones|p_entity.global_state.micro_hubs).items():
-            if isinstance(v, Drone) or isinstance(v, Truck):
+            if isinstance(v, SecondEchelonVehicle) or isinstance(v, FirstEchelonVehicle):
                 cap = v.get_remaining_capacity()
             for nid, dem in p_entity.global_state.get_pending_demands().items():
                 n_pair = p_entity.global_state.node_pairs[nid]
@@ -786,7 +786,7 @@ class CapacityConstraint2(Constraint):
         unblocked_actions = []
         # for v in (p_entity.global_state.trucks|p_entity.global_state.drones).values():
         #     p_entity = v
-        if isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
+        if isinstance(p_entity, FirstEchelonVehicle) or isinstance(p_entity, SecondEchelonVehicle):
             av_cap = p_entity.get_remaining_capacity()
             relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
             dems = p_entity.global_state.get_pending_demands()
@@ -835,7 +835,7 @@ class TripWithinRangeConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_DRONE]
 
     def _get_restricted_actions(self, p_entity, p_action_index, **p_kwargs):
-        if not isinstance(p_entity, Drone):
+        if not isinstance(p_entity, SecondEchelonVehicle):
             raise TypeError(f"{self.C_NAME} needs {self.C_ASSOCIATED_ENTITIES} as type for associated entities.")
 
         relevant_actions = self.associated_action_index.intersection(p_entity.associated_action_indexes)
@@ -866,7 +866,7 @@ class TripWithinRangeConstraint(Constraint):
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         drone = p_entity
-        if not isinstance(drone, Drone):
+        if not isinstance(drone, SecondEchelonVehicle):
             raise ValueError("The 'Trip Within Range Constraint' is only applicable to Drones.")
 
         available_range = drone.get_remaining_range()
@@ -893,7 +893,7 @@ class TripWithinRangeConstraint(Constraint):
         return list(invalidation_set), []
 
     def update_operability(self, p_entity, **p_kwargs):
-        if not isinstance(p_entity, Drone):
+        if not isinstance(p_entity, SecondEchelonVehicle):
             return
         drone = p_entity
         available_range = drone.get_remaining_range()
@@ -937,7 +937,7 @@ class VehicleRoutingConstraint(Constraint):
 
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
-        if isinstance(p_entity, (Truck, Drone)):
+        if isinstance(p_entity, (FirstEchelonVehicle, SecondEchelonVehicle)):
             vehicle = p_entity
             pickup_nodes = [order.get_pickup_node_id() for order in vehicle.get_pickup_orders()]
             delivery_nodes = [order.get_delivery_node_id() for order in vehicle.get_delivery_orders()]
@@ -953,7 +953,7 @@ class VehicleRoutingConstraint(Constraint):
         return [], []
 
     def update_operability(self, p_entity, **p_kwargs):
-        if not isinstance(p_entity, (Truck, Drone)):
+        if not isinstance(p_entity, (FirstEchelonVehicle, SecondEchelonVehicle)):
             return
         vehicle = p_entity
         valid_destinations = set()
@@ -1044,7 +1044,7 @@ class ConsolidationConstraint(Constraint):
     # --- [LEGACY METHODS] ---
     def get_invalidations(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         invalidation_idx = []
-        if not isinstance(p_entity, (Truck, Drone)):
+        if not isinstance(p_entity, (FirstEchelonVehicle, SecondEchelonVehicle)):
             return invalidation_idx, []
 
         vehicle = p_entity
@@ -1072,7 +1072,7 @@ class ConsolidationConstraint(Constraint):
         return invalidation_idx, []
 
     def update_operability(self, p_entity, **p_kwargs):
-        if not isinstance(p_entity, (Truck, Drone)):
+        if not isinstance(p_entity, (FirstEchelonVehicle, SecondEchelonVehicle)):
             return
         vehicle = p_entity
         trip_state = vehicle.get_state_value_by_dim_name(Vehicle.C_DIM_TRIP_STATE[0])
@@ -1344,9 +1344,9 @@ class OrderLoadConstraint(Constraint):
                 actions_by_order.extend(p_action_index.actions_involving_entity["Order", ordr.get_id()])
             actions_by_order = list(set(actions_by_order))
 
-            if isinstance(p_entity, Truck):
+            if isinstance(p_entity, FirstEchelonVehicle):
                 actions_by_vehicle = p_action_index.actions_involving_entity["Truck", p_entity.get_id()]
-            elif isinstance(p_entity, Drone):
+            elif isinstance(p_entity, SecondEchelonVehicle):
                 actions_by_vehicle = p_action_index.actions_involving_entity["Drone", p_entity.get_id()]
 
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
@@ -1379,7 +1379,7 @@ class OrderLoadConstraint(Constraint):
             return list(relevant_actions), []
 
     def update_operability(self, p_entity, **p_kwargs):
-        if isinstance(p_entity, (Truck, Drone)):
+        if isinstance(p_entity, (FirstEchelonVehicle, SecondEchelonVehicle)):
             vehicle = p_entity
             valid_orders = set()
             for order in vehicle.get_pickup_orders():
@@ -1548,9 +1548,9 @@ class OrderUnloadConstraint(Constraint):
                     actions_by_order.extend(p_action_index.actions_involving_entity["Order", ordr.get_id()])
             actions_by_order = list(set(actions_by_order))
 
-            if isinstance(p_entity, Truck):
+            if isinstance(p_entity, FirstEchelonVehicle):
                 actions_by_vehicle = p_action_index.actions_involving_entity["Truck", p_entity.get_id()]
-            elif isinstance(p_entity, Drone):
+            elif isinstance(p_entity, SecondEchelonVehicle):
                 actions_by_vehicle = p_action_index.actions_involving_entity["Drone", p_entity.get_id()]
 
             actions_by_type = p_action_index.get_actions_of_type(self.C_ACTIONS_AFFECTED)
@@ -1581,7 +1581,7 @@ class OrderUnloadConstraint(Constraint):
             return list(relevant_actions), []
 
     def update_operability(self, p_entity, **p_kwargs):
-        if isinstance(p_entity, (Truck, Drone)):
+        if isinstance(p_entity, (FirstEchelonVehicle, SecondEchelonVehicle)):
             vehicle = p_entity
             current_cargo_ids = set(vehicle.get_current_cargo())
             delivery_manifest_ids = set([o.get_id() for o in vehicle.get_delivery_orders()])

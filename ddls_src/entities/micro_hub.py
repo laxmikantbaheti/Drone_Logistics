@@ -201,7 +201,7 @@ class MicroHub(Node):
 
     def get_current_cargo(self):
         if self.assigned_drone_id is not None:
-            return self.assigned_drones.get_current_cargo()
+            return self.active_drone.get_current_cargo()
 
     def get_remaining_capacity(self):
         if self.get_active_drone() is not None:

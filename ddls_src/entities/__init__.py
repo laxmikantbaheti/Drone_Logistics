@@ -4,5 +4,5 @@ from ddls_src.entities.micro_hub import MicroHub
 from ddls_src.entities.node import Node
 from ddls_src.entities.order import Order, PseudoOrder
 from ddls_src.entities.vehicles.base import Vehicle
-from ddls_src.entities.vehicles.drone import Drone
-from ddls_src.entities.vehicles.truck import Truck
+from ddls_src.entities.vehicles.secondechelonvehicle import SecondEchelonVehicle
+from ddls_src.entities.vehicles.firstechelonvehicle import FirstEchelonVehicle

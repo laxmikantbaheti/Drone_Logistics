@@ -1,7 +1,7 @@
 import numpy as np
 from gymnasium import spaces
 from abc import ABC, abstractmethod
-from ddls_src.entities import Truck, Drone, MicroHub, Vehicle
+from ddls_src.entities import FirstEchelonVehicle, SecondEchelonVehicle, MicroHub, Vehicle
 
 
 class BaseObservations(ABC):
@@ -383,7 +383,7 @@ class PerturbationAwareActiveResourceObservation(BaseObservations):
             ])
         elif isinstance(active_res, Vehicle):
             # Check Vehicle Subtype
-            is_drone = 1.0 if isinstance(active_res, Drone) else 0.0
+            is_drone = 1.0 if isinstance(active_res, SecondEchelonVehicle) else 0.0
             res_type = -0.33 if is_drone else 0.33
 
             # Location

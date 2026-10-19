@@ -9,8 +9,8 @@ from ddls_src.entities.micro_hub import MicroHub
 from ddls_src.entities.node import Node
 from ddls_src.entities.order import PseudoOrder, Order, NodePair
 from ddls_src.entities.vehicles.base import Vehicle
-from ddls_src.entities.vehicles.drone import Drone
-from ddls_src.entities.vehicles.truck import Truck
+from ddls_src.entities.vehicles.secondechelonvehicle import SecondEchelonVehicle
+from ddls_src.entities.vehicles.firstechelonvehicle import FirstEchelonVehicle
 from mlpro.bf.events import Event, EventManager
 from mlpro.bf.various import Log
 from typing import Dict, Tuple, Set, List, Iterable
@@ -307,7 +307,7 @@ class ResourceAssignabilityConstraint(Constraint):
         masks = set()
         if active_resource is None:
             return [], list(relevant_actions)
-        elif isinstance(active_resource, Truck):
+        elif isinstance(active_resource, FirstEchelonVehicle):
             for order in active_resource.global_state.pseudo_orders.values():
                 if order.leg == 2:
                     masks.update(order.node_pair.associated_action_indexes.intersection(self.associated_action_index))
@@ -321,7 +321,7 @@ class ResourceAssignabilityConstraint(Constraint):
         masks = set()
         if active_resource is None:
             return [], list(relevant_actions)
-        elif isinstance(active_resource, Truck):
+        elif isinstance(active_resource, FirstEchelonVehicle):
             for order in active_resource.global_state.pseudo_orders.values():
                 if order.leg == 2:
                     masks.update(self.get_common_actions(order.node_pair))
@@ -344,8 +344,8 @@ class ActiveResourceConstraint(Constraint):
         mask = set()
         if not len(p_kwargs.get("p_global_state").get_next_demands(False)):
             return [], list(relevant_actions)
-        if (isinstance(active_resource, Truck)
-                or isinstance(active_resource, Drone)
+        if (isinstance(active_resource, FirstEchelonVehicle)
+                or isinstance(active_resource, SecondEchelonVehicle)
                 or isinstance(active_resource, MicroHub)):
             return list(), list(relevant_actions)
         elif active_resource is None:
@@ -369,8 +369,8 @@ class ActiveResourceConstraint(Constraint):
         mask = set()
         if not len(p_entity.global_state.get_next_demands(False)):
             return [], list(relevant_actions)
-        if (isinstance(active_resource, Truck)
-                or isinstance(active_resource, Drone)
+        if (isinstance(active_resource, FirstEchelonVehicle)
+                or isinstance(active_resource, SecondEchelonVehicle)
                 or isinstance(active_resource, MicroHub)):
             return list(), list(relevant_actions)
         elif active_resource is None:
@@ -599,8 +599,9 @@ class FullCapacityConsolidationConstraint(Constraint):
             return [], list(relevant_actions)
 
         if isinstance(active_resource, MicroHub):
-            drone = getattr(active_resource, 'assigned_drone', None)
+            drone = getattr(active_resource, 'active_drone', None)
             if drone is not None:
+            # if drone is None:
                 return self._evaluate_drone_consolidation(drone, p_entity, relevant_actions)
             else:
                 dems = p_kwargs.get("p_global_state").get_next_demands()
@@ -611,10 +612,10 @@ class FullCapacityConsolidationConstraint(Constraint):
                 else:
                     return list(relevant_actions), []
 
-        if isinstance(active_resource, Drone):
+        if isinstance(active_resource, SecondEchelonVehicle):
             return self._evaluate_drone_consolidation(active_resource, p_entity, relevant_actions)
 
-        elif isinstance(active_resource, Truck):
+        elif isinstance(active_resource, FirstEchelonVehicle):
             cargo = active_resource.get_current_cargo()
             pickup_orders = active_resource.get_pickup_orders()
             if not (len(cargo) or len(pickup_orders)):
@@ -637,14 +638,14 @@ class FullCapacityConsolidationConstraint(Constraint):
     def evaluate_impact_global_vectorized(self, p_entity: LogisticEntity, p_action_index: ActionIndex, deck=None) -> Tuple[List, List]:
         return self.evaluate_impact_global(p_entity, p_action_index)
 
-    def _evaluate_drone_consolidation(self, drone: Drone, p_entity: LogisticEntity, relevant_actions: set):
+    def _evaluate_drone_consolidation(self, drone: SecondEchelonVehicle, p_entity: LogisticEntity, relevant_actions: set):
         ready = drone._evaluate_drone_consolidation()
         if not ready:
             return [], list(relevant_actions)
         else:
             return list(relevant_actions), []
 
-    def _calculate_battery_cost(self, global_state, vehicle: Drone, last_node_id: int,
+    def _calculate_battery_cost(self, global_state, vehicle: SecondEchelonVehicle, last_node_id: int,
                                 delivery_node_id: int, hub_node_id: int) -> float:
         dist_to_next_delivery = global_state.network.calculate_distance(last_node_id, delivery_node_id, vehicle.C_NAME)
         dist_return_to_hub = global_state.network.calculate_distance(delivery_node_id, hub_node_id, vehicle.C_NAME)
@@ -711,6 +712,22 @@ class MicroHubFirstConstraint(Constraint):
         return self.evaluate_impact_global(p_entity, p_action_index, deck)
 
 
+class DroneHubFirstConstraint(Constraint):
+    C_NAME = "DroneHubFirstConstraint"
+    C_ACTIONS_AFFECTED = [SimulationActions.SELECT_TRUCK]
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "MicroHub"]
+    C_ACTIVE = True
+    C_GLOBAL_CONSTRAINT = True
+
+    def evaluate_impact_global(self, p_entity, p_action_index, deck, **p_kwargs):
+        relevant_actions = list(self.associated_action_index)
+        drones_consolidated = all([drone.consolidation_confirmed for drone in p_kwargs.get("p_global_state").drones.values()
+                                  if drone.C_ECHELON == 1])
+        if drones_consolidated:
+            return list(relevant_actions), []
+        else:
+            return [], list(relevant_actions)
+
 class MicroHubConsolidation(Constraint):
     C_NAME = "MicroHubConsolidation"
     C_ACTIONS_AFFECTED = [SimulationActions.CONSOLIDATE]
@@ -768,7 +785,7 @@ class BatteryAssignmentConstraint(Constraint):
     C_ASSOCIATED_ENTITIES = ["MicroHub", "Drone", "Truck"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_RESOURCE]
     C_GLOBAL_CONSTRAINT = True
-    C_ACTIVE = False
+    C_ACTIVE = True
 
     # 1. Original Legacy Method (Untouched)
     def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, deck, **p_kwargs) -> Tuple[List, List]:
@@ -777,20 +794,20 @@ class BatteryAssignmentConstraint(Constraint):
         relevant_actions = self.associated_action_index
 
         active_resource = p_kwargs.get("p_global_state").active_resource
-        if isinstance(active_resource, Truck):
+        if isinstance(active_resource, FirstEchelonVehicle):
             return list(relevant_actions), []
         if active_resource is None or not isinstance(active_resource, MicroHub):
             return [], list(relevant_actions)
 
-        available_battery = active_resource.assigned_drones.get_available_battery_capacity()
+        available_battery = active_resource.active_drone.get_available_battery_capacity()
         cargo = active_resource.get_current_cargo()
-        pickup_orders = active_resource.assigned_drones.get_pickup_orders()
+        pickup_orders = active_resource.active_drone.get_pickup_orders()
 
         if pickup_orders or cargo:
             all_commitments = pickup_orders + cargo
             last_projected_node_id = all_commitments[-1].get_delivery_node_id()
         else:
-            last_projected_node_id = active_resource.assigned_drones.current_node_id
+            last_projected_node_id = active_resource.active_drone.current_node_id
 
         hub_node_id = active_resource.start_node_id if hasattr(active_resource, 'start_node_id') else 0
         pending_demands = p_kwargs.get("p_global_state").get_pending_demands()
@@ -822,7 +839,7 @@ class BatteryAssignmentConstraint(Constraint):
         relevant_actions = self.associated_action_index
 
         active_resource = p_entity.global_state.active_resource
-        if isinstance(active_resource, Truck):
+        if isinstance(active_resource, FirstEchelonVehicle):
             return list(relevant_actions), []
         if active_resource is None or not isinstance(active_resource, MicroHub):
             return [], list(relevant_actions)
@@ -858,13 +875,39 @@ class BatteryAssignmentConstraint(Constraint):
 
         return list(actions_to_unblock), list(actions_to_block)
 
-    def _calculate_battery_cost(self, global_state, vehicle: Drone, last_node_id: int,
+    def _calculate_battery_cost(self, global_state, vehicle: SecondEchelonVehicle, last_node_id: int,
                                 delivery_node_id: int, hub_node_id: int) -> float:
         dist_to_next_delivery = global_state.get_distance(last_node_id, delivery_node_id) if hasattr(global_state, 'get_distance') else 0
         dist_return_to_hub = global_state.get_distance(delivery_node_id, hub_node_id) if hasattr(global_state, 'get_distance') else 0
         total_distance = dist_to_next_delivery + dist_return_to_hub
         consumption_rate = vehicle.get_energy_consumption_rate() if hasattr(vehicle, 'get_energy_consumption_rate') else 1.0
         return total_distance * consumption_rate
+
+
+class DirectDeliveryDroneAssignmentConstraint(Constraint):
+    C_NAME = "DirectDeliveryDroneAssignmentConstraint"
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "MicroHub", "NodePair"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_RESOURCE]
+    C_GLOBAL_CONSTRAINT = True
+
+    def evaluate_impact_global(self, p_entity, p_action_index, deck, p_global_state, **p_kwargs):
+        relevant_actions = self.associated_action_index
+        global_state = p_global_state
+        if global_state is None:
+            return [], []
+        active_resource = global_state.active_resource
+        if active_resource is None:
+            return [], []
+        if (not isinstance(active_resource, FirstEchelonVehicle)
+                or not active_resource.C_VEHICLE_TYP in [active_resource.C_VEHICLE_TYP_DRONE]):
+            return list(relevant_actions), []
+        else:
+            actions_to_mask = set()
+            mh_routes = p_global_state.get_microhub_routes()
+            for route in mh_routes:
+                actions_to_mask.update(relevant_actions.intersection(route.associated_action_indexes))
+            actions_to_unmask = relevant_actions.difference(actions_to_mask)
+            return list(actions_to_unmask), list(actions_to_mask)
 
 
 # -------------------------------------------------------------------------------------------------

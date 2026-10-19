@@ -123,7 +123,7 @@ class LogisticManager(System):
             if active_resource is None:
                 raise ValueError("Assign actions must be masked when there is no active resource selected. Please"
                                  "check your masking logic/constraints.")
-            if isinstance(active_resource, Truck) or isinstance(active_resource, Drone):
+            if isinstance(active_resource, FirstEchelonVehicle) or isinstance(active_resource, SecondEchelonVehicle):
                 self.assign_order(o, active_resource)
             elif isinstance(active_resource, MicroHub):
                 self.assign_order(o, active_resource)
@@ -237,7 +237,7 @@ class LogisticManager(System):
                 print(f"Order {p_order.get_id()} assigned to micro_hub {p_entity.get_id()}.")
             assigned = p_order.assign_micro_hub(p_entity.id) and assigned
             assigned = p_entity.assign_order(p_order, pseudo_order1, pseudo_order2) and assigned
-        elif isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
+        elif isinstance(p_entity, FirstEchelonVehicle) or isinstance(p_entity, SecondEchelonVehicle):
             assigned = p_order.assign_vehicle(p_entity._id, p_entity)
             assigned = p_entity.assign_orders([p_order]) and assigned
             if assigned:

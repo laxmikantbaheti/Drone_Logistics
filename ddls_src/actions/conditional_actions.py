@@ -31,27 +31,27 @@ class SimulationActions:
     #                                            {'name': 'drone_id', 'type': 'Drone'}],
     #                                    is_automatic=False,
     #                                    handler="SupplyChainManager")
-    ASSIGN_ORDER_TO_RESOURCE = ActionType(name = "ASSIGN_ORDER_TO_RESOURCE",
-                                          params=[{"name":'pick_up_drop', "type":"Node Pair"}],
+    ASSIGN_ORDER_TO_RESOURCE = ActionType(name="ASSIGN_ORDER_TO_RESOURCE",
+                                          params=[{"name": 'pick_up_drop', "type": "Node Pair"}],
                                           is_automatic=False,
-                                          handler = "Logistic")
-    SELECT_TRUCK = ActionType(name = "SELECT_TRUCK",
-                                 params = [{"name" : "truck_id", "type":"Truck"}],
+                                          handler="Logistic")
+    SELECT_TRUCK = ActionType(name="SELECT_TRUCK",
+                              params=[{"name": "truck_id", "type": "Truck"}],
+                              is_automatic=True,
+                              handler="Logistic")
+    SELECT_DRONE = ActionType(name="SELECT_DRONE",
+                              params=[{"name": "drone_id", "type": "Drone"}],
+                              is_automatic=False,
+                              handler="Logistic",
+                              active=True)
+    SELECT_MICROHUB = ActionType(name="SELECT_MICROHUB",
+                                 params=[{"name": "micro_hub_id", "type": "MicroHub"}],
                                  is_automatic=True,
-                                 handler = "Logistic")
-    SELECT_DRONE = ActionType(name = "SELECT_DRONE",
-                                 params = [{"name" : "drone_id", "type":"Drone"}],
-                                 is_automatic=False,
-                                 handler = "Logistic",
-                              active=False)
-    SELECT_MICROHUB = ActionType(name = "SELECT_MICROHUB",
-                                 params = [{"name" : "micro_hub_id", "type":"MicroHub"}],
-                                 is_automatic=True,
-                                 handler = "Logistic")
+                                 handler="Logistic")
     CONSOLIDATE = ActionType(name="CONSOLIDATE_FOR_VEHICLE",
                              params=[],
                              is_automatic=True,
-                             handler = "Logistic")
+                             handler="Logistic")
     #
     # ASSIGN_ORDER_TO_MICRO_HUB = ActionType(name="ASSIGN_ORDER_TO_MICRO_HUB",
     #                                        params=[{'name': 'pick_up_drop', 'type': 'Node Pair'},
@@ -185,16 +185,30 @@ class SimulationActions:
     def get_all_actions(cls):
         all_actions = [getattr(cls, attr) for attr in dir(cls)
                        if (isinstance(getattr(cls, attr), ActionType) and getattr(cls, attr).active)]
-        all_actions.sort(key = lambda x: x.id)
+        all_actions.sort(key=lambda x: x.id)
         return all_actions
 
     @classmethod
     def get_actions_by_manager(cls, p_manager_name):
         actions_by_manager = [getattr(cls, attr) for attr in dir(cls)
                               if (isinstance(getattr(cls, attr), ActionType)
-                                  and getattr(cls, attr).active and (getattr(cls,attr).handler == p_manager_name))]
+                                  and getattr(cls, attr).active and (getattr(cls, attr).handler == p_manager_name))]
         actions_by_manager.sort(key=lambda x: x.id)
         return actions_by_manager
+
+    @staticmethod
+    def _is_echelon_1_drone(drone) -> bool:
+        """
+        [NEW] Helper to check if a drone has C_ECHELON == 1.
+        Supports direct attribute access or dictionary-based attribute storage.
+        """
+        if hasattr(drone, 'C_ECHELON'):
+            return getattr(drone, 'C_ECHELON') == 1
+        if hasattr(drone, 'c_echelon'):
+            return getattr(drone, 'c_echelon') == 1
+        if hasattr(drone, 'attributes') and isinstance(drone.attributes, dict):
+            return drone.attributes.get('C_ECHELON') == 1
+        return False
 
     def generate_action_map(self, global_state: 'GlobalState') -> Tuple[Dict[Tuple, int], int]:
         """
@@ -259,10 +273,13 @@ class SimulationActions:
                         target_collections.append(global_state.trucks.values())
                         target_collections.append(global_state.drones.values())
                         target_collections.append(global_state.micro_hubs.values())
-                        pass
 
                     for collection in target_collections:
                         for entity in collection:
+                            # [MODIFIED] Only associate SELECT_DRONE with drones that have C_ECHELON == 1
+                            if action_type.name == "SELECT_DRONE" and not self._is_echelon_1_drone(entity):
+                                continue
+
                             entity.associated_actions.add(action_type)
                             entity.action_operability[action_type] = True
             # --- [END OF MODIFICATION 2] ---
@@ -301,6 +318,16 @@ class SimulationActions:
                     node_pair, micro_hub_id = combo
                     pickup_node_id, delivery_node_id = node_pair
                     if micro_hub_id != pickup_node_id and micro_hub_id != delivery_node_id:
+                        filtered_combinations.append(combo)
+                param_combinations = filtered_combinations
+
+            # [MODIFIED] Filter SELECT_DRONE actions strictly to drones with C_ECHELON == 1
+            elif action_type.name == "SELECT_DRONE":
+                filtered_combinations = []
+                for combo in param_combinations:
+                    (drone_id,) = combo
+                    drone_entity = global_state.drones.get(drone_id)
+                    if drone_entity is not None and self._is_echelon_1_drone(drone_entity):
                         filtered_combinations.append(combo)
                 param_combinations = filtered_combinations
 

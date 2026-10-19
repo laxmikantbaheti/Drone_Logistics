@@ -293,14 +293,28 @@ class F2EVRPDGenerator(BaseDataGenerator):
 
     def _build_drones(self, n, depot_id, drone_config, mh_list):
         drones = []
-        for i in range(n):
+        veh_typ = "Drone"
+        for i in range(self.drones_per_mh):
             drones.append({
                 "id": 20000 + i,
                 "max_payload_capacity": drone_config["max_payload_capacity"],
                 "max_speed": drone_config["max_speed"],
+                "start_node_id": depot_id,
+                "p_echelon": 1,
+                "p_vehicle_typ": veh_typ
+            })
+        for i in range(n):
+            drones.append({
+                "id": 20000 + i + self.drones_per_mh,
+                "max_payload_capacity": drone_config["max_payload_capacity"],
+                "max_speed": drone_config["max_speed"],
                 "start_node_id": mh_list[math.ceil(i/self.drones_per_mh)-1]["id"],
+                "p_echelon": 2,
+                "p_vehicle_typ": veh_typ
                 })
         for i,drone in enumerate(drones):
+            if drone["p_echelon"] == 1:
+                continue
             mh_list[drone["start_node_id"]-len(self.nodes_list)]["assigned_drone_id"].append(drone["id"])
 
         return drones
