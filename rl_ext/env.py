@@ -26,7 +26,7 @@ class LogisticsEnv(gym.Env):
         )
 
         if observation_handler is not None:
-            self.obs_handler = PerturbationAwareActiveResourceObservation()
+             self.obs_handler = PerturbationAwareActiveResourceObservation()
         else:
             self.obs_handler = PerturbationAwareActiveResourceObservation()
 
