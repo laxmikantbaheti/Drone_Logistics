@@ -29,7 +29,7 @@ class MaskablePPOTraining(Training):
             n_epochs=15,
             batch_size=256,
             gamma=0.99,
-            ent_coef=0.04,
+            ent_coef=0.02,
             tensorboard_log=tb_log,
             device="cuda"
         )
@@ -72,7 +72,7 @@ if __name__ == "__main__":
         "scenarios",
         "vrp_d_instances",
         "VRP-D",
-        "A-n33-k6.vrp"
+        "A-n36-k5"
     )
     vrp_instance_path = os.path.normpath(vrp_instance_path)
     instance_name = os.path.splitext(os.path.basename(vrp_instance_path))[0].replace("-", "_")
@@ -121,4 +121,4 @@ if __name__ == "__main__":
         sim_config=sim_config,
         instance_name=instance_name,
     )
-    trainer.train(total_timesteps=40000000)
+    trainer.train(total_timesteps=2000000)
