@@ -79,8 +79,6 @@ To support immediate reproducibility without retraining from scratch, determinis
 - **`models/final_MaskablePPO_<INSTANCE>_model.zip`**: Pretrained Maskable PPO policies for the full multimodal **2E-CVRP-D-DD** environment.
 - **`models/truck_only_models/final_MaskablePPO_<INSTANCE>_model.zip`**: Pretrained single-echelon **1E-CVRP** policies used for CVRPLib BKS calibration and truck-only baseline comparisons.
 
-> **Reproducibility Note:** All benchmark metrics reported in the manuscript correspond to deterministic greedy single-pass inference (`deterministic=True`, `1-Pass`) executed on a single CPU thread. Minor floating-point tie-breaking variations may occur across different PyTorch/BLAS versions or hardware architectures.
-
 ---
 
 ## Installation
