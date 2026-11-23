@@ -77,10 +77,23 @@ class MaskablePPOEvaluation(Training):
                 total_reward += reward
 
             episode_rewards.append(total_reward)
-            print(f"Episode {ep + 1} Finished | Total Reward: {total_reward:.2f} | Total Distance: {info['Truck Distance']+info['Drone Distance']}\n")
+            global_state = info["Global State"]
+            print(f"No. Micro Hubs: {len(global_state.micro_hubs)}")
+            print(f"Total Deliveries (including MH deliveries): {len(global_state.delivered_orders)} | {sum([o.size for o in global_state.delivered_orders])}")
+            print(f"Direct Deliveries: {len(global_state.direct_deliveries)} | {sum([o.size for o in global_state.direct_deliveries])}")
+            print(f"Direct Truck Deliveries: {len(global_state.direct_truck_deliveries)} | {sum([o.size for o in global_state.direct_truck_deliveries])}")
+            print(f"Direct Drone Deliveries: {len(global_state.direct_drone_deliveries)} | {sum([o.size for o in global_state.direct_drone_deliveries])}")
+            print(f"E 1 Deliveries: {len(global_state.ech_1_deliveries)} | {sum([o.size for o in global_state.ech_1_deliveries])}")
+            print(f"E 2 Deliveries: {len(global_state.ech_2_deliveries)} | {sum([o.size for o in global_state.ech_2_deliveries])}")
+            print(f"Drone Deliveries: {len(global_state.drone_deliveries)} | {sum([o.size for o in global_state.drone_deliveries])}")
+            print(f"Truck Deliveries: {len(global_state.truck_deliveries)} | {sum([o.size for o in global_state.truck_deliveries])}")
+
+            print(f"Episode {ep + 1} Finished | Total Reward: {total_reward:.2f} | Total Distance: {info['Truck Distance'] + info['Drone Distance']}\n")
+            print(f"Truck Distance: {info['Truck Distance']} | Drone Distance: {info['Drone Distance']} | Makespan: {info['makespan']}")
 
         avg_reward = sum(episode_rewards) / len(episode_rewards)
         print("--- EVALUATION SUMMARY ---")
+
         print(f"Evaluated Episodes: {num_episodes}")
         print(f"Average Reward: {avg_reward:.2f}")
 
@@ -90,7 +103,7 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
     # Relative path from this script's directory as the default
-    default_rel_model_path = os.path.join("..","models", "final_MaskablePPO_A_n32_k5_model.zip")
+    default_rel_model_path = os.path.join("..","models", "final_MaskablePPO_A_n33_k5_model.zip")
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -124,7 +137,7 @@ if __name__ == "__main__":
         "scenarios",
         "vrp_d_instances",
         "VRP-D",
-        "A-n32-k5"
+        "A-n33-k5"
     )
     vrp_instance_path = os.path.normpath(vrp_instance_path)
 
@@ -138,14 +151,17 @@ if __name__ == "__main__":
         "main_timestep_duration": 1.0,
         "data_loader_config": {
             # IMPORTANT: Map "dynamic_vrpd" to DynamicDemandPerturbationGenerator in your factory
-            "generator_type": "dynamic_vrpd",
+            "generator_type": "f2evrpd",
             "generator_config": {
                 "instance_path": vrp_instance_path,
                 "num_drones": 0,
+                "drones_at_supplier_hub": True,
+                "drones_per_mh": 5,
                 "num_microhubs": 0,
                 "bbox": (0, 0, 100, 100),
                 "std_dev_scale": 4.0,
                 "drone_capacity_ratio": 0.2,
+                "truck_capacity_factor": 1,
                 "truck_speed": 1.0,
                 "drone_speed": 1.0,
                 "seed": 42,

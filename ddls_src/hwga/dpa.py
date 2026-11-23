@@ -28,168 +28,27 @@ def make_env(vrp_instance_path: str, sim_config: dict, instance_name: str):
 
 
 # ----------------------------------------------------------------------
-# 2. Action Decoder & Multi-Modal Network Extractor
-# ----------------------------------------------------------------------
-class ActionFeatureExtractor:
-    """
-    Decodes the composite action space:
-    1. Nodes [0 .. num_nodes-1]: Depots, microhubs, customers.
-    2. Drone Routes [num_nodes .. num_nodes + (num_hubs * num_nodes) - 1]:
-       Dispatches drone from a microhub to a node.
-    """
-
-    def __init__(self, env, num_nodes: int = 32, num_microhubs: int = 6):
-        self.env = env
-        self.num_nodes = num_nodes
-        self.num_microhubs = max(1, num_microhubs)
-
-        self.land_matrix, self.air_matrix = self._extract_matrices()
-
-        self.max_land = (
-            float(np.max(self.land_matrix))
-            if self.land_matrix is not None and np.max(self.land_matrix) > 0
-            else 1.0
-        )
-        self.max_air = (
-            float(np.max(self.air_matrix))
-            if self.air_matrix is not None and np.max(self.air_matrix) > 0
-            else 1.0
-        )
-
-    def _ensure_numpy_matrix(self, mat: Any) -> Optional[np.ndarray]:
-        """
-        Converts extracted matrix data (which might be a dict, nested dict,
-        or wrapped structure) into a standard 2D NumPy float array.
-        """
-        if mat is None:
-            return None
-
-        if isinstance(mat, np.ndarray):
-            return mat.astype(np.float32)
-
-        if isinstance(mat, dict):
-            for inner_key in ["matrix", "data", "distances", "distance_matrix", "values", "array"]:
-                if inner_key in mat:
-                    sub_val = mat[inner_key]
-                    if isinstance(sub_val, np.ndarray):
-                        return sub_val.astype(np.float32)
-                    elif isinstance(sub_val, list):
-                        return np.array(sub_val, dtype=np.float32)
-
-            sample_val = next(iter(mat.values())) if len(mat) > 0 else None
-            if isinstance(sample_val, dict):
-                all_keys = set(mat.keys())
-                for sub_dict in mat.values():
-                    all_keys.update(sub_dict.keys())
-                n = max(int(k) for k in all_keys) + 1 if all_keys else len(mat)
-                arr = np.zeros((n, n), dtype=np.float32)
-                for i, row in mat.items():
-                    for j, dist in row.items():
-                        arr[int(i), int(j)] = float(dist)
-                return arr
-
-            sample_key = next(iter(mat.keys())) if len(mat) > 0 else None
-            if isinstance(sample_key, tuple):
-                nodes = set()
-                for i, j in mat.keys():
-                    nodes.add(int(i))
-                    nodes.add(int(j))
-                n = max(nodes) + 1 if nodes else 0
-                arr = np.zeros((n, n), dtype=np.float32)
-                for (i, j), dist in mat.items():
-                    arr[int(i), int(j)] = float(dist)
-                return arr
-
-            try:
-                return np.array(list(mat.values()), dtype=np.float32)
-            except Exception:
-                pass
-
-        if isinstance(mat, list):
-            return np.array(mat, dtype=np.float32)
-
-        return None
-
-    def _extract_matrices(self) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-        """Extracts land and air matrices directly from the environment or data generator."""
-        unwrapped = getattr(self.env, "unwrapped", self.env)
-
-        targets = [unwrapped]
-        for attr in ["data_loader", "generator", "scenario", "config"]:
-            if hasattr(unwrapped, attr):
-                obj = getattr(unwrapped, attr)
-                targets.append(obj)
-                if hasattr(obj, "generator"):
-                    targets.append(getattr(obj, "generator"))
-
-        raw_land, raw_air = None, None
-
-        for t in targets:
-            try:
-                if raw_land is None and hasattr(t, "_system") and hasattr(t._system, "network"):
-                    raw_land = getattr(t._system.network, "land_distance_matrix", None)
-                if raw_air is None and hasattr(t, "_system") and hasattr(t._system, "network"):
-                    raw_air = getattr(t._system.network, "air_distance_matrix", None)
-            except Exception:
-                pass
-
-        land_mat = self._ensure_numpy_matrix(raw_land)
-        air_mat = self._ensure_numpy_matrix(raw_air)
-
-        return land_mat, air_mat
-
-    def decode_action(self, action_idx: int) -> Dict[str, Any]:
-        """Maps an integer action to its operational context and target node."""
-        if action_idx < self.num_nodes:
-            return {
-                "type": "node_visit",
-                "origin": None,
-                "target_node": action_idx,
-                "is_drone": False,
-                "is_hub": (action_idx < self.num_microhubs),
-                "is_depot": (action_idx == 0),
-            }
-        else:
-            offset = action_idx - self.num_nodes
-            hub_idx = offset // self.num_nodes
-            target_node = offset % self.num_nodes
-            return {
-                "type": "drone_route",
-                "origin": hub_idx,
-                "target_node": target_node,
-                "is_drone": True,
-                "is_hub": False,
-                "is_depot": False,
-            }
-
-
-# ----------------------------------------------------------------------
-# 3. Dynamic Perturbation Optimizer (DPO)
+# 2. Dynamic Perturbation Optimizer (DPO)
 # ----------------------------------------------------------------------
 class DynamicPerturbationOptimizer:
     """
-    Adaptive Priority Search over Node Action Space.
-    1. Operates directly on continuous customer/node priorities.
+    Adaptive Priority Search over the full Action Space.
+    1. Operates directly on continuous action priorities.
     2. Completely avoids mask collisions (100% compliant with env.action_masks()).
     3. Uses dynamic adaptive perturbation to break out of reward plateaus.
     """
 
     def __init__(
-        self,
-        env,
-        num_nodes: int = 32,
-        num_microhubs: int = 6,
-        pop_size: int = 24,
-        generations: int = 150,
-        base_mutation_rate: float = 0.20,
-        elite_ratio: float = 0.15,
-        patience_threshold: int = 8,
-        seed: int = 42,
+            self,
+            env,
+            pop_size: int = 24,
+            generations: int = 150,
+            base_mutation_rate: float = 0.20,
+            elite_ratio: float = 0.15,
+            patience_threshold: int = 8,
+            seed: int = 42,
     ):
         self.env = env
-        self.num_nodes = num_nodes
-        self.num_microhubs = max(1, num_microhubs)
-        self.extractor = ActionFeatureExtractor(env, num_nodes, num_microhubs)
 
         self.pop_size = pop_size
         self.generations = generations
@@ -201,14 +60,17 @@ class DynamicPerturbationOptimizer:
         random.seed(seed)
         np.random.seed(seed)
 
-        # Chromosome represents priority keys [0.0, 1.0] for every node
-        self.chromosome_dim = self.num_nodes
+        # Initialize environment once to get the true action space size dynamically
+        self.env.reset(seed=self.seed)
+        self.chromosome_dim = len(self.env.action_masks())
+
+        # Chromosome represents priority keys [0.0, 1.0] for every possible ACTION
         self.population = np.random.uniform(0.0, 1.0, size=(self.pop_size, self.chromosome_dim))
 
     def evaluate_chromosome(self, priorities: np.ndarray) -> float:
         """
         Rolls out an entire episode.
-        At each step, picks the valid action whose target node has the highest priority score.
+        At each step, picks the valid action that has the highest priority score.
         Always feasible: zero penalties, zero crashes, zero heuristic collisions.
         """
         obs, info = self.env.reset(seed=self.seed)
@@ -219,17 +81,12 @@ class DynamicPerturbationOptimizer:
         while not (done or truncated):
             mask = self.env.action_masks()
             valid_indices = np.where(mask == 1)[0]
+
             if len(valid_indices) == 0:
                 break
 
-            # Map all valid actions to their target destination nodes
-            target_nodes = [
-                self.extractor.decode_action(a)["target_node"]
-                for a in valid_indices
-            ]
-
-            # Extract priority scores for valid target nodes
-            action_priorities = priorities[target_nodes]
+            # Extract priority scores directly for the valid actions
+            action_priorities = priorities[valid_indices]
 
             # Select the valid action with the maximum priority
             best_action = valid_indices[np.argmax(action_priorities)]
@@ -247,9 +104,7 @@ class DynamicPerturbationOptimizer:
 
     def optimize(self) -> Tuple[np.ndarray, float]:
         print("\n--- STARTING DYNAMIC PERTURBATION OPTIMIZER (DPO) ---")
-        print(f"Population: {self.pop_size} | Generations: {self.generations} | Nodes: {self.num_nodes}")
-        print(f"Land Matrix: {'DETECTED' if self.extractor.land_matrix is not None else 'UNAVAILABLE'}")
-        print(f"Air Matrix : {'DETECTED' if self.extractor.air_matrix is not None else 'UNAVAILABLE'}\n")
+        print(f"Population: {self.pop_size} | Generations: {self.generations} | Action Space: {self.chromosome_dim}\n")
 
         start_time = time.time()
         best_overall_genome = None
@@ -286,6 +141,7 @@ class DynamicPerturbationOptimizer:
                 status_tag = "[*HEAVY PERTURBATION*]"
                 stagnation_counter = 0
             else:
+                # FIXED SYNTAX ERROR HERE
                 perturbation_sigma = 0.10 + (0.02 * stagnation_counter)
                 mutation_prob = self.base_mutation_rate
 
@@ -340,7 +196,7 @@ class DynamicPerturbationOptimizer:
 
 
 # ----------------------------------------------------------------------
-# 4. CLI Execution
+# 3. CLI Execution
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
     script_path = os.path.dirname(os.path.realpath(__file__))
@@ -373,8 +229,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dynamic Perturbation Optimizer (DPO)")
     parser.add_argument("--pop", type=int, default=24, help="Population size")
     parser.add_argument("--gens", type=int, default=300, help="Generations")
-    parser.add_argument("--nodes", type=int, default=32, help="Instance node count")
-    parser.add_argument("--hubs", type=int, default=6, help="Microhub count")
     parser.add_argument("--patience", type=int, default=8, help="Generations before scaling perturbation")
     parser.add_argument("--seed", type=int, default=42, help="Seed")
     args = parser.parse_args()
@@ -383,8 +237,6 @@ if __name__ == "__main__":
 
     optimizer = DynamicPerturbationOptimizer(
         env=env,
-        num_nodes=args.nodes,
-        num_microhubs=args.hubs,
         pop_size=args.pop,
         generations=args.gens,
         patience_threshold=args.patience,

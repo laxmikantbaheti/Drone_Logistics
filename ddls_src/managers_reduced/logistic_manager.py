@@ -218,10 +218,17 @@ class LogisticManager(System):
             # active_resource.consolidated = True
             active_resource.consolidate_for_mh()
             dems = active_resource.global_state.get_next_demands()
-            if all([mh.consolidated for mh in active_resource.global_state.micro_hubs.values()]) \
+            if not len(dems) or all([mh.consolidated for mh in active_resource.global_state.micro_hubs.values()]) \
                     or (min(dems)>active_resource.active_drone.get_cargo_capacity()):
+            # if all([mh.consolidated for mh in active_resource.global_state.micro_hubs.values()]):
                 active_resource.global_state.micro_hub_phase = False
-                # self.global_state.active_resource = None
+                self.global_state.active_resource = None
+                for mh in active_resource.global_state.micro_hubs.values():
+                    mh.consolidated = True
+                for d in active_resource.global_state.drones.values():
+                    if d.C_ECHELON == 2:
+                        d.consolidation_confirmed = True
+                        d.update_state_value_by_dim_name(d.C_DIM_TRIP_STATE[0], d.C_TRIP_STATE_HALT)
             active_resource.raise_state_change_event()
 
 

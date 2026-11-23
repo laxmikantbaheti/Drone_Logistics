@@ -76,6 +76,7 @@ class LogisticsEnv(gym.Env):
             info["makespan"] = self._system.global_state.current_time
             info["Truck Distance"] = self._system.total_truck_distance
             info["Drone Distance"] = self._system.total_drone_distance
+            info["Global State"] = self._system.global_state
 
             # if hasattr(self._system.global_state, 'event_logger'):
             #     # Call export_reports. You can customize the base_filepath here if you want dynamically named folders.

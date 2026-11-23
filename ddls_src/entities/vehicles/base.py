@@ -82,7 +82,7 @@ class Vehicle(LogisticEntity, ABC):
         if p_kwargs.get("p_vehicle_typ", None) is not None: self.C_VEHICLE_TYP = p_kwargs.get("p_vehicle_typ")
         else: pass
         self.C_NAME = self.C_VEHICLE_TYP
-        if p_kwargs.get("p_echelon", None) is not None: self.C_VEHICLE_TYP = p_kwargs.get("p_echelon")
+        if p_kwargs.get("p_echelon", None) is not None: self.C_ECHELON = p_kwargs.get("p_echelon")
         else: pass
         # New: Current location coordinates
         self.current_location_coords: Optional[Tuple[float, float]] = None
@@ -751,7 +751,7 @@ class Vehicle(LogisticEntity, ABC):
             self.route_nodes = []
             self.status = "idle"
             self.update_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0], self.C_TRIP_STATE_IDLE)
-
+            self.consolidation_confirmed = False
             self.log_current_state()
 
             if self.get_current_node_id() is None:
@@ -913,6 +913,8 @@ class Vehicle(LogisticEntity, ABC):
         # Guard clause: Don't consolidate if there's nothing staged
         if not (self.staged_pickup_orders or self.staged_pickup_leg2_orders):
             self.log(self.C_LOG_TYPE_I, "Consolidate called, but no new orders are staged.")
+            self.consolidation_confirmed = True
+            self.raise_state_change_event()
             return
 
             # Inside consolidate_route()
@@ -1147,7 +1149,7 @@ class Vehicle(LogisticEntity, ABC):
 
     def __repr__(self):
         return (f"{self.C_NAME} - {self._id} - {self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0])} - "
-                f"{self.pickup_orders[0].get_id() if len(self.pickup_orders) else 'None'} - {len(self.get_current_cargo())} - {self.current_node_id}")
+                f"{self.pickup_orders[0].get_id() if len(self.pickup_orders) else 'None'} - {len(self.get_current_cargo())} - {self.current_node_id} - {len(self.location_history)}")
 
     def check_assignability(self) -> bool:
         status = self.get_state_value_by_dim_name(self.C_DIM_TRIP_STATE[0])

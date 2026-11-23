@@ -413,6 +413,7 @@ class LogisticsSystem(System, EventManager):
                 break
             # Select the first available automatic action to execute.
             auto_action_tuple = automatic_actions_to_take[0]
+            print(f"auto:{auto_action_tuple}")
             if self.custom_log:
                     print(f"  - Auto Action: {auto_action_tuple[0].name}{auto_action_tuple[1:]}")
             # Execute the action using the ActionManager.
@@ -452,7 +453,7 @@ class LogisticsSystem(System, EventManager):
         action_index = int(action_values[0])
         # Convert the index back to the action tuple.
         action_tuple = self._reverse_action_map.get(action_index)
-
+        print(action_tuple)
         # Check if the action is valid and is not the "No Operation" action.
         if action_tuple and action_tuple[0] != SimulationActions.NO_OPERATION:
             if self.custom_log:

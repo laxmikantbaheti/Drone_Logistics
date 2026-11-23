@@ -53,6 +53,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
         self.drone_capacity_ratio = float(config.get("drone_capacity_ratio", 1.0))
         self.truck_speed = float(config.get("truck_speed", 1.0))
         self.drone_speed = float(config.get("drone_speed", 1.0))
+        self.truck_capacity_factor = float(config.get("truck_capacity_factor", 1.0))
 
         self.seed = config.get("seed")
         self.initial_time = float(config.get("initial_time", 0.0))
@@ -82,6 +83,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
         truck_config = {
             "max_payload_capacity": int(capacity_Q),
             "max_speed": self.truck_speed,
+            "capacity_factor":self.truck_capacity_factor
         }
         drone_config = {
             "max_payload_capacity": int(max(1, round(capacity_Q * self.drone_capacity_ratio))),
@@ -286,7 +288,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
     def _build_trucks(self, n, depot_id, truck_config):
         return [{
             "id": 10000 + i,
-            "max_payload_capacity": truck_config["max_payload_capacity"],
+            "max_payload_capacity": truck_config["max_payload_capacity"]*truck_config["capacity_factor"],
             "max_speed": truck_config["max_speed"],
             "start_node_id": depot_id,
         } for i in range(n)]
@@ -306,7 +308,7 @@ class F2EVRPDGenerator(BaseDataGenerator):
                 })
         for i in range(n):
             drones.append({
-                "id": 20000 + i + self.drones_per_mh - 1,
+                "id": 20000 + i + self.drones_per_mh,
                 "max_payload_capacity": drone_config["max_payload_capacity"],
                 "max_speed": drone_config["max_speed"],
                 "start_node_id": mh_list[math.ceil(i/self.drones_per_mh)-1]["id"],

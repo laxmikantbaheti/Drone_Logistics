@@ -41,7 +41,7 @@ class SimulationActions:
                               handler="Logistic")
     SELECT_DRONE = ActionType(name="SELECT_DRONE",
                               params=[{"name": "drone_id", "type": "Drone"}],
-                              is_automatic=False,
+                              is_automatic=True,
                               handler="Logistic",
                               active=True)
     SELECT_MICROHUB = ActionType(name="SELECT_MICROHUB",

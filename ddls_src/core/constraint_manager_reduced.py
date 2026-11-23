@@ -233,6 +233,8 @@ class VehicleAvailableConstraint(Constraint):
             if vehicle.get_state_value_by_dim_name(Vehicle.C_DIM_TRIP_STATE[0]) in [Vehicle.C_TRIP_STATE_EN_ROUTE,
                                                                                     Vehicle.C_TRIP_STATE_HALT]:
                 actions_to_block.update(vehicle.associated_action_indexes.intersection(self.associated_action_index))
+            elif vehicle.consolidation_confirmed:
+                actions_to_block.update(vehicle.associated_action_indexes.intersection(self.associated_action_index))
             else:
                 actions_to_unblock.update(vehicle.associated_action_indexes.intersection(self.associated_action_index))
         return list(actions_to_unblock), list(actions_to_block)
@@ -616,21 +618,27 @@ class FullCapacityConsolidationConstraint(Constraint):
             return self._evaluate_drone_consolidation(active_resource, p_entity, relevant_actions)
 
         elif isinstance(active_resource, FirstEchelonVehicle):
+
+            av_cap = active_resource.get_remaining_capacity()
+            if active_resource.C_NAME == "Truck":
+                dems = active_resource.global_state.get_first_echelon_demands()
+            else:
+                dems = active_resource.global_state.get_next_demands()
+
+
+            if len(dems) and av_cap >= min(dems):
+                return [], list(relevant_actions)
+            elif not(len(dems)) or av_cap < min(dems):
+                return list(relevant_actions), []
+
+
             cargo = active_resource.get_current_cargo()
             pickup_orders = active_resource.get_pickup_orders()
             if not (len(cargo) or len(pickup_orders)):
                 return [], list(relevant_actions)
 
-            pending_demands = active_resource.global_state.get_pending_demands()
+            pending_demands = active_resource.global_state.get_first_echelon_demands()
             if not len(pending_demands):
-                return list(relevant_actions), []
-
-            av_cap = active_resource.get_remaining_capacity()
-            dems = active_resource.global_state.get_next_demands()
-
-            if len(dems) and av_cap >= min(dems):
-                return [], list(relevant_actions)
-            else:
                 return list(relevant_actions), []
 
         return [], list(relevant_actions)
@@ -903,7 +911,7 @@ class DirectDeliveryDroneAssignmentConstraint(Constraint):
             return list(relevant_actions), []
         else:
             actions_to_mask = set()
-            mh_routes = p_global_state.get_microhub_routes()
+            mh_routes = p_global_state.get_microhub_routes().values()
             for route in mh_routes:
                 actions_to_mask.update(relevant_actions.intersection(route.associated_action_indexes))
             actions_to_unmask = relevant_actions.difference(actions_to_mask)

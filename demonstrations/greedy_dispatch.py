@@ -316,44 +316,48 @@ if __name__ == "__main__":
     script_path = os.path.dirname(os.path.realpath(__file__))
     seed = 42
     num_nodes = 60
-    # vrp_instance_path = os.path.join(
-    #     script_path,
-    #     "..",
-    #     "ddls_src",
-    #     "scenarios",
-    #     "vrp_d_instances",
-    #     "VRP-D",
-    #     "A-n32-k5",
-    # )
-    # vrp_instance_path = os.path.normpath(vrp_instance_path)
+    vrp_instance_path = os.path.join(
+        script_path,
+        "..",
+        "ddls_src",
+        "scenarios",
+        "vrp_d_instances",
+        "VRP-D",
+        "A-n32-k5",
+    )
+    vrp_instance_path = os.path.normpath(vrp_instance_path)
     instance_name = "Greedy Dispatch"
 
     sim_config = {
         "movement_mode": "matrix",
         "initial_time": 0.0,
         "main_timestep_duration": 1.0,
-        "seed": seed,
-        "p_seed": seed,
         "data_loader_config": {
-            "generator_type": "distance_matrix",
+            # IMPORTANT: must match your generator factory registry name
+            "generator_type": "f2evrpd",
             "generator_config": {
-                "seed": seed,
-                "base_scale_factor": 10,
-                "num_nodes": max(30, num_nodes),  # Strictly >= 50 nodes
-                "area_x_range": (0.0, 200.0),
-                "area_y_range": (0.0, 200.0),
-                "scaling_factors": {
-                    "nodes": 6.0,
-                    "depots": 0.1,        # ~3 depots
-                    "customers": 4.5,     # ~45 customers
-                    "micro_hubs": 0.6,    # ~6 micro-hubs (and 6 drones)
-                    "trucks": 0.5,        # ~5 trucks
-                    "initial_orders": 3.5 # ~35 orders
-                },
-                "truck_payload_range": [8, 16],
-                "drone_payload_range": [1, 3]
+                "instance_path": vrp_instance_path,
+
+                # Keep these custom for your delivery models
+                "num_drones": 0,
+                "num_microhubs": 0,
+                "bbox": (0, 0, 100, 100),
+                "std_dev_scale": 4.0,
+
+                # Capacity-derived configs inside generator
+                "drone_capacity_ratio": 0.2,
+                "drones_per_mh": 1,
+                # Speeds (if your sim uses them)
+                "truck_speed": 1.0,
+                "drone_speed": 1.0,
+
+                # Optional
+                # "seed": 42,
+
+                # If you want to override trucks instead of using -k# from filename:
+                # "num_trucks": 5,
             }
-        }
+        },
     }
 
     parser = argparse.ArgumentParser(description="System-Decoded Greedy Baseline")
