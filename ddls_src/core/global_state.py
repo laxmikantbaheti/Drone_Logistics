@@ -56,6 +56,22 @@ class GlobalState:
         self.computational_profile = 0
         self.constraint_latency = datetime.now()
         self.constraint_latency_per_step = []
+        self.ech_1_deliveries = []
+        self.ech_2_deliveries = []
+        self.direct_drone_deliveries = []
+        self.direct_truck_deliveries = []
+        self.drone_deliveries = []
+        self.truck_deliveries = []
+        self.direct_deliveries = []
+        self.delivered_orders = []
+        self.delivery_records = [self.delivered_orders,
+                                 self.ech_1_deliveries,
+                                 self.ech_2_deliveries,
+                                 self.direct_deliveries,
+                                 self.direct_drone_deliveries,
+                                 self.direct_truck_deliveries,
+                                 self.truck_deliveries,
+                                 self.drone_deliveries]
         # Initialize the centralized DataManager
         self.data_manager = DataManager()
         self.event_logger = EventLogger()
@@ -379,6 +395,7 @@ class GlobalState:
         self.pseudo_orders = {}
         self.data_manager.reset()
         self.event_logger.reset()
+        self.reset_delivery_records()
 
     def get_available_capacities(self):
         caps = {v.get_id():v.get_remaining_capacity() for v in (self.trucks | self.drones).values()}
@@ -390,11 +407,17 @@ class GlobalState:
         caps = self.setup_capacity_demands()
         return caps
 
-    def get_next_demands(self, except_micro_hubs=True):
+    def get_next_demands(self, except_micro_hubs=True, echelon=1):
         if except_micro_hubs:
             return [o[0].size for np,o in self.get_order_requests().items() if len(o) and np not in self.microhub_routes.keys()]
+        if echelon == 1:
+            return [o[0].size for np, o in self.get_order_requests().items() if
+                    len(o) and np[0] not in self.micro_hubs.keys()]
         else:
             return [o[0].size for np,o in self.get_order_requests().items() if len(o) and np[0] not in self.micro_hubs.keys()]
+
+    def get_first_echelon_demands(self):
+        return [o[0].size for o in self.get_order_requests().values() if o[0].get_pickup_node_id() not in self.micro_hubs]
 
     def setup_capacity_demands(self):
         caps = {self.node_pairs[key].get_id(): [o.size for o in value] for key, value in self.get_order_requests().items()}
@@ -432,3 +455,48 @@ class GlobalState:
     def get_microhub(self, param):
         mh = self.micro_hubs[param]
         return mh
+
+    def add_delivery_record(self, p_order):
+        if p_order.C_TYPE == "Pseudo Order":
+            if p_order.leg == 1:
+                self.ech_1_deliveries.append(p_order)
+            else:
+                if p_order.leg == 2:
+                    self.ech_2_deliveries.append(p_order)
+                else:
+                    raise ValueError("Pseudo Orders must always contain information about the leg")
+
+            if p_order.assigned_vehicle is None:
+                pass
+            elif p_order.assigned_vehicle.C_VEHICLE_TYP == "Truck":
+                self.truck_deliveries.append(p_order)
+            elif p_order.assigned_vehicle.C_VEHICLE_TYP == "Drone":
+                self.drone_deliveries.append(p_order)
+            else:
+                raise ValueError("Assigned Vehicle missing vehicle type.")
+
+        elif p_order.C_TYPE == "Order":
+            if p_order.assigned_vehicle is None:
+                pass
+            else:
+                self.direct_deliveries.append(p_order)
+                if p_order.assigned_vehicle.C_VEHICLE_TYP == "Truck":
+                    self.direct_truck_deliveries.append(p_order)
+                    self.truck_deliveries.append(p_order)
+                elif p_order.assigned_vehicle.C_VEHICLE_TYP == "Drone":
+                    self.direct_drone_deliveries.append(p_order)
+                    self.drone_deliveries.append(p_order)
+                else:
+                    raise ValueError("Assigned Vehicle missing vehicle type.")
+        if p_order.C_TYPE == "Order":
+            self.delivered_orders.append(p_order)
+
+    def reset_delivery_records(self):
+        self.ech_1_deliveries = []
+        self.ech_2_deliveries = []
+        self.direct_drone_deliveries = []
+        self.direct_truck_deliveries = []
+        self.drone_deliveries = []
+        self.truck_deliveries = []
+        self.direct_deliveries = []
+        self.delivered_orders = []

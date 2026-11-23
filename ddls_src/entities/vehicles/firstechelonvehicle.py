@@ -22,7 +22,7 @@ class Order: pass
 class Node: pass
 
 
-class Truck(Vehicle):
+class FirstEchelonVehicle(Vehicle):
     """
     Represents a truck vehicle, refactored as a concrete MLPro System.
     It now includes automatic logic for loading and unloading.
@@ -30,6 +30,8 @@ class Truck(Vehicle):
 
     C_TYPE = 'Vehicle'
     C_NAME = 'Truck'
+    C_ECHELON = 1
+    C_VEHICLE_TYP = Vehicle.C_VEHICLE_TYP_TRUCK
 
     def __init__(self,
                  p_id,

@@ -69,7 +69,7 @@ if __name__ == "__main__":
         "scenarios",
         "vrp_d_instances",
         "VRP-D",
-        "A-n33-k6"
+        "A-n32-k5"
     )
     vrp_instance_path = os.path.normpath(vrp_instance_path)
 
@@ -81,7 +81,7 @@ if __name__ == "__main__":
         "initial_time": 0.0,
         "main_timestep_duration": 1.0,
         "data_loader_config": {
-            "generator_type": "dynamic_vrpd",
+            "generator_type": "f2evrpd",
             "generator_config": {
                 "instance_path": vrp_instance_path,
                 "num_drones": 0,
@@ -92,11 +92,12 @@ if __name__ == "__main__":
                 "truck_speed": 1.0,
                 "drone_speed": 1.0,
                 "seed": 100,  # Evaluation seed
-                "demand_variance": 0.25
+                "demand_variance": 0.25,
+                "drones_per_mh": 3
             }
         },
     }
-    abs_model_path = "D:\\03_Development\\Drone_Logistics\\results\\MaskablePPODynamicInst_A_n33_k6_dynamic_20260927_203843\\final_MaskablePPODynamicInst_A_n33_k6_dynamic_model.zip"
+    abs_model_path = "D:\\03_Development\\Drone_Logistics\\models\\final_MaskablePPO_A_n32_k5_model.zip"
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default=abs_model_path, help="Path to the saved .zip models file.")
 

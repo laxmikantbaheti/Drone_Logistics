@@ -9,8 +9,8 @@ from ddls_src.entities.micro_hub import MicroHub
 from ddls_src.entities.node import Node
 from ddls_src.entities.order import PseudoOrder, Order, NodePair
 from ddls_src.entities.vehicles.base import Vehicle
-from ddls_src.entities.vehicles.drone import Drone
-from ddls_src.entities.vehicles.truck import Truck
+from ddls_src.entities.vehicles.secondechelonvehicle import SecondEchelonVehicle
+from ddls_src.entities.vehicles.firstechelonvehicle import FirstEchelonVehicle
 from mlpro.bf.events import Event, EventManager
 from mlpro.bf.various import Log
 from typing import Dict, Tuple, Set, List, Iterable
@@ -120,7 +120,7 @@ class Constraint(ABC, EventManager):
         raise NotImplementedError
 
     # ---------------------------------------------------------------------------------------------
-    # -- Original Evaluation Interface (Untouched)
+    # -- Original Evaluation Interface
     # ---------------------------------------------------------------------------------------------
     def evaluate_impact(self, p_entity, p_action_index: ActionIndex, deck) -> Tuple[Set[int], Set[int]]:
         """
@@ -139,16 +139,17 @@ class Constraint(ABC, EventManager):
             self._entity_invalidation_map[entity_id] = current_block_set
 
             self.evaluation_history.append(
-                f"{p_entity.C_NAME} - {p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}")
+                f"{p_entity.C_NAME}\n{p_entity.get_id()} --> to block: {current_actions_to_block}, to unblock: {current_actions_to_unblock}"
+            )
 
         else:
-            masks = self.evaluate_impact_global(p_entity=p_entity, p_action_index=p_action_index, deck=deck)
+            masks = self.evaluate_impact_global(p_entity=p_entity, p_action_index=p_action_index, deck=deck, p_global_state=p_entity.global_state)
             to_unblock, to_block = masks
             self.update_constraint_deck_global(to_block, to_unblock, deck)
 
         return to_block, to_unblock
 
-    def evaluate_impact_global(self, p_entity, p_action_index, deck):
+    def evaluate_impact_global(self, p_entity, p_action_index, deck, p_global_state):
         raise NotImplementedError
 
     # ---------------------------------------------------------------------------------------------
@@ -184,20 +185,19 @@ class Constraint(ABC, EventManager):
 
     def evaluate_impact_global_vectorized(self, p_entity, p_action_index, deck):
         # Fallback to legacy if subclass doesn't implement a specific vectorized version
-        return self.evaluate_impact_global(p_entity, p_action_index, deck)
+        return self.evaluate_impact_global(p_entity, p_action_index, deck, p_global_state=p_entity.global_state)
 
     def update_constraint_deck(self, to_block, to_unblock, deck, p_entity):
         for action in to_block:
-            deck[action].add(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
+            deck[action].add(f"{self.C_NAME}\n{p_entity.C_NAME} {p_entity.get_id()}")
         for action in to_unblock:
-            deck[action].remove(f"{self.C_NAME} - {p_entity.C_NAME} {p_entity.get_id()}")
+            deck[action].discard(f"{self.C_NAME}\n{p_entity.C_NAME} {p_entity.get_id()}")
 
     def update_constraint_deck_global(self, to_block, to_unblock, deck):
         for action in to_block:
             deck[action].add(f"{self.C_NAME}")
         for action in to_unblock:
-            if f"{self.C_NAME}" in deck[action]:
-                deck[action].remove(f"{self.C_NAME}")
+            deck[action].discard(f"{self.C_NAME}")
 
     def clear_cache(self):
         self._entity_invalidation_map.clear()
@@ -226,12 +226,14 @@ class VehicleAvailableConstraint(Constraint):
     C_GLOBAL_CONSTRAINT = True
 
     # 1. Original Legacy Method (Untouched)
-    def evaluate_impact_global(self, p_entity : LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         actions_to_block = set()
         actions_to_unblock = set()
-        for vehicle in p_entity.global_state.get_vehicles():
+        for vehicle in p_kwargs.get("p_global_state").get_vehicles():
             if vehicle.get_state_value_by_dim_name(Vehicle.C_DIM_TRIP_STATE[0]) in [Vehicle.C_TRIP_STATE_EN_ROUTE,
                                                                                     Vehicle.C_TRIP_STATE_HALT]:
+                actions_to_block.update(vehicle.associated_action_indexes.intersection(self.associated_action_index))
+            elif vehicle.consolidation_confirmed:
                 actions_to_block.update(vehicle.associated_action_indexes.intersection(self.associated_action_index))
             else:
                 actions_to_unblock.update(vehicle.associated_action_indexes.intersection(self.associated_action_index))
@@ -258,22 +260,20 @@ class VehicleCapacityConstraint(Constraint):
     C_GLOBAL_CONSTRAINT = True
     C_ACTIVE = True
 
-    # 1. Original Legacy Method (Untouched)
+    # 1. Original Legacy Method (Removed ineffective `elif not active_resource == p_entity` block)
     def evaluate_impact_global(self, p_entity: Vehicle, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
-        active_resource = p_entity.global_state.active_resource
+        active_resource = p_kwargs.get("p_global_state").active_resource
         if active_resource is None:
             return list(self.associated_action_index), []
-        elif not active_resource == p_entity:
-            return [], []
         actions_to_block = set()
         actions_to_unblock = set()
         current_capacity = active_resource.get_remaining_capacity()
-        dems = p_entity.global_state.get_pending_demands()
+        dems = p_kwargs.get("p_global_state").get_pending_demands()
         for n_pair, demand in dems.items():
             if demand[0] <= current_capacity:
-                actions_to_unblock.update(p_entity.global_state.node_pairs[n_pair].associated_action_indexes.intersection(self.associated_action_index))
+                actions_to_unblock.update(p_kwargs.get("p_global_state").node_pairs[n_pair].associated_action_indexes.intersection(self.associated_action_index))
             else:
-                actions_to_block.update(p_entity.global_state.node_pairs[n_pair].associated_action_indexes.intersection(self.associated_action_index))
+                actions_to_block.update(p_kwargs.get("p_global_state").node_pairs[n_pair].associated_action_indexes.intersection(self.associated_action_index))
         return list(actions_to_unblock), list(actions_to_block)
 
     # 2. [NEW PARALLEL METHOD]: Identical logic using Map 2 fetching
@@ -305,11 +305,11 @@ class ResourceAssignabilityConstraint(Constraint):
     # 1. Original Legacy Method (Untouched)
     def evaluate_impact_global(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         relevant_actions = self.associated_action_index
-        active_resource = p_entity.global_state.active_resource
+        active_resource = p_kwargs.get("p_global_state").active_resource
         masks = set()
         if active_resource is None:
             return [], list(relevant_actions)
-        elif isinstance(active_resource, Truck):
+        elif isinstance(active_resource, FirstEchelonVehicle):
             for order in active_resource.global_state.pseudo_orders.values():
                 if order.leg == 2:
                     masks.update(order.node_pair.associated_action_indexes.intersection(self.associated_action_index))
@@ -323,7 +323,7 @@ class ResourceAssignabilityConstraint(Constraint):
         masks = set()
         if active_resource is None:
             return [], list(relevant_actions)
-        elif isinstance(active_resource, Truck):
+        elif isinstance(active_resource, FirstEchelonVehicle):
             for order in active_resource.global_state.pseudo_orders.values():
                 if order.leg == 2:
                     masks.update(self.get_common_actions(order.node_pair))
@@ -340,23 +340,23 @@ class ActiveResourceConstraint(Constraint):
     C_GLOBAL_CONSTRAINT = True
 
     # 1. Original Legacy Method (Untouched)
-    def evaluate_impact_global(self, p_entity:LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
-        active_resource = p_entity.global_state.active_resource
+    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
+        active_resource = p_kwargs.get("p_global_state").active_resource
         relevant_actions = self.associated_action_index
         mask = set()
-        if not len(p_entity.global_state.get_next_demands(False)):
+        if not len(p_kwargs.get("p_global_state").get_next_demands(False)):
             return [], list(relevant_actions)
-        if (isinstance(active_resource, Truck)
-                or isinstance(active_resource, Drone)
+        if (isinstance(active_resource, FirstEchelonVehicle)
+                or isinstance(active_resource, SecondEchelonVehicle)
                 or isinstance(active_resource, MicroHub)):
             return list(), list(relevant_actions)
         elif active_resource is None:
-            for mh in p_entity.global_state.micro_hubs.values():
+            for mh in p_kwargs.get("p_global_state").micro_hubs.values():
                 if mh.consolidated:
                     mask.update(mh.associated_action_indexes.intersection(relevant_actions))
-                if not len(p_entity.global_state.get_next_demands()):
+                if not len(p_kwargs.get("p_global_state").get_next_demands()):
                     mask.update(mh.associated_action_indexes.intersection(relevant_actions))
-                elif mh.get_remaining_capacity() < min(p_entity.global_state.get_next_demands()):
+                elif mh.get_remaining_capacity() < min(p_kwargs.get("p_global_state").get_next_demands()):
                     mask.update(mh.associated_action_indexes.intersection(relevant_actions))
 
             unmask = relevant_actions.difference(mask)
@@ -371,8 +371,8 @@ class ActiveResourceConstraint(Constraint):
         mask = set()
         if not len(p_entity.global_state.get_next_demands(False)):
             return [], list(relevant_actions)
-        if (isinstance(active_resource, Truck)
-                or isinstance(active_resource, Drone)
+        if (isinstance(active_resource, FirstEchelonVehicle)
+                or isinstance(active_resource, SecondEchelonVehicle)
                 or isinstance(active_resource, MicroHub)):
             return list(), list(relevant_actions)
         elif active_resource is None:
@@ -402,14 +402,14 @@ class OrderRequestAssignabilityConstraint(Constraint):
         relevant_actions = self.associated_action_index
         actions_to_unblock = set()
         actions_to_block = set()
-        orders = p_entity.global_state.orders_by_nodes
+        orders = p_kwargs.get("p_global_state").orders_by_nodes
 
         for key, value in orders.items():
             if len(value):
-                n_pair = p_entity.global_state.node_pairs[key]
+                n_pair = p_kwargs.get("p_global_state").node_pairs[key]
                 actions_to_unblock.update(relevant_actions.intersection(n_pair.associated_action_indexes))
             else:
-                n_pair = p_entity.global_state.node_pairs[key]
+                n_pair = p_kwargs.get("p_global_state").node_pairs[key]
                 actions_to_block.update(relevant_actions.intersection(n_pair.associated_action_indexes))
         return list(actions_to_unblock), list(actions_to_block)
 
@@ -435,14 +435,14 @@ class VehicleLoadConstraint(Constraint):
     C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "Order"]
     C_GLOBAL_CONSTRAINT = True
 
-    # 1. Original Legacy Method (Untouched)
+    # 1. Original Legacy Method
     def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         actions_to_block = set()
         actions_to_unblock = set()
         relevant_actions = self.associated_action_index
-        for vehicle in p_entity.global_state.get_vehicles():
+        for vehicle in p_kwargs.get("p_global_state").get_vehicles():
             current_node = vehicle.current_node_id
-            if current_node is not None and (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in vehicle.C_TRIP_STATE_HALT):
+            if current_node is not None and (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in [vehicle.C_TRIP_STATE_HALT]):
                 pickup_orders = [o for o in vehicle.get_pickup_orders() if o.get_pickup_node_id() == current_node]
                 if len(pickup_orders):
                     precedence = [True for o in pickup_orders]
@@ -490,9 +490,9 @@ class VehicleLoadPrecedenceConstraint(Constraint):
         actions_to_block = set()
         actions_to_unblock = set()
         relevant_actions = self.associated_action_index
-        for vehicle in p_entity.global_state.get_vehicles():
+        for vehicle in p_kwargs.get("p_global_state").get_vehicles():
             current_node = vehicle.current_node_id
-            if current_node is not None and (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in vehicle.C_TRIP_STATE_HALT):
+            if current_node is not None and (vehicle.get_state_value_by_dim_name(vehicle.C_DIM_TRIP_STATE[0]) in [vehicle.C_TRIP_STATE_HALT]):
                 pickup_orders = [o for o in vehicle.get_pickup_orders() if o.get_pickup_node_id() == current_node]
                 if len(pickup_orders):
                     precedence = [o.check_order_precedence() for o in pickup_orders]
@@ -533,7 +533,7 @@ class VehicleUnloadConstraint(Constraint):
         relevant_actions = self.associated_action_index
         actions_to_block = set()
         actions_to_unblock = set()
-        for v in p_entity.global_state.get_vehicles():
+        for v in p_kwargs.get("p_global_state").get_vehicles():
             current_node = v.current_node_id
             if current_node is not None:
                 cargo_nodes = [o.get_delivery_node_id() for o in v.get_current_cargo()]
@@ -571,7 +571,7 @@ class ConsolidationConstraint(Constraint):
     C_GLOBAL_CONSTRAINT = True
 
     def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
-        active_resource = p_entity.global_state.active_resource
+        active_resource = p_kwargs.get("p_global_state").active_resource
         if active_resource is None:
             return [], list(self.associated_action_index)
         if isinstance(active_resource, Vehicle):
@@ -595,17 +595,18 @@ class FullCapacityConsolidationConstraint(Constraint):
 
     def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         relevant_actions = self.associated_action_index
-        active_resource = p_entity.global_state.active_resource
+        active_resource = p_kwargs.get("p_global_state").active_resource
 
         if active_resource is None:
             return [], list(relevant_actions)
 
         if isinstance(active_resource, MicroHub):
-            drone = getattr(active_resource, 'assigned_drone', None)
+            drone = getattr(active_resource, 'active_drone', None)
             if drone is not None:
+            # if drone is None:
                 return self._evaluate_drone_consolidation(drone, p_entity, relevant_actions)
             else:
-                dems = p_entity.global_state.get_next_demands()
+                dems = p_kwargs.get("p_global_state").get_next_demands()
                 if not len(dems):
                     return list(relevant_actions), []
                 if active_resource.get_remaining_capacity() >= min(dems):
@@ -613,25 +614,31 @@ class FullCapacityConsolidationConstraint(Constraint):
                 else:
                     return list(relevant_actions), []
 
-        if isinstance(active_resource, Drone):
+        if isinstance(active_resource, SecondEchelonVehicle):
             return self._evaluate_drone_consolidation(active_resource, p_entity, relevant_actions)
 
-        elif isinstance(active_resource, Truck):
+        elif isinstance(active_resource, FirstEchelonVehicle):
+
+            av_cap = active_resource.get_remaining_capacity()
+            if active_resource.C_NAME == "Truck":
+                dems = active_resource.global_state.get_first_echelon_demands()
+            else:
+                dems = active_resource.global_state.get_next_demands()
+
+
+            if len(dems) and av_cap >= min(dems):
+                return [], list(relevant_actions)
+            elif not(len(dems)) or av_cap < min(dems):
+                return list(relevant_actions), []
+
+
             cargo = active_resource.get_current_cargo()
             pickup_orders = active_resource.get_pickup_orders()
             if not (len(cargo) or len(pickup_orders)):
                 return [], list(relevant_actions)
 
-            pending_demands = active_resource.global_state.get_pending_demands()
+            pending_demands = active_resource.global_state.get_first_echelon_demands()
             if not len(pending_demands):
-                return list(relevant_actions), []
-
-            av_cap = active_resource.get_remaining_capacity()
-            dems = active_resource.global_state.get_next_demands()
-
-            if len(dems) and av_cap >= min(dems):
-                return [], list(relevant_actions)
-            else:
                 return list(relevant_actions), []
 
         return [], list(relevant_actions)
@@ -639,14 +646,14 @@ class FullCapacityConsolidationConstraint(Constraint):
     def evaluate_impact_global_vectorized(self, p_entity: LogisticEntity, p_action_index: ActionIndex, deck=None) -> Tuple[List, List]:
         return self.evaluate_impact_global(p_entity, p_action_index)
 
-    def _evaluate_drone_consolidation(self, drone: Drone, p_entity: LogisticEntity, relevant_actions: set):
+    def _evaluate_drone_consolidation(self, drone: SecondEchelonVehicle, p_entity: LogisticEntity, relevant_actions: set):
         ready = drone._evaluate_drone_consolidation()
         if not ready:
             return [], list(relevant_actions)
         else:
             return list(relevant_actions), []
 
-    def _calculate_battery_cost(self, global_state, vehicle: Drone, last_node_id: int,
+    def _calculate_battery_cost(self, global_state, vehicle: SecondEchelonVehicle, last_node_id: int,
                                 delivery_node_id: int, hub_node_id: int) -> float:
         dist_to_next_delivery = global_state.network.calculate_distance(last_node_id, delivery_node_id, vehicle.C_NAME)
         dist_return_to_hub = global_state.network.calculate_distance(delivery_node_id, hub_node_id, vehicle.C_NAME)
@@ -665,8 +672,8 @@ class PseudoOrderAssignmentConstraint(Constraint):
     # 1. Original Legacy Method (Untouched)
     def evaluate_impact_global(self, p_entity, p_action_index: ActionIndex, **p_kwargs) -> Tuple[List, List]:
         relevant_actions = self.associated_action_index
-        mh = p_entity.global_state.micro_hubs
-        mh_deliveries, mh_pickups = p_entity.global_state.get_microhub_orders()
+        mh = p_kwargs.get("p_global_state").micro_hubs
+        mh_deliveries, mh_pickups = p_kwargs.get("p_global_state").get_microhub_orders()
         actions_to_block = set()
         actions_to_unblock = set()
         for n_pair, o in mh_pickups.items():
@@ -701,9 +708,9 @@ class MicroHubFirstConstraint(Constraint):
     C_ACTIVE = True
     C_GLOBAL_CONSTRAINT = True
 
-    def evaluate_impact_global(self, p_entity, p_action_index, deck):
+    def evaluate_impact_global(self, p_entity, p_action_index, deck, **p_kwargs):
         relevant_actions = list(self.associated_action_index)
-        mh_phase = p_entity.global_state.micro_hub_phase
+        mh_phase = p_kwargs.get("p_global_state").micro_hub_phase
         if mh_phase:
             return [], relevant_actions
         else:
@@ -712,6 +719,22 @@ class MicroHubFirstConstraint(Constraint):
     def evaluate_impact_global_vectorized(self, p_entity, p_action_index, deck):
         return self.evaluate_impact_global(p_entity, p_action_index, deck)
 
+
+class DroneHubFirstConstraint(Constraint):
+    C_NAME = "DroneHubFirstConstraint"
+    C_ACTIONS_AFFECTED = [SimulationActions.SELECT_TRUCK]
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "MicroHub"]
+    C_ACTIVE = True
+    C_GLOBAL_CONSTRAINT = True
+
+    def evaluate_impact_global(self, p_entity, p_action_index, deck, **p_kwargs):
+        relevant_actions = list(self.associated_action_index)
+        drones_consolidated = all([drone.consolidation_confirmed for drone in p_kwargs.get("p_global_state").drones.values()
+                                  if drone.C_ECHELON == 1])
+        if drones_consolidated:
+            return list(relevant_actions), []
+        else:
+            return [], list(relevant_actions)
 
 class MicroHubConsolidation(Constraint):
     C_NAME = "MicroHubConsolidation"
@@ -752,10 +775,10 @@ class TwoEchelonConstraint(Constraint):
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_RESOURCE]
     C_ASSOCIATED_ENTITIES = ["Drone", "MicroHub", "Truck", "Order"]
 
-    def evaluate_impact_global(self, p_entity, p_action_index, deck):
-        mh_routes = p_entity.global_state.get_microhub_routes()
+    def evaluate_impact_global(self, p_entity, p_action_index, deck, **p_kwargs):
+        mh_routes = p_kwargs.get("p_global_state").get_microhub_routes()
         relevant_actions = [list(route.associated_action_indexes)[0] for route in mh_routes.values()]
-        active_resource = p_entity.global_state.active_resource
+        active_resource = p_kwargs.get("p_global_state").active_resource
         if isinstance(active_resource, MicroHub):
             return [], relevant_actions
         else:
@@ -770,38 +793,39 @@ class BatteryAssignmentConstraint(Constraint):
     C_ASSOCIATED_ENTITIES = ["MicroHub", "Drone", "Truck"]
     C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_RESOURCE]
     C_GLOBAL_CONSTRAINT = True
+    C_ACTIVE = True
 
     # 1. Original Legacy Method (Untouched)
-    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, deck) -> Tuple[List, List]:
+    def evaluate_impact_global(self, p_entity: LogisticEntity, p_action_index: ActionIndex, deck, **p_kwargs) -> Tuple[List, List]:
         actions_to_block = set()
         actions_to_unblock = set()
         relevant_actions = self.associated_action_index
 
-        active_resource = p_entity.global_state.active_resource
-        if isinstance(active_resource, Truck):
+        active_resource = p_kwargs.get("p_global_state").active_resource
+        if isinstance(active_resource, FirstEchelonVehicle):
             return list(relevant_actions), []
         if active_resource is None or not isinstance(active_resource, MicroHub):
             return [], list(relevant_actions)
 
-        available_battery = active_resource.assigned_drone.get_available_battery_capacity()
+        available_battery = active_resource.active_drone.get_available_battery_capacity()
         cargo = active_resource.get_current_cargo()
-        pickup_orders = active_resource.assigned_drone.get_pickup_orders()
+        pickup_orders = active_resource.active_drone.get_pickup_orders()
 
         if pickup_orders or cargo:
             all_commitments = pickup_orders + cargo
             last_projected_node_id = all_commitments[-1].get_delivery_node_id()
         else:
-            last_projected_node_id = active_resource.assigned_drone.current_node_id
+            last_projected_node_id = active_resource.active_drone.current_node_id
 
         hub_node_id = active_resource.start_node_id if hasattr(active_resource, 'start_node_id') else 0
-        pending_demands = p_entity.global_state.get_pending_demands()
+        pending_demands = p_kwargs.get("p_global_state").get_pending_demands()
 
         for n_pair, demand in pending_demands.items():
-            node_pair_obj = p_entity.global_state.node_pairs[n_pair]
+            node_pair_obj = p_kwargs.get("p_global_state").node_pairs[n_pair]
             delivery_node_id = n_pair[1]
 
             battery_cost = self._calculate_battery_cost(
-                global_state=p_entity.global_state,
+                global_state=p_kwargs.get("p_global_state"),
                 vehicle=active_resource,
                 last_node_id=last_projected_node_id,
                 delivery_node_id=delivery_node_id,
@@ -823,20 +847,20 @@ class BatteryAssignmentConstraint(Constraint):
         relevant_actions = self.associated_action_index
 
         active_resource = p_entity.global_state.active_resource
-        if isinstance(active_resource, Truck):
+        if isinstance(active_resource, FirstEchelonVehicle):
             return list(relevant_actions), []
         if active_resource is None or not isinstance(active_resource, MicroHub):
             return [], list(relevant_actions)
 
-        available_battery = active_resource.assigned_drone.get_available_battery_capacity()
+        available_battery = active_resource.assigned_drones.get_available_battery_capacity()
         cargo = active_resource.get_current_cargo()
-        pickup_orders = active_resource.assigned_drone.get_pickup_orders()
+        pickup_orders = active_resource.assigned_drones.get_pickup_orders()
 
         if pickup_orders or cargo:
             all_commitments = pickup_orders + cargo
             last_projected_node_id = all_commitments[-1].get_delivery_node_id()
         else:
-            last_projected_node_id = active_resource.assigned_drone.current_node_id
+            last_projected_node_id = active_resource.assigned_drones.current_node_id
 
         hub_node_id = active_resource.start_node_id if hasattr(active_resource, 'start_node_id') else 0
         pending_demands = p_entity.global_state.get_pending_demands()
@@ -859,7 +883,7 @@ class BatteryAssignmentConstraint(Constraint):
 
         return list(actions_to_unblock), list(actions_to_block)
 
-    def _calculate_battery_cost(self, global_state, vehicle: Drone, last_node_id: int,
+    def _calculate_battery_cost(self, global_state, vehicle: SecondEchelonVehicle, last_node_id: int,
                                 delivery_node_id: int, hub_node_id: int) -> float:
         dist_to_next_delivery = global_state.get_distance(last_node_id, delivery_node_id) if hasattr(global_state, 'get_distance') else 0
         dist_return_to_hub = global_state.get_distance(delivery_node_id, hub_node_id) if hasattr(global_state, 'get_distance') else 0
@@ -868,8 +892,34 @@ class BatteryAssignmentConstraint(Constraint):
         return total_distance * consumption_rate
 
 
+class DirectDeliveryDroneAssignmentConstraint(Constraint):
+    C_NAME = "DirectDeliveryDroneAssignmentConstraint"
+    C_ASSOCIATED_ENTITIES = ["Truck", "Drone", "MicroHub", "NodePair"]
+    C_ACTIONS_AFFECTED = [SimulationActions.ASSIGN_ORDER_TO_RESOURCE]
+    C_GLOBAL_CONSTRAINT = True
+
+    def evaluate_impact_global(self, p_entity, p_action_index, deck, p_global_state, **p_kwargs):
+        relevant_actions = self.associated_action_index
+        global_state = p_global_state
+        if global_state is None:
+            return [], []
+        active_resource = global_state.active_resource
+        if active_resource is None:
+            return [], []
+        if (not isinstance(active_resource, FirstEchelonVehicle)
+                or not active_resource.C_VEHICLE_TYP in [active_resource.C_VEHICLE_TYP_DRONE]):
+            return list(relevant_actions), []
+        else:
+            actions_to_mask = set()
+            mh_routes = p_global_state.get_microhub_routes().values()
+            for route in mh_routes:
+                actions_to_mask.update(relevant_actions.intersection(route.associated_action_indexes))
+            actions_to_unmask = relevant_actions.difference(actions_to_mask)
+            return list(actions_to_unmask), list(actions_to_mask)
+
+
 # -------------------------------------------------------------------------------------------------
-# -- Part 3: ConstraintManager & StateActionMapper (With Safe Toggle)
+# -- Part 3: ConstraintManager & StateActionMapper (With Direct Batch Evaluation)
 # -------------------------------------------------------------------------------------------------
 
 class ConstraintManager(EventManager):
@@ -921,7 +971,7 @@ class ConstraintManager(EventManager):
             return self.entity_constraints[p_entity.C_NAME]
         return []
 
-    def handle_entity_state_change(self, p_event_id=None, p_event_object=None, p_entity = None):
+    def handle_entity_state_change(self, p_event_id=None, p_event_object=None, p_entity=None):
         if p_event_id is not None and p_event_object is not None and p_entity is None:
             if self.custom_log:
                 print(
@@ -961,6 +1011,63 @@ class ConstraintManager(EventManager):
         time_taken = time_end - time_start
         if entity.global_state is not None:
             entity.global_state.constraint_latency_per_step.append(time_taken.total_seconds())
+        else:
+            if self.custom_log:
+                print("[ConstraintManager] No net change in masks. Event skipped.")
+
+    def handle_batch_entity_state_change(self, evaluation_deck: Iterable[LogisticEntity]):
+        """
+        Collects the unique set of constraints for all entity types in `evaluation_deck`
+        and runs `evaluate_impact_global` + `update_constraint_deck_global` directly
+        once per constraint.
+        """
+        if not evaluation_deck:
+            return
+
+        time_start = datetime.datetime.now()
+        total_to_block = []
+        total_to_unblock = []
+
+        # 1. Collect unique constraints across the entity types in the deck
+        constraints_to_check = set()
+        seen_entity_types = set()
+        representative_entity = None
+
+        for entity in evaluation_deck:
+            if representative_entity is None and getattr(entity, 'global_state', None) is not None:
+                representative_entity = entity
+
+            if entity.C_NAME not in seen_entity_types:
+                constraints_to_check.update(self.get_constraints_by_entity(entity))
+                seen_entity_types.add(entity.C_NAME)
+
+        if representative_entity is None:
+            representative_entity = next(iter(evaluation_deck))
+
+        if self.custom_log:
+            print(f"[ConstraintManager] Found {len(constraints_to_check)} unique constraints for batch.")
+
+        # 2. Directly run evaluate_impact_global once per unique constraint and update deck
+        for constraint in constraints_to_check:
+            to_unblock, to_block = constraint.evaluate_impact_global(
+                p_entity=representative_entity,
+                p_action_index=self.action_index,
+                deck=self.constraint_deck,
+                p_global_state=representative_entity.global_state
+            )
+            constraint.update_constraint_deck_global(to_block, to_unblock, self.constraint_deck)
+
+            if to_block or to_unblock:
+                if self.custom_log:
+                    print(f"   -> {constraint.C_NAME}: Block={len(to_block)}, Unblock={len(to_unblock)}")
+
+            total_to_block.extend(to_block)
+            total_to_unblock.extend(to_unblock)
+
+        time_end = datetime.datetime.now()
+        time_taken = time_end - time_start
+        if representative_entity.global_state is not None:
+            representative_entity.global_state.constraint_latency_per_step.append(time_taken.total_seconds())
         else:
             if self.custom_log:
                 print("[ConstraintManager] No net change in masks. Event skipped.")
@@ -1005,8 +1112,8 @@ class ConstraintManager(EventManager):
 
     def update_action_index(self, action_map, action_map_old, reverse_action_map_old):
         for constraint in self.constraints:
-            constraint.associated_action_index = self.action_index.get_actions_of_type(
-                constraint.C_ACTIONS_AFFECTED).copy()
+            constraint.associated_action_index = set(self.action_index.get_actions_of_type(
+                constraint.C_ACTIONS_AFFECTED).copy())
 
         self.update_entity_invalidation_maps(action_map, reverse_action_map_old)
         constraint_deck_old = self.constraint_deck.copy()
@@ -1043,12 +1150,11 @@ class ConstraintManager(EventManager):
                 self.masks[key] = 1
 
     def get_masks(self):
-        self.masks = [0 if value else 1 for key, value in self.constraint_deck.items()]
+        self.update_masks()
         return self.masks
 
     def evaluate_batch(self, evaluation_deck):
-        for entity in evaluation_deck:
-            self.handle_entity_state_change(p_entity=entity)
+        self.handle_batch_entity_state_change(evaluation_deck)
         evaluation_deck.clear()
 
 

@@ -19,7 +19,7 @@ class Order: pass
 class Node: pass
 
 
-class Drone(Vehicle):
+class SecondEchelonVehicle(Vehicle):
     """
     Represents a drone vehicle, refactored as a concrete MLPro System.
     It now includes automatic logic for loading and unloading.
@@ -27,7 +27,7 @@ class Drone(Vehicle):
 
     C_TYPE = 'Vehicle'
     C_NAME = 'Drone'
-
+    C_ECHELON = 2
     C_ACTION_DRONE_CHARGE = [SimulationActions.DRONE_CHARGE_ACTION]
     C_ACTION_DRONE_TO_CHARGING_STATION = [SimulationActions.DRONE_TO_CHARGING_STATION]
     C_ACTION_DRONE_LAUNCH = [SimulationActions.DRONE_LAUNCH]
@@ -50,6 +50,7 @@ class Drone(Vehicle):
         self.battery_level: float = self.initial_battery
         self.global_state: 'GlobalState' = p_kwargs.get('global_state', None)
         self.automatic_logic_config = p_kwargs.get('p_automatic_logic_config', {})
+        self.C_ECHELON = p_kwargs.get("p_echelon", 2)
         self.current_battery_soc = self.initial_battery
 
         super().__init__(p_id=p_id,

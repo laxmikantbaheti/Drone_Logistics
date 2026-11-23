@@ -9,8 +9,8 @@ from ddls_src.entities.micro_hub import MicroHub
 from ddls_src.entities.node import Node
 from ddls_src.entities.order import PseudoOrder, Order, NodePair
 from ddls_src.entities.vehicles.base import Vehicle
-from ddls_src.entities.vehicles.drone import Drone
-from ddls_src.entities.vehicles.truck import Truck
+from ddls_src.entities.vehicles.secondechelonvehicle import SecondEchelonVehicle
+from ddls_src.entities.vehicles.firstechelonvehicle import FirstEchelonVehicle
 from mlpro.bf.events import Event, EventManager
 
 
@@ -121,7 +121,7 @@ class ResourceAssignabilityConstraint(Constraint):
         active_resource = p_entity.global_state.active_resource
         if active_resource is None:
             mask[self.associated_action_indices] = False
-        elif isinstance(active_resource, Truck):
+        elif isinstance(active_resource, FirstEchelonVehicle):
             for order in active_resource.global_state.pseudo_orders.values():
                 if order.leg == 2:
                     np_obj = order.node_pair
@@ -148,7 +148,7 @@ class ActiveResourceConstraint(Constraint):
             mask[self.associated_action_indices] = False
             return
 
-        if isinstance(active_resource, (Truck, Drone, MicroHub)):
+        if isinstance(active_resource, (FirstEchelonVehicle, SecondEchelonVehicle, MicroHub)):
             mask[self.associated_action_indices] = False
         elif active_resource is None:
             active_next_demands = p_entity.global_state.get_next_demands()

@@ -282,6 +282,7 @@ class Order(LogisticEntity):
         self.log_current_state()
 
     def set_delivered(self):
+        self.global_state.add_delivery_record(self)
         self.assigned_vehicle_id = None
         self.assigned_vehicle = None
         self.carrying_vehicle = None

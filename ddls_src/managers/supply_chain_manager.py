@@ -277,7 +277,7 @@ class SupplyChainManager(System):
                 return False
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_TRUCK:
-                truck: 'Truck' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
+                truck: 'FirstEchelonVehicle' = self.global_state.get_entity("truck", action_kwargs['truck_id'])
                 assigned = self.assign_order(order, truck)
                 if assigned:
                     if self.custom_log:
@@ -286,7 +286,7 @@ class SupplyChainManager(System):
                 return assigned
 
             elif action_type == SimulationActions.ASSIGN_ORDER_TO_DRONE:
-                drone: 'Drone' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
+                drone: 'SecondEchelonVehicle' = self.global_state.get_entity("drone", action_kwargs['drone_id'])
                 assigned = self.assign_order(order, drone)
                 if assigned:
                     if self.custom_log:
@@ -333,7 +333,7 @@ class SupplyChainManager(System):
         if isinstance(p_entity, MicroHub):
             assigned = p_order.assign_micro_hub(p_entity.id) and assigned
             assigned = p_entity.assign_order(p_order) and assigned
-        elif isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
+        elif isinstance(p_entity, FirstEchelonVehicle) or isinstance(p_entity, SecondEchelonVehicle):
             assigned = p_order.assign_vehicle(p_entity._id, p_entity)
             assigned = p_entity.assign_orders([p_order]) and assigned
         # self.global_state.get_order_requests()[

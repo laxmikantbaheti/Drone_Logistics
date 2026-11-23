@@ -123,7 +123,7 @@ class LogisticManager(System):
             if active_resource is None:
                 raise ValueError("Assign actions must be masked when there is no active resource selected. Please"
                                  "check your masking logic/constraints.")
-            if isinstance(active_resource, Truck) or isinstance(active_resource, Drone):
+            if isinstance(active_resource, FirstEchelonVehicle) or isinstance(active_resource, SecondEchelonVehicle):
                 self.assign_order(o, active_resource)
             elif isinstance(active_resource, MicroHub):
                 self.assign_order(o, active_resource)
@@ -196,8 +196,6 @@ class LogisticManager(System):
 
     def process_consolidate_action(self) -> bool:
         active_resource = self.global_state.active_resource
-        self.global_state.active_resource = None
-        active_resource.raise_state_change_event()
         if active_resource is None:
             raise ValueError("Consolidate actions shall be masked if there is no Active Resource Selected."
                              "Please check your masking logic/constraints.")
@@ -205,17 +203,36 @@ class LogisticManager(System):
             active_resource.consolidate_route()
             if self.custom_log:
                 print(f"Consolidation completed for vehicle {active_resource.get_id()}.")
-        if isinstance(active_resource, MicroHub):
-            active_resource.consolidated = True
-            if all([mh.consolidated for mh in active_resource.global_state.micro_hubs.values()]):
-                active_resource.global_state.micro_hub_phase = False
+            self.global_state.active_resource = None
             active_resource.raise_state_change_event()
+        if isinstance(active_resource, MicroHub):
             if active_resource.assigned_drone_id is None:
                 raise ValueError("No drone assigned to microhub. Non conformant with the problem type f2evrp")
             else:
-                drone = active_resource.global_state.drones[active_resource.assigned_drone_id]
+                drone = active_resource.global_state.drones[active_resource.active_drone.get_id()]
                 drone.consolidate_route()
+                drone.consolidation_confirmed = True
+                # drone.update_state_value_by_dim_name(drone.C_DIM_TRIP_STATE[0], drone.C_TRIP_STATE_HALT)
+                drone.raise_state_change_event()
+                active_resource.raise_state_change_event()
+            # active_resource.consolidated = True
+            active_resource.consolidate_for_mh()
+            dems = active_resource.global_state.get_next_demands()
+            if not len(dems) or all([mh.consolidated for mh in active_resource.global_state.micro_hubs.values()]) \
+                    or (min(dems)>active_resource.active_drone.get_cargo_capacity()):
+            # if all([mh.consolidated for mh in active_resource.global_state.micro_hubs.values()]):
+                active_resource.global_state.micro_hub_phase = False
+                self.global_state.active_resource = None
+                for mh in active_resource.global_state.micro_hubs.values():
+                    mh.consolidated = True
+                for d in active_resource.global_state.drones.values():
+                    if d.C_ECHELON == 2:
+                        d.consolidation_confirmed = True
+                        d.update_state_value_by_dim_name(d.C_DIM_TRIP_STATE[0], d.C_TRIP_STATE_HALT)
+            active_resource.raise_state_change_event()
 
+
+        active_resource.raise_state_change_event()
         return True
 
     def assign_order(self, p_order: Order, p_entity):
@@ -227,7 +244,7 @@ class LogisticManager(System):
                 print(f"Order {p_order.get_id()} assigned to micro_hub {p_entity.get_id()}.")
             assigned = p_order.assign_micro_hub(p_entity.id) and assigned
             assigned = p_entity.assign_order(p_order, pseudo_order1, pseudo_order2) and assigned
-        elif isinstance(p_entity, Truck) or isinstance(p_entity, Drone):
+        elif isinstance(p_entity, FirstEchelonVehicle) or isinstance(p_entity, SecondEchelonVehicle):
             assigned = p_order.assign_vehicle(p_entity._id, p_entity)
             assigned = p_entity.assign_orders([p_order]) and assigned
             if assigned:
